@@ -18,21 +18,18 @@ data Domain = Syntax | Value IsStaged
 
 data Term : Domain -> Ctx -> Type
 
-data Binder : (s : Stage) -> Domain -> Reducible s -> Ctx -> Type where
-  --
-  Lam : Binder s d Red ns
-  -- ty, tm
-  Let : Term d ns -> Term d ns -> Binder s d RedLazy ns
-  -- ty, tm
-  LetIrr : Term d ns -> Term d ns -> Binder Obj d RedLazy ns
-  -- a, b, A
-  PiObj : Term d ns -> Term d ns -> Term d ns -> Binder Obj d Irr ns
-  -- A
-  PiMta : Term d ns -> Binder Mta d Irr ns
+data PrimitiveClass = PrimNeu | PrimNorm
+data Primitive : PrimitiveClass -> Arity -> Type
 
-data PrimitiveKind = PrimNeu | PrimNorm
+data Binder : (s : Stage) -> Reducible s -> Arity -> Type where
+  Lam : Binder s Red [(Implicit, "ty")]
+  Let : Binder s RedLazy [(Explicit, "ty"), (Explicit, "tm")]
+  LetIrr : Binder Obj RedLazy [(Explicit, "ty"), (Explicit, "tm")]
+  PiObj : Binder Obj Irr [(Implicit, "bytesIn"), (Implicit, "bytesOut"), (Explicit, "ty")]
+  PiMta : Binder Mta Irr [(Explicit, "ty")]
 
-data Primitive : Arity -> PrimitiveKind -> Type
+data Model : (Arity -> Type) -> Domain -> Ctx -> Type where
+  Spined : k as -> Spine as (Term d) ns -> Model k d ns
 
 data Variable : Domain -> Ctx -> Type where
   Level : Lvl ns -> Variable (Value is) ns
@@ -41,15 +38,15 @@ data Variable : Domain -> Ctx -> Type where
 data Head : Domain -> Ctx -> Type where
   Var : Variable d ns -> Head d ns
   Meta : MetaVar -> Head d ns
-  SynRedex : (n : Name) -> Binder s Syntax r ns -> Head Syntax ns
-  ObjRedex : (n : Name) -> Binder Obj (Value is) Red ns -> Head (Value is) ns
-  MtaLazyRedex : (n : Name) -> Binder Mta (Value Unstaged) RedLazy ns -> Head (Value Unstaged) ns
-  PrimNeutral : Primitive ks PrimNeu -> Spine ks (Term d) ns -> Head d ns
+  SynRedex : (n : Name) -> Model (Binder s r) Syntax ns -> Head Syntax ns
+  ObjRedex : (n : Name) -> Model (Binder Obj Red) (Value is) ns -> Head (Value is) ns
+  MtaLazy : (n : Name) -> Model (Binder Mta RedLazy) (Value Unstaged) ns -> Head (Value Unstaged) ns
+  PrimNeutral : Model (Primitive PrimNeu) d ns -> Head d ns
 
 data Term where
   Apps : Head d ns -> Spine ks (Term d) ns -> Term d ns
-  Bind : (s : Stage) -> (n : Name) -> Binder s d Irr ns -> Term d ns
-  PrimNormal : Primitive ks PrimNorm -> Term d ns
+  Former : (s : Stage) -> (n : Name) -> Model (Binder s Irr) d ns -> Term d ns
+  PrimNormal : Model (Primitive PrimNorm) d ns -> Term d ns
 
 data Body : Domain -> Name -> Ctx -> Type where
   Delayed : Term Syntax (ns :< n) -> Body Syntax n ns
