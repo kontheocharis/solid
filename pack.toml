@@ -1,0 +1,10 @@
+[custom.all.unboxed-idr]
+type = "local"
+path = "."
+ipkg = "unboxed-idr.ipkg"
+test = "test/test.ipkg"
+
+[custom.all.unboxed-idr-test]
+type = "local"
+path = "test"
+ipkg = "test.ipkg"
