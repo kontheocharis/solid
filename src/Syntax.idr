@@ -28,29 +28,33 @@ data Binder : (s : Stage) -> Reducible s -> Arity -> Type where
   PiObj : Binder Obj Irr [(Implicit, "bytesIn"), (Implicit, "bytesOut"), (Explicit, "ty")]
   PiMta : Binder Mta Irr [(Explicit, "ty")]
 
-data Model : (Arity -> Type) -> Domain -> Ctx -> Type where
-  Spined : k as -> Spine as (Term d) ns -> Model k d ns
-
 data Variable : Domain -> Ctx -> Type where
   Level : Lvl ns -> Variable (Value is) ns
   Index : Idx ns -> Variable Syntax ns
 
-data Head : Domain -> Ctx -> Type where
-  Var : Variable d ns -> Head d ns
-  Meta : MetaVar -> Head d ns
-  SynRedex : (n : Name) -> Model (Binder s r) Syntax ns -> Head Syntax ns
-  ObjRedex : (n : Name) -> Model (Binder Obj Red) (Value is) ns -> Head (Value is) ns
-  MtaLazy : (n : Name) -> Model (Binder Mta RedLazy) (Value Unstaged) ns -> Head (Value Unstaged) ns
-  PrimNeutral : Model (Primitive PrimNeu) d ns -> Head d ns
-
-data Term where
-  Apps : Head d ns -> Spine ks (Term d) ns -> Term d ns
-  Former : (s : Stage) -> (n : Name) -> Model (Binder s Irr) d ns -> Term d ns
-  PrimNormal : Model (Primitive PrimNorm) d ns -> Term d ns
+data Model : (Arity -> Type) -> Domain -> Ctx -> Type where
+  Spined : k as -> Spine as (Term d) ns -> Model k d ns
 
 data Body : Domain -> Name -> Ctx -> Type where
   Delayed : Term Syntax (ns :< n) -> Body Syntax n ns
   Closure : Sub ns (Term (Value is)) ms -> Term Syntax (ms :< n) -> Body (Value is) n ns
+
+data Thunk : (s : Stage) -> Reducible s -> Domain -> Ctx -> Type where
+  Bound : (s : Stage) -> {0 r : Reducible s}
+      -> (n : Name) -> Model (Binder s r) d ns -> Body d n ns -> Thunk s r d ns
+
+data Head : Domain -> Ctx -> Type where
+  Var : Variable d ns -> Head d ns
+  Meta : MetaVar -> Head d ns
+  SynRedex : Thunk s r Syntax ns -> Head Syntax ns
+  ObjRedex : Thunk Obj Red (Value is) ns -> Head (Value is) ns
+  MtaLazy : Thunk Mta RedLazy (Value Unstaged) ns -> Head (Value Unstaged) ns
+  PrimNeutral : Model (Primitive PrimNeu) d ns -> Head d ns
+
+data Term where
+  Apps : Head d ns -> Spine ks (Term d) ns -> Term d ns
+  Former : Thunk s Irr d ns -> Term d ns
+  PrimNormal : Model (Primitive PrimNorm) d ns -> Term d ns
 
 0 Tm : Ctx -> Type
 Tm = Term Syntax
