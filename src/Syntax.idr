@@ -71,6 +71,12 @@ Env ms ns = Sub ms Val ns
 0 StagedEnv : Ctx -> Ctx -> Type
 StagedEnv ms ns = Sub ms StagedVal ns
 
+var : (n : String) -> {auto prf : In n ns} -> Tm ns
+var n {prf = prf} = Apps (Var (Index (idx @{prf}))) []
+
+foo : Tm [< (Explicit, "a"), (Explicit, "b"), (Explicit, "c")]
+foo = var "c"
+
 -- data Term where
 --   App : Head var delay ns -> Spine ks (Term var delay) ns -> Term var delay ns
 

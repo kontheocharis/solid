@@ -84,3 +84,15 @@ public export
 Eval over src dest => Eval over (Spine as src) (Spine as dest) where
   eval env [] = []
   eval env (x :: xs) = eval env x :: eval env xs
+
+public export
+interface In (0 n : String) (0 ns : Ctx) where
+  idx : Idx ns
+
+public export
+In n (ns :< (m, n)) where
+  idx = IZ
+
+public export
+(In n ns) => In n (ns :< n') where
+  idx @{f} = IS (idx @{f})
