@@ -15,11 +15,6 @@ data Reducible : Stage -> Type where
 
 data Domain = Syntax | Value
 
-data EvalMode : Domain -> Type where
-  NA : EvalMode Syntax
-  Normalised : EvalMode Value
-  Simplified : EvalMode Value
-
 data Term : Domain -> Ctx -> Type
 
 Eval (Term Value) (Term Syntax) (Term Value)
@@ -78,7 +73,12 @@ forceThunk (Bound Obj n (BindLetIrr v) (Closure env body)) = eval (env :< v) bod
 Eval (Term Value) (Thunk s r Syntax) (Thunk s r Value) where
   eval env (Bound s n bind body) = Bound s n (eval env bind) (eval env body)
 
-data Head : (d : Domain) -> EvalMode d -> Ctx -> Type where
+data HeadKind : Domain -> Type where
+  NA : HeadKind Syntax
+  Normalised : HeadKind Value
+  Simplified : HeadKind Value
+
+data Head : (d : Domain) -> HeadKind d -> Ctx -> Type where
   SynVar : Variable Syntax ns -> Head Syntax NA ns
   ValVar : Variable Value ns -> Head Value Simplified ns
   SynMeta : MetaVar -> Head Syntax NA ns
@@ -88,7 +88,7 @@ data Head : (d : Domain) -> EvalMode d -> Ctx -> Type where
   ObjLazy : Thunk Obj RedLazy Value ns -> Head Value Normalised ns
   PrimNeutral : Applied (Primitive PrimNeu) d ns -> Head d e ns
 
-0 HeadApplied : (d : Domain) -> EvalMode d -> Ctx -> Type
+0 HeadApplied : (d : Domain) -> HeadKind d -> Ctx -> Type
 HeadApplied d e ns = Applied (\_ => Head d e ns) d ns
 
 data Term where
