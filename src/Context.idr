@@ -15,6 +15,13 @@ public export
 0 Arity : Type
 Arity = List Name
 
+infixl 7 ::<
+
+public export
+(::<) : Ctx -> Arity -> Ctx
+ns ::< [] = ns
+ns ::< (a :: as) = (ns :< a) ::< as
+
 public export
 data Idx : Ctx -> Type where
   IZ : Idx (ns :< n)
