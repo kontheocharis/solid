@@ -32,6 +32,31 @@ data Lvl : Ctx -> Type where
   LZ : Lvl (ns :< n)
   LS : Lvl ns -> Lvl (ns :< n)
 
+public export
+data Size : Ctx -> Type where
+  SZ : Size [<]
+  SS : Size ns -> Size (ns :< n)
+
+public export
+firstIdx : Size ns -> Idx (ns :< n)
+firstIdx SZ = IZ
+firstIdx (SS n) = IS (firstIdx n)
+
+public export
+nextIdx : Idx ns -> Idx (ns :< n)
+nextIdx IZ = IZ
+nextIdx (IS i) = IS (nextIdx i)
+
+public export
+lvlToIdx : Size ns -> Lvl ns -> Idx ns
+lvlToIdx (SS n) LZ = firstIdx n
+lvlToIdx (SS n) (LS l) = nextIdx (lvlToIdx n l)
+
+public export
+lastLvl : Size ns -> Lvl (ns :< n)
+lastLvl SZ = LZ
+lastLvl (SS n) = LS (lastLvl n)
+
 namespace Tel
   public export
   data Tel : Arity -> (Ctx -> Type) -> Ctx -> Type where
@@ -60,42 +85,72 @@ namespace Sub
     Lin : Sub ns f [<]
     (:<) : Sub ns f ms -> f ns -> Sub ns f (ms :< m)
 
-public export
-interface Proj (0 over : Ctx -> Type) where
-  proj : Sub (ns :< n) over ns
+-- Some interfaces
 
 public export
 interface Wk (0 tm : Ctx -> Type) where
   wk : tm ns -> tm (ns :< n)
 
 public export
-interface Lift (0 tm : Ctx -> Type) where
-  lift : Sub ns tm ms -> Sub (ns :< a) tm (ms :< a')
+interface (Wk over) => Subst (0 over : Ctx -> Type) where
+  here : Size ns -> over (ns :< n)
 
+  ext : Size ns -> Sub ns over ms -> Sub (ns :< n) over ms
+  ext s [<] = [<]
+  ext s (xs :< x) = ext s xs :< wk x
+
+  lift : Size ns -> Sub ns over ms -> Sub (ns :< a) over (ms :< a)
+  lift s env = ext s env :< here s
+
+  id : Size ns -> Sub ns over ns
+  id SZ = [<]
+  id (SS k) = lift k (id k)
+
+  proj : Size ns -> Sub (ns :< n) over ns
+  proj s = ext s (id s)
+
+public export
+interface Eval (0 over : Ctx -> Type) (0 tm : Ctx -> Type) (0 val : Ctx -> Type) where
+  eval : Sub ns over ms -> tm ms -> val ns
+
+public export
+interface Quote (0 val : Ctx -> Type) (0 tm : Ctx -> Type) where
+  quote : Size ns -> val ns -> tm ns
+
+public export
 Wk Lvl where
   wk LZ = LZ
   wk (LS l) = LS (wk l)
 
+public export
 Wk Idx where
   wk = IS
 
+public export
 (Wk tm) => Wk (Spine as tm) where
   wk [] = []
   wk (x :: xs) = wk x :: wk xs
 
 public export
-interface Eval (0 over : Ctx -> Type) (0 src : Ctx -> Type) (0 dest : Ctx -> Type) where
-  eval : Sub ns over ms -> src ms -> dest ns
+(Quote val tm) => Quote (Tel as val) (Tel as tm) where
+  quote s [] = []
+  quote s (x :: xs) = quote s x :: quote (SS s) xs
 
 public export
-(Lift over, Eval over src dest) => Eval over (Tel as src) (Tel as dest) where
-  eval env [] = []
-  eval env (x :: xs) = eval env x :: eval (lift env) xs
-
-public export
-Eval over src dest => Eval over (Spine as src) (Spine as dest) where
+Eval over tm val => Eval over (Spine as tm) (Spine as val) where
   eval env [] = []
   eval env (x :: xs) = eval env x :: eval env xs
+
+public export
+Quote val tm => Quote (Spine as val) (Spine as tm) where
+  quote s [] = []
+  quote s (x :: xs) = quote s x :: quote s xs
+
+public export
+Quote Lvl Idx where
+  quote = lvlToIdx
+
+-- Finding variables by name
 
 public export
 interface In (0 n : String) (0 ns : Ctx) where

@@ -19,6 +19,8 @@ data Term : Domain -> Ctx -> Type
 
 Eval (Term Value) (Term Syntax) (Term Value)
 
+Quote (Term Value) (Term Syntax)
+
 data PrimitiveClass = PrimNeu | PrimNorm
 data Primitive : PrimitiveClass -> Arity -> Type
 
@@ -36,28 +38,29 @@ Eval over (Term d) (Term d') => Eval over (Binder md r d) (Binder md r d') where
   eval env (BindPiObj ba bb a) = BindPiObj (eval env ba) (eval env bb) (eval env a)
   eval env (BindPiMta a) = BindPiMta (eval env a)
 
+Quote (Term d) (Term d') => Quote (Binder md r d) (Binder md r d') where
+  quote s BindLam = BindLam
+  quote s (BindLet t) = BindLet (quote s t)
+  quote s (BindLetIrr t) = BindLetIrr (quote s t)
+  quote s (BindPiObj ba bb a) = BindPiObj (quote s ba) (quote s bb) (quote s a)
+  quote s (BindPiMta a) = BindPiMta (quote s a)
+
 data Variable : Domain -> Ctx -> Type where
   Level : Lvl ns -> Variable Value ns
   Index : Idx ns -> Variable Syntax ns
-
-Eval (Term Value) (Variable Syntax) (Term Value) where
-  eval (env :< e) (Index IZ) = e
-  eval (env :< e) (Index (IS i)) = eval env (Index i)
-  eval [<] (Index _) impossible
 
 data Applied : (Arity -> Type) -> Domain -> Ctx -> Type where
   ($$) : k as -> Spine as (Term d) ns -> Applied k d ns
 
 Eval (Term Value) (Applied (Primitive k) Syntax) (Term Value)
 
+Quote (Applied (Primitive k) Value) (Applied (Primitive k) Syntax)
+
 export infixr 5 $$
 
 data Body : Domain -> Name -> Ctx -> Type where
   Delayed : Term Syntax (ns :< n) -> Body Syntax n ns
   Closure : Sub ns (Term Value) ms -> Term Syntax (ms :< n) -> Body Value n ns
-
-Eval (Term Value) (Body Syntax n) (Body Value n) where
-  eval env (Delayed t) = Closure env t
 
 data Thunk : (s : Stage) -> Reducible s -> Domain -> Ctx -> Type where
   Bound : (s : Stage) -> {0 r : Reducible s}
@@ -69,9 +72,6 @@ callThunk (Bound s n BindLam (Closure env body)) arg = eval (env :< arg) body
 forceThunk : Thunk s RedLazy Value ns -> Term Value ns
 forceThunk (Bound s n (BindLet v) (Closure env body)) = eval (env :< v) body
 forceThunk (Bound Obj n (BindLetIrr v) (Closure env body)) = eval (env :< v) body
-
-Eval (Term Value) (Thunk s r Syntax) (Thunk s r Value) where
-  eval env (Bound s n bind body) = Bound s n (eval env bind) (eval env body)
 
 data HeadKind : Domain -> Type where
   NA : HeadKind Syntax
@@ -95,10 +95,35 @@ data Term where
   SynApps : HeadApplied Syntax NA ns -> Term Syntax ns
   GluedApps : HeadApplied Value Normalised ns -> Lazy (Term Value ns) -> Term Value ns
   SimpApps : HeadApplied Value Simplified ns -> Term Value ns
-  MtaCallable : Thunk Mta RedCallable d ns -> Term d ns
+  MtaCallable : Thunk Mta RedCallable Value ns -> Term Value ns
   SimpObjCallable : Thunk Obj RedCallable Value ns -> Term Value ns
   IrredThunk : Thunk s Irred d ns -> Term d ns
   PrimNormal : Applied (Primitive PrimNorm) d ns -> Term d ns
+
+Wk (Term Value)
+
+Eval (Term Value) (Variable Syntax) (Term Value) where
+  eval (env :< e) (Index IZ) = e
+  eval (env :< e) (Index (IS i)) = eval env (Index i)
+  eval [<] (Index _) impossible
+
+Quote (Variable Value) (Variable Syntax) where
+  quote s (Level l) = Index (quote s l)
+
+Subst (Term Value) where
+  here s = SimpApps (ValVar (Level (lastLvl s)) $$ [])
+
+Eval (Term Value) (Body Syntax n) (Body Value n) where
+  eval env (Delayed t) = Closure env t
+
+Quote (Body Value n) (Body Syntax n) where
+  quote s (Closure env t) = Delayed (quote {val = Term Value} (SS s) (eval (lift s env) t))
+
+Eval (Term Value) (Thunk s r Syntax) (Thunk s r Value) where
+  eval env (Bound s n bind body) = Bound s n (eval env bind) (eval env body)
+
+Quote (Thunk s r Value) (Thunk s r Syntax) where
+  quote s (Bound s' n bind body) = Bound s' n (quote s bind) (quote s body)
 
 apps : Term Value ns -> Spine as (Term Value) ns -> Term Value ns
 apps (GluedApps (v $$ sp) gl) sp' = GluedApps (v $$ sp ++ sp') (apps gl sp')
@@ -120,11 +145,28 @@ Eval (Term Value) (Head Syntax NA) (Term Value) where
   eval env (SynThunk Mta RedLazy t) = forceThunk {s = Mta} (eval env t)
   eval env (PrimNeutral prim) = eval env prim
 
+Quote (Head Value hk) (Head Syntax NA) where
+  quote s (ValVar v) = SynVar (quote s v)
+  quote s (ValMeta m) = SynMeta m
+  quote s (ObjCallable t) = SynThunk Obj RedCallable (quote s t)
+  quote s (ObjLazy t) = SynThunk Obj RedLazy (quote s t)
+  quote s (PrimNeutral p) = PrimNeutral (quote s p)
+
 Eval (Term Value) (Term Syntax) (Term Value) where
   eval env (SynApps (($$) {as = as} h sp)) = apps {as = as} (eval env h) (eval env sp)
-  eval env (MtaCallable t) = MtaCallable (eval env t)
   eval env (IrredThunk {s = s} t) = IrredThunk {s = s} (eval env t)
   eval env (PrimNormal prim) = eval env prim
+
+quoteHA : Size ns -> HeadApplied Value hk ns -> HeadApplied Syntax NA ns
+quoteHA s (($$) {as = as} h sp) = ($$) {as = as} (quote s h) (quote s sp)
+
+Quote (Term Value) (Term Syntax) where
+  quote s (GluedApps a _) = SynApps (quoteHA s a)
+  quote s (SimpApps a) = SynApps (quoteHA s a)
+  quote s (MtaCallable c) = SynApps (SynThunk Mta RedCallable (quote s c) $$ [])
+  quote s (SimpObjCallable c) = SynApps (SynThunk Obj RedCallable (quote s c) $$ [])
+  quote s (IrredThunk {s = s'} c) = IrredThunk {s = s'} (quote s c)
+  quote s (PrimNormal p) = PrimNormal (quote s p)
 
 0 Tm : Ctx -> Type
 Tm = Term Syntax
