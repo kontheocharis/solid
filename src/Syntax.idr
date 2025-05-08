@@ -33,7 +33,9 @@ data Variable : Domain -> Ctx -> Type where
   Index : Idx ns -> Variable Syntax ns
 
 data Applied : (Arity -> Type) -> Domain -> Ctx -> Type where
-  WithArgs : k as -> Spine as (Term d) ns -> Applied k d ns
+  ($$) : k as -> Spine as (Term d) ns -> Applied k d ns
+
+export infixr 5 $$
 
 data Body : Domain -> Ctx -> Name -> Type where
   Delayed : Term Syntax (ns :< n) -> Body Syntax ns n
@@ -53,7 +55,7 @@ data Head : Domain -> Ctx -> Type where
   PrimNeutral : Applied (Primitive PrimNeu) d ns -> Head d ns
 
 data Term where
-  Apps : Head d ns -> Spine ks (Term d) ns -> Term d ns
+  Apps : Applied (\_ => Head d ns) d ns -> Term d ns
   Former : Thunk s Irr d ns -> Term d ns
   PrimNormal : Applied (Primitive PrimNorm) d ns -> Term d ns
 
@@ -79,20 +81,38 @@ Env ms ns = Sub ms Val ns
 StagedEnv ms ns = Sub ms StagedVal ns
 
 var : (n : String) -> {auto prf : In n ns} -> Tm ns
-var n {prf = prf} = Apps (Var (Index (idx @{prf}))) []
+var n {prf = prf} = Apps (Var (Index (idx @{prf})) $$ [])
 
 varApp : (n : String) -> {auto prf : In n ns} -> Name -> Term Syntax ns -> Tm ns
-varApp n {prf = prf} a v = Apps (Var (Index (idx @{prf}))) ((::) {a = a} v [])
+varApp n {prf = prf} a v = Apps (Var (Index (idx @{prf})) $$ ((::) {a = a} v []))
 
 -- foo : Tm [< (Explicit, "a"), (Explicit, "b"), (Explicit, "c")]
 -- foo = var "c"
 
 data Primitive where
   PrimTYPE : Primitive PrimNorm []
+  PrimBYTES : Primitive PrimNorm []
+  PrimBytes : Primitive PrimNorm []
+  PrimEmbedBYTES : Primitive PrimNorm [(Explicit, "staticBytes")]
+  PrimUnsized : Primitive PrimNorm [(Explicit, "bytes")]
 
 TYPE : Term d ns
-TYPE = PrimNormal (WithArgs PrimTYPE [])
+TYPE = PrimNormal (PrimTYPE $$ [])
 
+BYTES : Term d ns
+BYTES = PrimNormal (PrimBYTES $$ [])
+
+Bytes : Term d ns
+Bytes = PrimNormal (PrimBytes $$ [])
+
+Unsized : Term d ns -> Term d ns
+Unsized b = PrimNormal (PrimUnsized $$ [b])
+
+EmbedBYTES : Term d ns -> Term d ns
+EmbedBYTES b = PrimNormal (PrimEmbedBYTES $$ [b])
+
+Sized : Term d ns -> Term d ns
+Sized b = Unsized (EmbedBYTES b)
 
 
 -- Tm = Term Idx (\n, ns => Tm (ns :< n))
