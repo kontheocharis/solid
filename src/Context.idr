@@ -44,6 +44,11 @@ namespace Spine
     Nil : Spine [] f ns
     (::) : f ns -> Spine as f ns -> Spine (a :: as) f ns
 
+  public export
+  (++) : Spine as f ns -> Spine bs f ns -> Spine (as ++ bs) f ns
+  [] ++ sp' = sp'
+  (x :: sp) ++ sp' = x :: (sp ++ sp')
+
 namespace Con
   data Con : (Ctx -> Type) -> Ctx -> Type where
     Lin : Con f [<]
@@ -52,7 +57,7 @@ namespace Con
 namespace Sub
   public export
   data Sub : Ctx -> (Ctx -> Type) -> Ctx -> Type where
-    Lin : Sub ns f ms
+    Lin : Sub ns f [<]
     (:<) : Sub ns f ms -> f ns -> Sub ns f (ms :< m)
 
 public export
@@ -63,9 +68,9 @@ public export
 interface Wk (0 tm : Ctx -> Type) where
   wk : tm ns -> tm (ns :< n)
 
+public export
+interface Lift (0 tm : Ctx -> Type) where
   lift : Sub ns tm ms -> Sub (ns :< a) tm (ms :< a')
-  lift [<] = [<]
-  lift (xs :< x) = lift xs :< wk x
 
 Wk Lvl where
   wk LZ = LZ
@@ -83,7 +88,7 @@ interface Eval (0 over : Ctx -> Type) (0 src : Ctx -> Type) (0 dest : Ctx -> Typ
   eval : Sub ns over ms -> src ms -> dest ns
 
 public export
-(Wk over, Eval over src dest) => Eval over (Tel as src) (Tel as dest) where
+(Lift over, Eval over src dest) => Eval over (Tel as src) (Tel as dest) where
   eval env [] = []
   eval env (x :: xs) = eval env x :: eval (lift env) xs
 
