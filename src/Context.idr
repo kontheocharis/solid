@@ -1,41 +1,61 @@
 module Context
 
+-- A bound variable is either from an explicit or an implicit pi.
+--
+-- We remember this in the context.
 public export
 data PiMode = Explicit | Implicit
 
+-- A name is a member of a 'context skeleton'
 public export
 0 Name : Type
 Name = (PiMode, String)
 
+-- A context skeleton.
+--
+-- This will usually be marked computationally irrelevant.
+-- Used to make syntax well-scoped.
 public export
 0 Ctx : Type
 Ctx = SnocList Name
 
+-- An arity is a context skeleton linked forward instead of backward.
+--
+-- This is to avoid green slime like [< x] ++ xs in later definitions.
 public export
 0 Arity : Type
 Arity = List Name
 
 infixl 7 ::<
 
+-- Extend a context skeleton with some arity.
 public export
 (::<) : Ctx -> Arity -> Ctx
 ns ::< [] = ns
 ns ::< (a :: as) = (ns :< a) ::< as
 
+-- De-Brujin indices
 public export
 data Idx : Ctx -> Type where
   IZ : Idx (ns :< n)
   IS : Idx ns -> Idx (ns :< n)
 
+-- De-Brujin levels.
+--
+-- Careful! LZ does not index the name n!
+-- Rather the first element of (ns :< n).
 public export
 data Lvl : Ctx -> Type where
   LZ : Lvl (ns :< n)
   LS : Lvl ns -> Lvl (ns :< n)
 
+-- Remember only the size of a context skeleton.
 public export
 data Size : Ctx -> Type where
   SZ : Size [<]
   SS : Size ns -> Size (ns :< n)
+
+-- Some de-Brujin helpers:
 
 public export
 firstIdx : Size ns -> Idx (ns :< n)
@@ -56,6 +76,9 @@ public export
 lastLvl : Size ns -> Lvl (ns :< n)
 lastLvl SZ = LZ
 lastLvl (SS n) = LS (lastLvl n)
+
+-- Telescopes, spines, contexts and substitutions parameterised over
+-- the actual syntax they contain
 
 namespace Tel
   public export
@@ -85,12 +108,17 @@ namespace Sub
     Lin : Sub ns f [<]
     (:<) : Sub ns f ms -> f ns -> Sub ns f (ms :< m)
 
--- Some interfaces
+-- Some interfaces for syntax that involves variables
 
+-- Weakening for terms
 public export
 interface Wk (0 tm : Ctx -> Type) where
   wk : tm ns -> tm (ns :< n)
 
+-- This is the part of the substitution calculus that we need.
+--
+-- @@Todo: use %transform, do not rely on identity optimisation (which I am
+-- almost certain won't fire)
 public export
 interface (Wk over) => Subst (0 over : Ctx -> Type) where
   here : Size ns -> over (ns :< n)
@@ -109,6 +137,8 @@ interface (Wk over) => Subst (0 over : Ctx -> Type) where
   proj : Size ns -> Sub (ns :< n) over ns
   proj s = ext s (id s)
 
+-- Evaluation and quoting interfaces
+
 public export
 interface Eval (0 over : Ctx -> Type) (0 tm : Ctx -> Type) (0 val : Ctx -> Type) where
   eval : Sub ns over ms -> tm ms -> val ns
@@ -116,6 +146,8 @@ interface Eval (0 over : Ctx -> Type) (0 tm : Ctx -> Type) (0 val : Ctx -> Type)
 public export
 interface Quote (0 val : Ctx -> Type) (0 tm : Ctx -> Type) where
   quote : Size ns -> val ns -> tm ns
+
+-- Basic implementations for the defined types
 
 public export
 Wk Lvl where
@@ -150,7 +182,7 @@ public export
 Quote Lvl Idx where
   quote = lvlToIdx
 
--- Finding variables by name
+-- Finding variables by name through auto implicits!
 
 public export
 interface In (0 n : String) (0 ns : Ctx) where

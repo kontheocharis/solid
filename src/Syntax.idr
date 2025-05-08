@@ -3,104 +3,200 @@ module Syntax
 import Utils
 import Context
 
+-- A metavariable is just a string name
 record MetaVar where
-  name : Name
+  name : String
 
+-- The stage we are in
+--
+-- This is a two-level language.
 data Stage = Obj | Mta
 
-data Reducible : Stage -> Type where
-  RedCallable : Reducible s
-  RedLazy : Reducible s
-  Irred : Reducible s
+-- Whether an expression head is reducible
+--
+-- Remembers the stage at which it is reducible
+-- For now this is uniform over stages.
+data Reducability : Stage -> Type where
+  -- Reducible because it is callable with an argument.
+  Callable : Reducability s
 
+  -- Reducible because it is a lazy value, it can be forced (but has currently
+  -- not been).
+  Unforced : Reducability s
+  -- Irreducible, i.e. rigid.
+  Rigid : Reducability s
+
+-- Whether we are talking about syntax or values.
+--
+-- They differ primarily in their representation of open terms. Syntax just uses
+-- de-Brujin indices, while Value works like a defunctionalised HOAS, storing
+-- some syntax and an environment to evaluate in.
 data Domain = Syntax | Value
 
+-- Terms are indexed by domain, rather than having two separate classes.
+--
+-- They are also indexed by contexts, making them well-scoped.
 data Term : Domain -> Ctx -> Type
 
+-- Terms can be evalued and quoted (given later)
 Eval (Term Value) (Term Syntax) (Term Value)
-
 Quote (Term Value) (Term Syntax)
 
+-- Primitives are either neutral or normal.
+--
+-- Neutral primitives might still be applied to other arguments after being fully
+-- applied to their arity. For example,
+--
+-- ifThenElse : (A : Type) -> Bool -> A -> A -> A
+--
+-- is a primitive of arity 4, but could be applied to more than 2 arguments,
+-- for example if we instantiate A with a function type:
+--
+-- Conversely, normal primitives can never be applied to more arguments than their
+-- arity.
 data PrimitiveClass = PrimNeu | PrimNorm
+
+-- The theory of primitives.
+--
+-- These essentially form a Lawvere theory, though the equations are given
+-- separately later (they are the reduction rules). They will also be given
+-- proper types later.
 data Primitive : PrimitiveClass -> Arity -> Type
 
-data Binder : (s : Stage) -> Reducible s -> Domain -> Ctx -> Type where
-  BindLam : Binder s RedCallable d ns
-  BindLet : Term d ns -> Binder s RedLazy d ns
-  BindLetIrr : Term d ns -> Binder Obj RedLazy d ns
-  BindPiObj : (ba : Term d ns) -> (bb : Term d ns) -> (a : Term d ns) -> Binder Obj Irred d ns
-  BindPiMta : (a : Term d ns) -> Binder Mta Irred d ns
+-- This is a fully applied term for some operator in a theory.
+--
+-- Used to represent fully applied primitives.
+data Applied : (Arity -> Type) -> Domain -> Ctx -> Type where
+  ($$) : k as -> Spine as (Term d) ns -> Applied k d ns
+
+infixr 5 $$
+
+-- Here we will give the reduction rules of primitives (later)
+Eval (Term Value) (Applied (Primitive k) Syntax) (Term Value)
+Quote (Applied (Primitive k) Value) (Applied (Primitive k) Syntax)
+
+-- The list of binders in the language, indexed by stage.
+--
+-- Each of these might carry some data.
+data Binder : (s : Stage) -> Reducability s -> Domain -> Ctx -> Type where
+  -- Meta or object-level lambda
+  BindLam : Binder s Callable d ns
+
+  -- Meta or object-level let
+  BindLet : (rhs : Term d ns) -> Binder s Unforced d ns
+
+  -- Meta or object-level pi
+  BindPi : (dom : Term d ns) -> Binder s Rigid d ns
 
 Eval over (Term d) (Term d') => Eval over (Binder md r d) (Binder md r d') where
   eval _ BindLam = BindLam
   eval env (BindLet t) = BindLet (eval env t)
-  eval env (BindLetIrr t) = BindLetIrr (eval env t)
-  eval env (BindPiObj ba bb a) = BindPiObj (eval env ba) (eval env bb) (eval env a)
-  eval env (BindPiMta a) = BindPiMta (eval env a)
+  eval env (BindPi a) = BindPi (eval env a)
 
 Quote (Term d) (Term d') => Quote (Binder md r d) (Binder md r d') where
   quote s BindLam = BindLam
   quote s (BindLet t) = BindLet (quote s t)
-  quote s (BindLetIrr t) = BindLetIrr (quote s t)
-  quote s (BindPiObj ba bb a) = BindPiObj (quote s ba) (quote s bb) (quote s a)
-  quote s (BindPiMta a) = BindPiMta (quote s a)
+  quote s (BindPi a) = BindPi (quote s a)
 
+-- Variables are de-Brujin indices or levels depending on if we are in value or
+-- syntax ~> fast variable lookup during evaluation, and free weakening for
+-- values.
 data Variable : Domain -> Ctx -> Type where
   Level : Lvl ns -> Variable Value ns
   Index : Idx ns -> Variable Syntax ns
 
-data Applied : (Arity -> Type) -> Domain -> Ctx -> Type where
-  ($$) : k as -> Spine as (Term d) ns -> Applied k d ns
-
-Eval (Term Value) (Applied (Primitive k) Syntax) (Term Value)
-
-Quote (Applied (Primitive k) Value) (Applied (Primitive k) Syntax)
-
-export infixr 5 $$
-
+-- A body is basically a term under a binder.
+--
+-- Either a term with a free variable or a (defunctionalised) delayed
+-- evaluation.
 data Body : Domain -> Name -> Ctx -> Type where
   Delayed : Term Syntax (ns :< n) -> Body Syntax n ns
   Closure : Sub ns (Term Value) ms -> Term Syntax (ms :< n) -> Body Value n ns
 
-data Thunk : (s : Stage) -> Reducible s -> Domain -> Ctx -> Type where
-  Bound : (s : Stage) -> {0 r : Reducible s}
+-- Helper to package a binder with its body.
+data Thunk : (s : Stage) -> Reducability s -> Domain -> Ctx -> Type where
+  Bound : (s : Stage) -> {0 r : Reducability s}
       -> (n : Name) -> Binder s r d ns -> Body d n ns -> Thunk s r d ns
 
-callThunk : Thunk s RedCallable Value ns -> Term Value ns -> Term Value ns
+-- Every callable thunk can be applied to a term.
+callThunk : Thunk s Callable Value ns -> Term Value ns -> Term Value ns
 callThunk (Bound s n BindLam (Closure env body)) arg = eval (env :< arg) body
 
-forceThunk : Thunk s RedLazy Value ns -> Term Value ns
+-- Every unforced thunk can be forced.
+forceThunk : Thunk s Unforced Value ns -> Term Value ns
 forceThunk (Bound s n (BindLet v) (Closure env body)) = eval (env :< v) body
-forceThunk (Bound Obj n (BindLetIrr v) (Closure env body)) = eval (env :< v) body
 
+-- Different spine heads, meaning x in `x a1 ... an`, are reduced
+-- to different extents.
+--
+-- Unification might have to look at simplified heads, but code extraction only
+-- needs normalised heads. I.e. we never reduce object thunks unless we have to.
 data HeadKind : Domain -> Type where
+  -- Anything goes in syntax
   NA : HeadKind Syntax
+  -- A merely normalised head. This might be unforced.
   Normalised : HeadKind Value
+  -- A fully simplified head, fully forced.
   Simplified : HeadKind Value
 
 data Head : (d : Domain) -> HeadKind d -> Ctx -> Type where
+  -- Variables and metas are simplified if they are values
   SynVar : Variable Syntax ns -> Head Syntax NA ns
   ValVar : Variable Value ns -> Head Value Simplified ns
   SynMeta : MetaVar -> Head Syntax NA ns
   ValMeta : MetaVar -> Head Value Simplified ns
-  SynThunk : (s : Stage) -> (r : Reducible s) -> Thunk s r Syntax ns -> Head Syntax NA ns
-  ObjCallable : Thunk Obj RedCallable Value ns -> Head Value Normalised ns
-  ObjLazy : Thunk Obj RedLazy Value ns -> Head Value Normalised ns
+
+  -- A syntactic thunk
+  SynThunk : (s : Stage) -> (r : Reducability s) -> Thunk s r Syntax ns -> Head Syntax NA ns
+
+  -- Meta-level callable thunks cannot appear as heads in values.
+  --
+  -- Thus, all we have are object-level thunks (which are merely normalised because
+  -- they can technically be more simplified)
+  ObjCallable : Thunk Obj Callable Value ns -> Head Value Normalised ns
+  ObjLazy : Thunk Obj Unforced Value ns -> Head Value Normalised ns
+
+  -- An applied primitive can only be a head if it is neutral.
   PrimNeutral : Applied (Primitive PrimNeu) d ns -> Head d e ns
 
+-- Head applied to a spine.
 0 HeadApplied : (d : Domain) -> HeadKind d -> Ctx -> Type
 HeadApplied d e ns = Applied (\_ => Head d e ns) d ns
 
 data Term where
+  -- Spine applied to syntactic head
   SynApps : HeadApplied Syntax NA ns -> Term Syntax ns
+
+  -- Spine applied to a normalised value head
+  --
+  -- Also stores the fully simplified form lazily (glued eval trick)
+  -- This makes unification much faster in some cases. It also allows us
+  -- to extract either normalised or simplified syntax during quoting.
   GluedApps : HeadApplied Value Normalised ns -> Lazy (Term Value ns) -> Term Value ns
+
+  -- Spine applied to a simplified value head
+  --
+  -- Cannot be reduced further
   SimpApps : HeadApplied Value Simplified ns -> Term Value ns
-  MtaCallable : Thunk Mta RedCallable Value ns -> Term Value ns
-  SimpObjCallable : Thunk Obj RedCallable Value ns -> Term Value ns
-  IrredThunk : Thunk s Irred d ns -> Term d ns
+
+  -- Callable meta thunk, never applied to a spine
+  MtaCallable : Thunk Mta Callable Value ns -> Term Value ns
+
+  -- Callable object thunk that must be simplified if applied to anything.
+  --
+  -- If it shouldn't be simplified it should be a GluedApps (ObjCallable ..) instead.
+  SimpObjCallable : Thunk Obj Callable Value ns -> Term Value ns
+
+  -- Rigid thunk, never applied.
+  RigidThunk : Thunk s Rigid d ns -> Term d ns
+
+  -- Normal primitive, never applied.
   PrimNormal : Applied (Primitive PrimNorm) d ns -> Term d ns
 
+-- Values support free weakening (@@TODO)
 Wk (Term Value)
+
+-- Evaluation and quoting for all the syntax:
 
 Eval (Term Value) (Variable Syntax) (Term Value) where
   eval (env :< e) (Index IZ) = e
@@ -125,6 +221,10 @@ Eval (Term Value) (Thunk s r Syntax) (Thunk s r Value) where
 Quote (Thunk s r Value) (Thunk s r Syntax) where
   quote s (Bound s' n bind body) = Bound s' n (quote s bind) (quote s body)
 
+-- Helper to apply a value to a spine.
+--
+-- This is the only place where it could crash if there is a bug, because
+-- the syntax is not well-typed (only well-scoped).
 apps : Term Value ns -> Spine as (Term Value) ns -> Term Value ns
 apps (GluedApps (v $$ sp) gl) sp' = GluedApps (v $$ sp ++ sp') (apps gl sp')
 apps (SimpApps (v $$ sp)) sp' = SimpApps (v $$ sp ++ sp')
@@ -132,29 +232,29 @@ apps (MtaCallable t) [] = MtaCallable t
 apps (MtaCallable t) (x :: sp') = apps (callThunk t x) sp'
 apps (SimpObjCallable t) [] = SimpObjCallable t
 apps (SimpObjCallable t) (x :: sp') = apps (callThunk t x) sp'
-apps (IrredThunk _) _ = error "impossible"
+apps (RigidThunk _) _ = error "impossible"
 apps (PrimNormal _) _ = error "impossible"
 
 Eval (Term Value) (Head Syntax NA) (Term Value) where
   eval env (SynVar v) = eval env v
   eval env (SynMeta v) = SimpApps (ValMeta v $$ [])
-  eval env (SynThunk s Irred t) = IrredThunk {s = s} (eval env t)
-  eval env (SynThunk Obj RedCallable t) = GluedApps (ObjCallable (eval env t) $$ []) (SimpObjCallable (eval env t))
-  eval env (SynThunk Obj RedLazy t) = GluedApps (ObjLazy (eval env t) $$ []) (forceThunk {s = Obj} (eval env t))
-  eval env (SynThunk Mta RedCallable t) = MtaCallable (eval env t)
-  eval env (SynThunk Mta RedLazy t) = forceThunk {s = Mta} (eval env t)
+  eval env (SynThunk s Rigid t) = RigidThunk {s = s} (eval env t)
+  eval env (SynThunk Obj Callable t) = GluedApps (ObjCallable (eval env t) $$ []) (SimpObjCallable (eval env t))
+  eval env (SynThunk Obj Unforced t) = GluedApps (ObjLazy (eval env t) $$ []) (forceThunk {s = Obj} (eval env t))
+  eval env (SynThunk Mta Callable t) = MtaCallable (eval env t)
+  eval env (SynThunk Mta Unforced t) = forceThunk {s = Mta} (eval env t)
   eval env (PrimNeutral prim) = eval env prim
 
 Quote (Head Value hk) (Head Syntax NA) where
   quote s (ValVar v) = SynVar (quote s v)
   quote s (ValMeta m) = SynMeta m
-  quote s (ObjCallable t) = SynThunk Obj RedCallable (quote s t)
-  quote s (ObjLazy t) = SynThunk Obj RedLazy (quote s t)
+  quote s (ObjCallable t) = SynThunk Obj Callable (quote s t)
+  quote s (ObjLazy t) = SynThunk Obj Unforced (quote s t)
   quote s (PrimNeutral p) = PrimNeutral (quote s p)
 
 Eval (Term Value) (Term Syntax) (Term Value) where
   eval env (SynApps (($$) {as = as} h sp)) = apps {as = as} (eval env h) (eval env sp)
-  eval env (IrredThunk {s = s} t) = IrredThunk {s = s} (eval env t)
+  eval env (RigidThunk {s = s} t) = RigidThunk {s = s} (eval env t)
   eval env (PrimNormal prim) = eval env prim
 
 quoteHA : Size ns -> HeadApplied Value hk ns -> HeadApplied Syntax NA ns
@@ -163,10 +263,12 @@ quoteHA s (($$) {as = as} h sp) = ($$) {as = as} (quote s h) (quote s sp)
 Quote (Term Value) (Term Syntax) where
   quote s (GluedApps a _) = SynApps (quoteHA s a)
   quote s (SimpApps a) = SynApps (quoteHA s a)
-  quote s (MtaCallable c) = SynApps (SynThunk Mta RedCallable (quote s c) $$ [])
-  quote s (SimpObjCallable c) = SynApps (SynThunk Obj RedCallable (quote s c) $$ [])
-  quote s (IrredThunk {s = s'} c) = IrredThunk {s = s'} (quote s c)
+  quote s (MtaCallable c) = SynApps (SynThunk Mta Callable (quote s c) $$ [])
+  quote s (SimpObjCallable c) = SynApps (SynThunk Obj Callable (quote s c) $$ [])
+  quote s (RigidThunk {s = s'} c) = RigidThunk {s = s'} (quote s c)
   quote s (PrimNormal p) = PrimNormal (quote s p)
+
+-- Some convenient shorthands
 
 0 Tm : Ctx -> Type
 Tm = Term Syntax
@@ -183,21 +285,24 @@ ValTy = Val
 0 Env : Ctx -> Ctx -> Type
 Env ms ns = Sub ms Val ns
 
+-- We can extend the variable search machinery to the syntax:
+
 var : (n : String) -> {auto prf : In n ns} -> Tm ns
 var n {prf = prf} = SynApps (SynVar (Index (idx @{prf})) $$ [])
 
 varApp : (n : String) -> {auto prf : In n ns} -> Name -> Term Syntax ns -> Tm ns
 varApp n {prf = prf} a v = SynApps (SynVar (Index (idx @{prf})) $$ ((::) {a = a} v []))
 
--- foo : Tm [< (Explicit, "a"), (Explicit, "b"), (Explicit, "c")]
--- foo = var "c"
-
+-- Finally we define the primitives:
 data Primitive where
   PrimTYPE : Primitive PrimNorm []
   PrimBYTES : Primitive PrimNorm []
   PrimBytes : Primitive PrimNorm []
   PrimEmbedBYTES : Primitive PrimNorm [(Explicit, "staticBytes")]
   PrimUnsized : Primitive PrimNorm [(Explicit, "bytes")]
+
+-- Shorthands for some primitives
+-- Sad that Idris doesn't have pattern synonyms
 
 TYPE : Term d ns
 TYPE = PrimNormal (PrimTYPE $$ [])
@@ -216,15 +321,3 @@ EmbedBYTES b = PrimNormal (PrimEmbedBYTES $$ [b])
 
 Sized : Term d ns -> Term d ns
 Sized b = Unsized (EmbedBYTES b)
-
-
-
--- Tm = Term Idx (\n, ns => Tm (ns :< n))
--- Val = Term Idx Closure
-
--- (Eval over src dest) => Eval over (Binder s n src) (Binder s n dest) where
---   eval _ Lam = Lam
---   eval env (Let x y) = Let (eval env x) (eval env y)
---   eval env (LetIrr x y) = LetIrr (eval env x) (eval env y)
---   eval env (PiObj a b c) = PiObj (eval env a) (eval env b) (eval env c)
---   eval env (PiMta a) = PiMta (eval env a)
