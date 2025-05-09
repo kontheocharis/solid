@@ -21,15 +21,15 @@ data Stage = Obj | Mta
 -- Remembers the stage at which it is reducible
 -- For now this is uniform over stages.
 public export
-data Reducability : Stage -> Type where
+data Reducibility : Stage -> Type where
   -- Reducible because it is callable with an argument.
-  Callable : Reducability s
+  Callable : Reducibility s
 
   -- Reducible because it is a lazy value, it can be forced (but has currently
   -- not been).
-  Unforced : Reducability s
+  Unforced : Reducibility s
   -- Irreducible, i.e. rigid.
-  Rigid : Reducability s
+  Rigid : Reducibility s
 
 -- Whether we are talking about syntax or values.
 --
@@ -95,7 +95,7 @@ Quote (Applied (Primitive k) Value) (Applied (Primitive k) Syntax)
 --
 -- Each of these might carry some data.
 public export
-data Binder : (s : Stage) -> Reducability s -> Domain -> Ctx -> Type where
+data Binder : (s : Stage) -> Reducibility s -> Domain -> Ctx -> Type where
   -- Meta or object-level lambda
   BindLam : Binder s Callable d ns
 
@@ -136,8 +136,8 @@ data Body : Domain -> Name -> Ctx -> Type where
 
 -- Helper to package a binder with its body.
 public export
-data Thunk : (s : Stage) -> Reducability s -> Domain -> Ctx -> Type where
-  Bound : (s : Stage) -> {0 r : Reducability s}
+data Thunk : (s : Stage) -> Reducibility s -> Domain -> Ctx -> Type where
+  Bound : (s : Stage) -> {0 r : Reducibility s}
       -> (n : Name) -> Binder s r d ns -> Body d n ns -> Thunk s r d ns
 
 -- Every callable thunk can be applied to a term.
@@ -175,7 +175,7 @@ data Head : (d : Domain) -> HeadKind d -> Ctx -> Type where
   ValMeta : MetaVar -> Head Value Simplified ns
 
   -- A syntactic thunk
-  SynThunk : (s : Stage) -> (r : Reducability s) -> Thunk s r Syntax ns -> Head Syntax NA ns
+  SynThunk : (s : Stage) -> (r : Reducibility s) -> Thunk s r Syntax ns -> Head Syntax NA ns
 
   -- Meta-level callable thunks cannot appear as heads in values.
   --
