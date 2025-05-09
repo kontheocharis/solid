@@ -1,5 +1,7 @@
 module Context
 
+%default total
+
 -- A bound variable is either from an explicit or an implicit pi.
 --
 -- We remember this in the context.
