@@ -1,6 +1,9 @@
 -- Helper definitions related to working with stuff involving variables
 module Core.Context
 
+import Data.Singleton
+import Utils
+
 %default total
 
 -- A bound variable is either from an explicit or an implicit pi.
@@ -58,6 +61,11 @@ data Size : Ctx -> Type where
   SZ : Size [<]
   SS : Size ns -> Size (ns :< n)
 
+public export
+data Count : Arity -> Type where
+  CZ : Count []
+  CS : Count as -> Count (a :: as)
+
 -- Some de-Brujin helpers:
 
 public export
@@ -99,6 +107,11 @@ namespace Spine
   (++) : Spine as f ns -> Spine bs f ns -> Spine (as ++ bs) f ns
   [] ++ sp' = sp'
   (x :: sp) ++ sp' = x :: (sp ++ sp')
+
+  public export
+  (.count) : Spine as f ns -> Count as
+  (.count) [] = CZ
+  (.count) (x :: xs) = CS xs.count
 
 namespace Con
   data Con : (Ctx -> Type) -> Ctx -> Type where
@@ -169,7 +182,6 @@ interface Quote (0 val : Ctx -> Type) (0 tm : Ctx -> Type) where
 
 public export
 Thin Lvl where
-
   -- @@Todo: use %transform, do not rely on identity optimisation
   thin (Keep x) LZ = LZ
   thin (Keep x) (LS l) = LS (thin x l)
@@ -183,8 +195,6 @@ Thin Lvl where
 
 public export
 Thin Idx where
-  -- wk = IS
-
   thin (Keep x) IZ = IZ
   thin (Keep x) (IS i) = IS (thin x i)
   thin (Drop x) i = IS (thin x i) -- here is the non-free bit for indices!
