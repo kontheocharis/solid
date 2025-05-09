@@ -23,7 +23,7 @@ main = Main
 
 -- name of executable
 executable = "unboxed-idr"
--- opts =
+-- opts = "--total"
 sourcedir = "src"
 -- builddir =
 -- outputdir =

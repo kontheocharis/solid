@@ -3,19 +3,24 @@ module Syntax
 import Utils
 import Context
 
+%default total
+
 -- A metavariable is just a string name
+public export
 record MetaVar where
   name : String
 
 -- The stage we are in
 --
 -- This is a two-level language.
+public export
 data Stage = Obj | Mta
 
 -- Whether an expression head is reducible
 --
 -- Remembers the stage at which it is reducible
 -- For now this is uniform over stages.
+public export
 data Reducability : Stage -> Type where
   -- Reducible because it is callable with an argument.
   Callable : Reducability s
@@ -31,15 +36,20 @@ data Reducability : Stage -> Type where
 -- They differ primarily in their representation of open terms. Syntax just uses
 -- de-Brujin indices, while Value works like a defunctionalised HOAS, storing
 -- some syntax and an environment to evaluate in.
+public export
 data Domain = Syntax | Value
 
 -- Terms are indexed by domain, rather than having two separate classes.
 --
 -- They are also indexed by contexts, making them well-scoped.
+public export
 data Term : Domain -> Ctx -> Type
 
 -- Terms can be evalued and quoted (given later)
+public export
 Eval (Term Value) (Term Syntax) (Term Value)
+
+public export
 Quote (Term Value) (Term Syntax)
 
 -- Primitives are either neutral or normal.
@@ -54,6 +64,7 @@ Quote (Term Value) (Term Syntax)
 --
 -- Conversely, normal primitives can never be applied to more arguments than their
 -- arity.
+public export
 data PrimitiveClass = PrimNeu | PrimNorm
 
 -- The theory of primitives.
@@ -61,23 +72,29 @@ data PrimitiveClass = PrimNeu | PrimNorm
 -- These essentially form a Lawvere theory, though the equations are given
 -- separately later (they are the reduction rules). They will also be given
 -- proper types later.
+public export
 data Primitive : PrimitiveClass -> Arity -> Type
 
 -- This is a fully applied term for some operator in a theory.
 --
 -- Used to represent fully applied primitives.
+public export
 data Applied : (Arity -> Type) -> Domain -> Ctx -> Type where
   ($$) : k as -> Spine as (Term d) ns -> Applied k d ns
 
-infixr 5 $$
+export infixr 5 $$
 
 -- Here we will give the reduction rules of primitives (later)
+public export
 Eval (Term Value) (Applied (Primitive k) Syntax) (Term Value)
+
+public export
 Quote (Applied (Primitive k) Value) (Applied (Primitive k) Syntax)
 
 -- The list of binders in the language, indexed by stage.
 --
 -- Each of these might carry some data.
+public export
 data Binder : (s : Stage) -> Reducability s -> Domain -> Ctx -> Type where
   -- Meta or object-level lambda
   BindLam : Binder s Callable d ns
@@ -88,11 +105,13 @@ data Binder : (s : Stage) -> Reducability s -> Domain -> Ctx -> Type where
   -- Meta or object-level pi
   BindPi : (dom : Term d ns) -> Binder s Rigid d ns
 
+public export
 Eval over (Term d) (Term d') => Eval over (Binder md r d) (Binder md r d') where
   eval _ BindLam = BindLam
   eval env (BindLet t) = BindLet (eval env t)
   eval env (BindPi a) = BindPi (eval env a)
 
+public export
 Quote (Term d) (Term d') => Quote (Binder md r d) (Binder md r d') where
   quote s BindLam = BindLam
   quote s (BindLet t) = BindLet (quote s t)
@@ -101,6 +120,7 @@ Quote (Term d) (Term d') => Quote (Binder md r d) (Binder md r d') where
 -- Variables are de-Brujin indices or levels depending on if we are in value or
 -- syntax ~> fast variable lookup during evaluation, and free weakening for
 -- values.
+public export
 data Variable : Domain -> Ctx -> Type where
   Level : Lvl ns -> Variable Value ns
   Index : Idx ns -> Variable Syntax ns
@@ -109,20 +129,26 @@ data Variable : Domain -> Ctx -> Type where
 --
 -- Either a term with a free variable or a (defunctionalised) delayed
 -- evaluation.
+public export
 data Body : Domain -> Name -> Ctx -> Type where
   Delayed : Term Syntax (ns :< n) -> Body Syntax n ns
   Closure : Sub ns (Term Value) ms -> Term Syntax (ms :< n) -> Body Value n ns
 
 -- Helper to package a binder with its body.
+public export
 data Thunk : (s : Stage) -> Reducability s -> Domain -> Ctx -> Type where
   Bound : (s : Stage) -> {0 r : Reducability s}
       -> (n : Name) -> Binder s r d ns -> Body d n ns -> Thunk s r d ns
 
 -- Every callable thunk can be applied to a term.
+public export
+covering
 callThunk : Thunk s Callable Value ns -> Term Value ns -> Term Value ns
 callThunk (Bound s n BindLam (Closure env body)) arg = eval (env :< arg) body
 
 -- Every unforced thunk can be forced.
+public export
+covering
 forceThunk : Thunk s Unforced Value ns -> Term Value ns
 forceThunk (Bound s n (BindLet v) (Closure env body)) = eval (env :< v) body
 
@@ -131,6 +157,7 @@ forceThunk (Bound s n (BindLet v) (Closure env body)) = eval (env :< v) body
 --
 -- Unification might have to look at simplified heads, but code extraction only
 -- needs normalised heads. I.e. we never reduce object thunks unless we have to.
+public export
 data HeadKind : Domain -> Type where
   -- Anything goes in syntax
   NA : HeadKind Syntax
@@ -139,6 +166,7 @@ data HeadKind : Domain -> Type where
   -- A fully simplified head, fully forced.
   Simplified : HeadKind Value
 
+public export
 data Head : (d : Domain) -> HeadKind d -> Ctx -> Type where
   -- Variables and metas are simplified if they are values
   SynVar : Variable Syntax ns -> Head Syntax NA ns
@@ -160,9 +188,11 @@ data Head : (d : Domain) -> HeadKind d -> Ctx -> Type where
   PrimNeutral : Applied (Primitive PrimNeu) d ns -> Head d e ns
 
 -- Head applied to a spine.
+public export
 0 HeadApplied : (d : Domain) -> HeadKind d -> Ctx -> Type
 HeadApplied d e ns = Applied (\_ => Head d e ns) d ns
 
+public export
 data Term where
   -- Spine applied to syntactic head
   SynApps : HeadApplied Syntax NA ns -> Term Syntax ns
@@ -194,30 +224,41 @@ data Term where
   PrimNormal : Applied (Primitive PrimNorm) d ns -> Term d ns
 
 -- Values support free weakening (@@TODO)
+public export
 Wk (Term Value)
 
 -- Evaluation and quoting for all the syntax:
 
+public export
 Eval (Term Value) (Variable Syntax) (Term Value) where
   eval (env :< e) (Index IZ) = e
   eval (env :< e) (Index (IS i)) = eval env (Index i)
   eval [<] (Index _) impossible
 
+public export
 Quote (Variable Value) (Variable Syntax) where
   quote s (Level l) = Index (quote s l)
 
+public export
 Subst (Term Value) where
   here s = SimpApps (ValVar (Level (lastLvl s)) $$ [])
 
+public export
 Eval (Term Value) (Body Syntax n) (Body Value n) where
   eval env (Delayed t) = Closure env t
 
+public export
+covering
 Quote (Body Value n) (Body Syntax n) where
   quote s (Closure env t) = Delayed (quote {val = Term Value} (SS s) (eval (lift s env) t))
 
+public export
+covering
 Eval (Term Value) (Thunk s r Syntax) (Thunk s r Value) where
   eval env (Bound s n bind body) = Bound s n (eval env bind) (eval env body)
 
+public export
+covering
 Quote (Thunk s r Value) (Thunk s r Syntax) where
   quote s (Bound s' n bind body) = Bound s' n (quote s bind) (quote s body)
 
@@ -225,6 +266,8 @@ Quote (Thunk s r Value) (Thunk s r Syntax) where
 --
 -- This is the only place where it could crash if there is a bug, because
 -- the syntax is not well-typed (only well-scoped).
+public export
+covering
 apps : Term Value ns -> Spine as (Term Value) ns -> Term Value ns
 apps (GluedApps (v $$ sp) gl) sp' = GluedApps (v $$ sp ++ sp') (apps gl sp')
 apps (SimpApps (v $$ sp)) sp' = SimpApps (v $$ sp ++ sp')
@@ -235,6 +278,8 @@ apps (SimpObjCallable t) (x :: sp') = apps (callThunk t x) sp'
 apps (RigidThunk _) _ = error "impossible"
 apps (PrimNormal _) _ = error "impossible"
 
+public export
+covering
 Eval (Term Value) (Head Syntax NA) (Term Value) where
   eval env (SynVar v) = eval env v
   eval env (SynMeta v) = SimpApps (ValMeta v $$ [])
@@ -245,6 +290,8 @@ Eval (Term Value) (Head Syntax NA) (Term Value) where
   eval env (SynThunk Mta Unforced t) = forceThunk {s = Mta} (eval env t)
   eval env (PrimNeutral prim) = eval env prim
 
+public export
+covering
 Quote (Head Value hk) (Head Syntax NA) where
   quote s (ValVar v) = SynVar (quote s v)
   quote s (ValMeta m) = SynMeta m
@@ -252,14 +299,20 @@ Quote (Head Value hk) (Head Syntax NA) where
   quote s (ObjLazy t) = SynThunk Obj Unforced (quote s t)
   quote s (PrimNeutral p) = PrimNeutral (quote s p)
 
+public export
+covering
 Eval (Term Value) (Term Syntax) (Term Value) where
   eval env (SynApps (($$) {as = as} h sp)) = apps {as = as} (eval env h) (eval env sp)
   eval env (RigidThunk {s = s} t) = RigidThunk {s = s} (eval env t)
   eval env (PrimNormal prim) = eval env prim
 
+public export
+covering
 quoteHA : Size ns -> HeadApplied Value hk ns -> HeadApplied Syntax NA ns
 quoteHA s (($$) {as = as} h sp) = ($$) {as = as} (quote s h) (quote s sp)
 
+public export
+covering
 Quote (Term Value) (Term Syntax) where
   quote s (GluedApps a _) = SynApps (quoteHA s a)
   quote s (SimpApps a) = SynApps (quoteHA s a)
@@ -270,26 +323,33 @@ Quote (Term Value) (Term Syntax) where
 
 -- Some convenient shorthands
 
+public export
 0 Tm : Ctx -> Type
 Tm = Term Syntax
 
+public export
 0 Ty : Ctx -> Type
 Ty = Tm
 
+public export
 0 Val : Ctx -> Type
 Val = Term Value
 
+public export
 0 ValTy : Ctx -> Type
 ValTy = Val
 
+public export
 0 Env : Ctx -> Ctx -> Type
 Env ms ns = Sub ms Val ns
 
 -- We can extend the variable search machinery to the syntax:
 
+public export
 var : (n : String) -> {auto prf : In n ns} -> Tm ns
 var n {prf = prf} = SynApps (SynVar (Index (idx @{prf})) $$ [])
 
+public export
 varApp : (n : String) -> {auto prf : In n ns} -> Name -> Term Syntax ns -> Tm ns
 varApp n {prf = prf} a v = SynApps (SynVar (Index (idx @{prf})) $$ ((::) {a = a} v []))
 
@@ -304,20 +364,26 @@ data Primitive where
 -- Shorthands for some primitives
 -- Sad that Idris doesn't have pattern synonyms
 
+public export
 TYPE : Term d ns
 TYPE = PrimNormal (PrimTYPE $$ [])
 
+public export
 BYTES : Term d ns
 BYTES = PrimNormal (PrimBYTES $$ [])
 
+public export
 Bytes : Term d ns
 Bytes = PrimNormal (PrimBytes $$ [])
 
+public export
 Unsized : Term d ns -> Term d ns
 Unsized b = PrimNormal (PrimUnsized $$ [b])
 
+public export
 EmbedBYTES : Term d ns -> Term d ns
 EmbedBYTES b = PrimNormal (PrimEmbedBYTES $$ [b])
 
+public export
 Sized : Term d ns -> Term d ns
 Sized b = Unsized (EmbedBYTES b)

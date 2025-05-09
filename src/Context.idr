@@ -26,7 +26,7 @@ public export
 0 Arity : Type
 Arity = List Name
 
-infixl 7 ::<
+export infixl 7 ::<
 
 -- Extend a context skeleton with some arity.
 public export
