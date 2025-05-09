@@ -52,6 +52,9 @@ Eval (Term Value) (Term Syntax) (Term Value)
 public export
 Quote (Term Value) (Term Syntax)
 
+public export
+Thin (Term Value)
+
 -- Primitives are either neutral or normal.
 --
 -- Neutral primitives might still be applied to other arguments after being fully
@@ -89,7 +92,12 @@ public export
 Eval (Term Value) (Applied (Primitive k) Syntax) (Term Value)
 
 public export
-Quote (Applied (Primitive k) Value) (Applied (Primitive k) Syntax)
+Quote (Applied f Value) (Applied f Syntax) where
+  quote s (h $$ sp) = h $$ quote s sp
+
+public export
+Thin (Applied f Value) where
+  thin e (h $$ sp) = h $$ thin e sp
 
 -- The list of binders in the language, indexed by stage.
 --
@@ -105,17 +113,23 @@ data Binder : (s : Stage) -> Reducibility s -> Domain -> Ctx -> Type where
   -- Meta or object-level pi
   BindPi : (dom : Term d ns) -> Binder s Rigid d ns
 
+-- Binder is a functor
+mapBinder : (Term d ns -> Term d' ms) -> Binder md r d ns -> Binder md r d' ms
+mapBinder _ BindLam = BindLam
+mapBinder f (BindLet t) = BindLet (f t)
+mapBinder f (BindPi t) = BindPi (f t)
+
 public export
 Eval over (Term d) (Term d') => Eval over (Binder md r d) (Binder md r d') where
-  eval _ BindLam = BindLam
-  eval env (BindLet t) = BindLet (eval env t)
-  eval env (BindPi a) = BindPi (eval env a)
+  eval env b = mapBinder (eval env) b
 
 public export
 Quote (Term d) (Term d') => Quote (Binder md r d) (Binder md r d') where
-  quote s BindLam = BindLam
-  quote s (BindLet t) = BindLet (quote s t)
-  quote s (BindPi a) = BindPi (quote s a)
+  quote s b = mapBinder (quote s) b
+
+public export
+Thin (Term d) => Thin (Binder md r d) where
+  thin e b = mapBinder (thin e) b
 
 -- Variables are de-Brujin indices or levels depending on if we are in value or
 -- syntax ~> fast variable lookup during evaluation, and free weakening for
@@ -142,13 +156,11 @@ data Thunk : (s : Stage) -> Reducibility s -> Domain -> Ctx -> Type where
 
 -- Every callable thunk can be applied to a term.
 public export
-covering
 callThunk : Thunk s Callable Value ns -> Term Value ns -> Term Value ns
 callThunk (Bound s n BindLam (Closure env body)) arg = eval (env :< arg) body
 
 -- Every unforced thunk can be forced.
 public export
-covering
 forceThunk : Thunk s Unforced Value ns -> Term Value ns
 forceThunk (Bound s n (BindLet v) (Closure env body)) = eval (env :< v) body
 
@@ -188,9 +200,10 @@ data Head : (d : Domain) -> HeadKind d -> Ctx -> Type where
   PrimNeutral : Applied (Primitive PrimNeu) d ns -> Head d e ns
 
 -- Head applied to a spine.
-public export
-0 HeadApplied : (d : Domain) -> HeadKind d -> Ctx -> Type
-HeadApplied d e ns = Applied (\_ => Head d e ns) d ns
+namespace HeadApplied
+  public export
+  data HeadApplied : (d : Domain) -> HeadKind d -> Ctx -> Type where
+    ($$) : Head d hk ns -> Spine as (Term d) ns -> HeadApplied d hk ns
 
 public export
 data Term where
@@ -223,9 +236,9 @@ data Term where
   -- Normal primitive, never applied.
   PrimNormal : Applied (Primitive PrimNorm) d ns -> Term d ns
 
--- Values support free weakening (@@TODO)
-public export
-Wk (Term Value)
+-- Values support free thinning
+-- public export
+-- Thin (Term Value)
 
 -- Evaluation and quoting for all the syntax:
 
@@ -240,7 +253,11 @@ Quote (Variable Value) (Variable Syntax) where
   quote s (Level l) = Index (quote s l)
 
 public export
-Subst (Term Value) where
+Thin (Variable Value) where
+  thin s (Level l) = Level (thin s l)
+
+public export
+Vars (Term Value) where
   here s = SimpApps (ValVar (Level (lastLvl s)) $$ [])
 
 public export
@@ -248,26 +265,30 @@ Eval (Term Value) (Body Syntax n) (Body Value n) where
   eval env (Delayed t) = Closure env t
 
 public export
-covering
 Quote (Body Value n) (Body Syntax n) where
   quote s (Closure env t) = Delayed (quote {val = Term Value} (SS s) (eval (lift s env) t))
 
 public export
-covering
+Thin (Body Value n) where
+  thin e (Closure env t) = Closure (env . e) t
+
+public export
 Eval (Term Value) (Thunk s r Syntax) (Thunk s r Value) where
   eval env (Bound s n bind body) = Bound s n (eval env bind) (eval env body)
 
 public export
-covering
 Quote (Thunk s r Value) (Thunk s r Syntax) where
   quote s (Bound s' n bind body) = Bound s' n (quote s bind) (quote s body)
+
+public export
+Thin (Thunk s r Value) where
+  thin s (Bound s' n bind body) = Bound s' n (thin s bind) (thin s body)
 
 -- Helper to apply a value to a spine.
 --
 -- This is the only place where it could crash if there is a bug, because
 -- the syntax is not well-typed (only well-scoped).
 public export
-covering
 apps : Term Value ns -> Spine as (Term Value) ns -> Term Value ns
 apps (GluedApps (v $$ sp) gl) sp' = GluedApps (v $$ sp ++ sp') (apps gl sp')
 apps (SimpApps (v $$ sp)) sp' = SimpApps (v $$ sp ++ sp')
@@ -279,7 +300,6 @@ apps (RigidThunk _) _ = error "impossible"
 apps (PrimNormal _) _ = error "impossible"
 
 public export
-covering
 Eval (Term Value) (Head Syntax NA) (Term Value) where
   eval env (SynVar v) = eval env v
   eval env (SynMeta v) = SimpApps (ValMeta v $$ [])
@@ -291,7 +311,6 @@ Eval (Term Value) (Head Syntax NA) (Term Value) where
   eval env (PrimNeutral prim) = eval env prim
 
 public export
-covering
 Quote (Head Value hk) (Head Syntax NA) where
   quote s (ValVar v) = SynVar (quote s v)
   quote s (ValMeta m) = SynMeta m
@@ -300,22 +319,40 @@ Quote (Head Value hk) (Head Syntax NA) where
   quote s (PrimNeutral p) = PrimNeutral (quote s p)
 
 public export
-covering
+Thin (Head Value hk) where
+  thin s (ValVar v) = ValVar (thin s v)
+  thin s (ValMeta m) = ValMeta m
+  thin s (ObjCallable t) = ObjCallable (thin s t)
+  thin s (ObjLazy t) = ObjLazy (thin s t)
+  thin s (PrimNeutral p) = PrimNeutral (thin s p)
+
+public export
+Quote (HeadApplied Value hk) (HeadApplied Syntax NA) where
+  quote s (($$) {as = as} h sp) = ($$) {as = as} (quote s h) (quote s sp)
+
+public export
+Thin (HeadApplied Value hk) where
+  thin e (h $$ sp) = thin e h $$ thin e sp
+
+public export
+Thin (Term Value) where
+  thin e (GluedApps a f) = GluedApps (thin e a) (thin e f)
+  thin e (SimpApps a) = SimpApps (thin e a)
+  thin e (MtaCallable c) = MtaCallable (thin e c)
+  thin e (SimpObjCallable c) = SimpObjCallable (thin e c)
+  thin e (RigidThunk c) = RigidThunk (thin e c)
+  thin e (PrimNormal p) = PrimNormal (thin e p)
+
+public export covering
 Eval (Term Value) (Term Syntax) (Term Value) where
   eval env (SynApps (($$) {as = as} h sp)) = apps {as = as} (eval env h) (eval env sp)
   eval env (RigidThunk {s = s} t) = RigidThunk {s = s} (eval env t)
   eval env (PrimNormal prim) = eval env prim
 
 public export
-covering
-quoteHA : Size ns -> HeadApplied Value hk ns -> HeadApplied Syntax NA ns
-quoteHA s (($$) {as = as} h sp) = ($$) {as = as} (quote s h) (quote s sp)
-
-public export
-covering
 Quote (Term Value) (Term Syntax) where
-  quote s (GluedApps a _) = SynApps (quoteHA s a)
-  quote s (SimpApps a) = SynApps (quoteHA s a)
+  quote s (GluedApps a _) = SynApps (quote s a)
+  quote s (SimpApps a) = SynApps (quote s a)
   quote s (MtaCallable c) = SynApps (SynThunk Mta Callable (quote s c) $$ [])
   quote s (SimpObjCallable c) = SynApps (SynThunk Obj Callable (quote s c) $$ [])
   quote s (RigidThunk {s = s'} c) = RigidThunk {s = s'} (quote s c)

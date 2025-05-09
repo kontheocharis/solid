@@ -108,34 +108,49 @@ namespace Sub
     Lin : Sub ns f [<]
     (:<) : Sub ns f ms -> f ns -> Sub ns f (ms :< m)
 
+-- Order-preserving embeddings, AKA thinnings
+namespace OPE
+  public export
+  data OPE : Ctx -> Ctx -> Type where
+    Lin : OPE [<] [<]
+    Id : OPE ns ns -- explicit identity to make `wk` easier to implement
+    Keep : OPE ns ms -> OPE (ns :< n) (ms :< n)
+    Drop : OPE ns ms -> OPE (ns :< n) ms
+
 -- Some interfaces for syntax that involves variables
 
--- Weakening for terms
+-- Weakening
 public export
-interface Wk (0 tm : Ctx -> Type) where
-  wk : tm ns -> tm (ns :< n)
+interface Thin (0 tm : Ctx -> Type) where
+  thin : OPE ns ms -> tm ms -> tm ns
 
--- This is the part of the substitution calculus that we need.
---
--- @@Todo: use %transform, do not rely on identity optimisation (which I am
--- almost certain won't fire)
 public export
-interface (Wk over) => Subst (0 over : Ctx -> Type) where
-  here : Size ns -> over (ns :< n)
+(.) : Thin tm => Sub ms tm qs -> OPE ns ms -> Sub ns tm qs
+[<] . e = [<]
+(xs :< x) . e = xs . e :< thin e x
 
-  ext : Size ns -> Sub ns over ms -> Sub (ns :< n) over ms
-  ext s [<] = [<]
-  ext s (xs :< x) = ext s xs :< wk x
+public export
+wk : Thin tm => tm ns -> tm (ns :< n)
+wk x = thin (Drop Id) x
 
-  lift : Size ns -> Sub ns over ms -> Sub (ns :< a) over (ms :< a)
-  lift s env = ext s env :< here s
+-- Syntax supports variables if it supports thinnings and the zero-th deBrujin
+-- index.
+public export
+interface (Thin tm) => Vars (0 tm : Ctx -> Type) where
+  here : Size ns -> tm (ns :< n)
 
-  id : Size ns -> Sub ns over ns
-  id SZ = [<]
-  id (SS k) = lift k (id k)
+public export
+lift : (Thin tm, Vars tm) => Size ns -> Sub ns tm ms -> Sub (ns :< a) tm (ms :< a)
+lift s env = env . Drop Id :< here s
 
-  proj : Size ns -> Sub (ns :< n) over ns
-  proj s = ext s (id s)
+public export
+id : (Thin tm, Vars tm) => Size ns -> Sub ns tm ns
+id SZ = [<]
+id (SS k) = lift k (id k)
+
+public export
+proj : (Thin tm, Vars tm) => Size ns -> Sub (ns :< n) tm ns
+proj s = id s . Drop Id
 
 -- Evaluation and quoting interfaces
 
@@ -150,18 +165,32 @@ interface Quote (0 val : Ctx -> Type) (0 tm : Ctx -> Type) where
 -- Basic implementations for the defined types
 
 public export
-Wk Lvl where
-  wk LZ = LZ
-  wk (LS l) = LS (wk l)
+Thin Lvl where
+
+  -- @@Todo: use %transform, do not rely on identity optimisation
+  thin (Keep x) LZ = LZ
+  thin (Keep x) (LS l) = LS (thin x l)
+  thin (Drop x) LZ = LZ
+  thin (Drop x) (LS l) = LS (thin x (wkLvl l))
+    where
+      wkLvl : Lvl us -> Lvl (us :< u)
+      wkLvl LZ = LZ
+      wkLvl (LS l) = LS (wkLvl l)
+  thin Id l = l
 
 public export
-Wk Idx where
-  wk = IS
+Thin Idx where
+  -- wk = IS
+
+  thin (Keep x) IZ = IZ
+  thin (Keep x) (IS i) = IS (thin x i)
+  thin (Drop x) i = IS (thin x i) -- here is the non-free bit for indices!
+  thin Id i = i
 
 public export
-(Wk tm) => Wk (Spine as tm) where
-  wk [] = []
-  wk (x :: xs) = wk x :: wk xs
+(Thin tm) => Thin (Spine as tm) where
+  thin e [] = []
+  thin e (x :: xs) = thin e x :: thin e xs
 
 public export
 (Quote val tm) => Quote (Tel as val) (Tel as tm) where
