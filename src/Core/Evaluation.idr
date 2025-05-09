@@ -1,8 +1,9 @@
-module Evaluation
+-- Defining NbE for the core language
+module Core.Evaluation
 
 import Utils
-import Context
-import Syntax
+import Core.Context
+import Core.Syntax
 
 %default covering -- won't bother with the totality checker here
 

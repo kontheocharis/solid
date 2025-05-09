@@ -1,4 +1,5 @@
-module Context
+-- Helper definitions related to working with stuff involving variables
+module Core.Context
 
 %default total
 

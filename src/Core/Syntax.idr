@@ -1,7 +1,8 @@
-module Syntax
+-- Defining the syntax of the core language
+module Core.Syntax
 
 import Utils
-import Context
+import Core.Context
 
 %default total
 
