@@ -73,8 +73,8 @@ data PrimitiveReducibility = PrimReducible | PrimIrreducible
 
 -- The theory of primitives.
 --
--- These essentially form a Lawvere theory, though the equations are given
--- separately later (they are the reduction rules). They will also be given
+-- Consists of a list of operators, each of a specified arity. Equations are
+-- given separately later (they are the reduction rules). Will also be given
 -- proper types later.
 public export
 data Primitive : PrimitiveClass -> PrimitiveReducibility -> Arity -> Type

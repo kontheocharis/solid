@@ -48,6 +48,12 @@ Unify (Head Value Simplified) (Head Value Simplified) where
 Unify (HeadApplied Value Simplified) (HeadApplied Value Simplified) where
   unify s (h $$ sp) (h' $$ sp') = unify s h h' /\ unify s sp sp'
 
+Unify LazyValue LazyValue where
+  unify s (LazyApps h sp) (LazyApps h' sp') = ?fx /\ unify s sp sp'
+  unify s (LazyPrimNormal p) (LazyPrimNormal p') = ?fy
+  unify s (LazyApps h sp) (LazyPrimNormal p') = ?fz
+  unify s (LazyPrimNormal p) (LazyApps h' sp') = ?fw
+
 Unify (Term Value) (Term Value) where
   unify s (SimpApps a) (SimpApps a') = unify s a a'
   unify s (MtaCallable m) (MtaCallable m') = unify s m m'
@@ -55,38 +61,27 @@ Unify (Term Value) (Term Value) where
   unify s (SimpObjCallable o) (SimpObjCallable o') = unify s o o'
   unify s (RigidBinding md r) (RigidBinding md' r') = ifAndOnlyIf (decEq md md') (\Refl => unify s r r')
 
-  unify _ (Glued _) (Glued _) = ?unify_missing_case_10
+  -- glued stuff
+  unify s (Glued a) (Glued b) = unify s a b `orTry` unify s (simplified a) (simplified b)
+  unify s a (Glued b) = unify s a (simplified b)
+  unify s (Glued a) b = unify s (simplified a) b
 
+  -- i dont know
+  unify _ (SimpApps _) _ = DontKnow
+  unify _ _ (SimpApps _) = DontKnow
 
-  unify _ (SimpApps _) (Glued _) = ?unify_missing_case_1
-  unify _ (SimpApps _) (SimpObjCallable _) = ?unify_missing_case_3
-  unify _ (SimpApps _) (RigidBinding _ _) = ?unify_missing_case_4
-  unify _ (SimpApps _) (SimpPrimNormal _) = ?unify_missing_case_5
-  unify _ (Glued _) (SimpApps _) = ?unify_missing_case_60
-  unify _ (Glued _) (MtaCallable _) = ?unify_missing_case_70
-  unify _ (Glued _) (SimpObjCallable _) = ?unify_missing_case_80
-  unify _ (Glued _) (RigidBinding _ _) = ?unify_missing_case_90
-  unify _ (Glued _) (SimpPrimNormal _) = ?unify_missing_casee_10
-  unify _ (MtaCallable _) (Glued _) = ?unify_missing_casee_11
-  unify _ (MtaCallable _) (SimpApps _) = ?unify_missing_casee_12
-  unify _ (MtaCallable _) (SimpObjCallable _) = ?unify_missing_casee_13
-  unify _ (MtaCallable _) (RigidBinding _ _) = ?unify_missing_casee_14
-  unify _ (MtaCallable _) (SimpPrimNormal _) = ?unify_missing_casee_15
-  unify _ (SimpObjCallable _) (Glued _) = ?unify_missing_casee_16
-  unify _ (SimpObjCallable _) (SimpApps _) = ?unify_missing_casee_17
-  unify _ (SimpObjCallable _) (MtaCallable _) = ?unify_missing_casee_18
-  unify _ (SimpObjCallable _) (RigidBinding _ _) = ?unify_missing_casee_19
-  unify _ (SimpObjCallable _) (SimpPrimNormal _) = ?unify_missing_casee_20
-  unify _ (RigidBinding _ _) (Glued _) = ?unify_missing_casee_21
-  unify _ (RigidBinding _ _) (SimpApps _) = ?unify_missing_casee_22
-  unify _ (RigidBinding _ _) (MtaCallable _) = ?unify_missing_casee_23
-  unify _ (RigidBinding _ _) (SimpObjCallable _) = ?unify_missing_casee_24
-  unify _ (RigidBinding _ _) (SimpPrimNormal _) = ?unify_missing_casee_25
-  unify _ (SimpPrimNormal _) (Glued _) = ?unify_missing_casee_26
-  unify _ (SimpPrimNormal _) (SimpApps _) = ?unify_missing_casee_27
-  unify _ (SimpPrimNormal _) (MtaCallable _) = ?unify_missing_casee_28
-  unify _ (SimpPrimNormal _) (SimpObjCallable _) = ?unify_missing_casee_29
-  unify _ (SimpPrimNormal _) (RigidBinding _ _) = ?unify_missing_casee_30
+  -- everything else is different
+  unify _ _ _ = AreDifferent
 
-  -- never happens
-  unify _ (SimpApps _) (MtaCallable _) = ?unify_missing_case_2
+  -- unify _ (RigidBinding _ _) (SimpPrimNormal _) = ?unify_missing_casee_25
+  -- unify _ (RigidBinding _ _) (SimpObjCallable _) = ?unify_missing_casee_24
+  -- unify _ (RigidBinding _ _) (MtaCallable _) = ?unify_missing_casee_23
+  -- unify _ (MtaCallable _) (SimpObjCallable _) = ?unify_missing_casee_13
+  -- unify _ (MtaCallable _) (RigidBinding _ _) = ?unify_missing_casee_14
+  -- unify _ (MtaCallable _) (SimpPrimNormal _) = ?unify_missing_casee_15
+  -- unify _ (SimpObjCallable _) (MtaCallable _) = ?unify_missing_casee_18
+  -- unify _ (SimpObjCallable _) (RigidBinding _ _) = ?unify_missing_casee_19
+  -- unify _ (SimpObjCallable _) (SimpPrimNormal _) = ?unify_missing_casee_20
+  -- unify _ (SimpPrimNormal _) (MtaCallable _) = ?unify_missing_casee_28
+  -- unify _ (SimpPrimNormal _) (SimpObjCallable _) = ?unify_missing_casee_29
+  -- unify _ (SimpPrimNormal _) (RigidBinding _ _) = ?unify_missing_casee_30

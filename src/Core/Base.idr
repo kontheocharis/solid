@@ -287,6 +287,13 @@ inCase : Maybe (a ~=~ b) -> ((a ~=~ b) -> Unification) -> Unification
 inCase (Just Refl) f = f Refl
 inCase Nothing _ = DontKnow
 
+-- Try one unification, and if it "doesn't know" try another
+public export
+orTry : Unification -> Lazy Unification -> Unification
+orTry AreSame x = AreSame
+orTry AreDifferent x = AreDifferent
+orTry DontKnow x = x
+
 export infixr 4 /\
 
 -- Conjunction of unification outcomes
