@@ -181,6 +181,12 @@ EvalPrim => Quote (Term Value) (Term Syntax) where
 
 -- Primitives:
 
+-- Note: for every primitive that might reduce on an argument, in addition to
+-- matching the on the actual shape that it reduces on, we must also match on
+-- (Glued _). We must do this for each argument that might cause a reduction. In
+-- each case we must form a new glued term as a result, which lazily unfolds the
+-- argument and recurses.
+
 primAddBYTES : Term Value ns -> Term Value ns -> Term Value ns
 primAddBYTES (SimpPrimNormal (SimpApplied PrimZeroBYTES [])) b = b
 primAddBYTES a (SimpPrimNormal (SimpApplied PrimZeroBYTES [])) = a
