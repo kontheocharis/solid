@@ -113,7 +113,7 @@ apps (MtaCallable t) [] = MtaCallable t
 apps (MtaCallable t) (x :: sp') = apps (callThunk t x) sp'
 apps (SimpObjCallable t) [] = SimpObjCallable t
 apps (SimpObjCallable t) (x :: sp') = apps (callThunk t x) sp'
-apps (RigidThunk _) _ = error "impossible"
+apps (RigidThunk _ _) _ = error "impossible"
 apps (SimpPrimNormal _) sp' = error "impossible"
 apps (Glued (LazyPrimNormal _)) sp' = error "impossible"
 
@@ -121,7 +121,7 @@ public export
 (EvalTm, EvalPrim) => Eval (Term Value) (Head Syntax NA) (Term Value) where
   eval env (SynVar v) = eval env v
   eval env (SynMeta v) = SimpApps (ValMeta v $$ [])
-  eval env (SynThunk s Rigid t) = RigidThunk {s = s} (eval env t)
+  eval env (SynThunk md Rigid t) = RigidThunk md (eval env t)
   eval env (SynThunk Obj Callable t) = Glued (LazyApps (ObjCallable (eval env t) $$ []) (SimpObjCallable (eval env t)))
   eval env (SynThunk Obj Unforced t) = Glued (LazyApps (ObjLazy (eval env t) $$ []) (forceThunk {s = Obj} (eval env t)))
   eval env (SynThunk Mta Callable t) = MtaCallable (eval env t)
@@ -159,13 +159,13 @@ Thin (Term Value) where
   thin e (SimpApps a) = SimpApps (thin e a)
   thin e (MtaCallable c) = MtaCallable (thin e c)
   thin e (SimpObjCallable c) = SimpObjCallable (thin e c)
-  thin e (RigidThunk c) = RigidThunk (thin e c)
+  thin e (RigidThunk md c) = RigidThunk md (thin e c)
   thin e (SimpPrimNormal p) = SimpPrimNormal (thin e p)
 
 public export
 EvalPrim => Eval (Term Value) (Term Syntax) (Term Value) where
   eval env (SynApps (($$) {ar = ar} h sp)) = apps {ar = ar} (eval env h) (eval env sp)
-  eval env (RigidThunk {s = s} t) = RigidThunk {s = s} (eval env t)
+  eval env (RigidThunk md t) = RigidThunk md (eval env t)
   eval env (SynPrimNormal prim) = eval env prim
 
 public export
@@ -175,7 +175,7 @@ EvalPrim => Quote (Term Value) (Term Syntax) where
   quote s (SimpApps a) = SynApps (quote s a)
   quote s (MtaCallable c) = SynApps (SynThunk Mta Callable (quote s c) $$ [])
   quote s (SimpObjCallable c) = SynApps (SynThunk Obj Callable (quote s c) $$ [])
-  quote s (RigidThunk {s = s'} c) = RigidThunk {s = s'} (quote s c)
+  quote s (RigidThunk md c) = RigidThunk md (quote s c)
   quote s (SimpPrimNormal p) = SynPrimNormal (quote s p)
 
 -- Primitives:

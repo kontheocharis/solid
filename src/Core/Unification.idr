@@ -1,6 +1,7 @@
 module Core.Unification
 
 import Utils
+import Decidable.Equality
 import Core.Context
 import Core.Syntax
 import Core.Evaluation
@@ -33,9 +34,9 @@ Unify (Body Value n) (Body Value n') where
 
 {hk : PrimitiveClass} -> Unify (PrimitiveApplied hk Value Simplified) (PrimitiveApplied hk Value Simplified) where
   unify s (SimpApplied {r = PrimIrreducible} p sp) (SimpApplied {r = PrimIrreducible} p' sp')
-    = byProofOrDiff (primEq p p') /\ unify s sp sp'
+    = ifAndOnlyIfHack (primEq p p') (\Refl => unify s sp sp')
   unify s (SimpApplied p sp) (SimpApplied p' sp')
-    = byProofOrIdk (primEq p p') /\ unify s sp sp'
+    = inCase (primEq p p') (\Refl => unify s sp sp')
 
 Unify (Head Value Simplified) (Head Value Simplified) where
   unify s (ValVar v) (ValVar v') = unify s v v'
@@ -48,43 +49,43 @@ Unify (HeadApplied Value Simplified) (HeadApplied Value Simplified) where
 
 Unify (Term Value) (Term Value) where
   unify s (SimpApps a) (SimpApps a') = unify s a a'
+  unify s (MtaCallable m) (MtaCallable m') = unify s m m'
+  unify s (SimpPrimNormal p) (SimpPrimNormal p') = unify s p p'
+  unify s (SimpObjCallable o) (SimpObjCallable o') = unify s o o'
+  unify s (RigidThunk md r) (RigidThunk md' r') = ifAndOnlyIf (decEq md md') (\Refl => unify s r r')
 
   unify _ (Glued _) (Glued _) = ?unify_missing_case_10
-  unify _ (MtaCallable _) (MtaCallable _) = ?unify_missing_case_21
-  unify _ (SimpObjCallable _) (SimpObjCallable _) = ?unify_missing_case_31
-  unify _ (RigidThunk _) (RigidThunk _) = ?unify_missing_case_41
 
-  unify s (SimpPrimNormal p) (SimpPrimNormal p') = unify s p p'
 
   unify _ (SimpApps _) (Glued _) = ?unify_missing_case_1
   unify _ (SimpApps _) (MtaCallable _) = ?unify_missing_case_2
   unify _ (SimpApps _) (SimpObjCallable _) = ?unify_missing_case_3
-  unify _ (SimpApps _) (RigidThunk _) = ?unify_missing_case_4
+  unify _ (SimpApps _) (RigidThunk _ _) = ?unify_missing_case_4
   unify _ (SimpApps _) (SimpPrimNormal _) = ?unify_missing_case_5
   unify _ (Glued _) (SimpApps _) = ?unify_missing_case_60
   unify _ (Glued _) (MtaCallable _) = ?unify_missing_case_70
   unify _ (Glued _) (SimpObjCallable _) = ?unify_missing_case_80
-  unify _ (Glued _) (RigidThunk _) = ?unify_missing_case_90
+  unify _ (Glued _) (RigidThunk _ _) = ?unify_missing_case_90
   unify _ (Glued _) (SimpPrimNormal _) = ?unify_missing_casee_10
   unify _ (MtaCallable _) (Glued _) = ?unify_missing_casee_11
   unify _ (MtaCallable _) (SimpApps _) = ?unify_missing_casee_12
   unify _ (MtaCallable _) (SimpObjCallable _) = ?unify_missing_casee_13
-  unify _ (MtaCallable _) (RigidThunk _) = ?unify_missing_casee_14
+  unify _ (MtaCallable _) (RigidThunk _ _) = ?unify_missing_casee_14
   unify _ (MtaCallable _) (SimpPrimNormal _) = ?unify_missing_casee_15
   unify _ (SimpObjCallable _) (Glued _) = ?unify_missing_casee_16
   unify _ (SimpObjCallable _) (SimpApps _) = ?unify_missing_casee_17
   unify _ (SimpObjCallable _) (MtaCallable _) = ?unify_missing_casee_18
-  unify _ (SimpObjCallable _) (RigidThunk _) = ?unify_missing_casee_19
+  unify _ (SimpObjCallable _) (RigidThunk _ _) = ?unify_missing_casee_19
   unify _ (SimpObjCallable _) (SimpPrimNormal _) = ?unify_missing_casee_20
-  unify _ (RigidThunk _) (Glued _) = ?unify_missing_casee_21
-  unify _ (RigidThunk _) (SimpApps _) = ?unify_missing_casee_22
-  unify _ (RigidThunk _) (MtaCallable _) = ?unify_missing_casee_23
-  unify _ (RigidThunk _) (SimpObjCallable _) = ?unify_missing_casee_24
-  unify _ (RigidThunk _) (SimpPrimNormal _) = ?unify_missing_casee_25
+  unify _ (RigidThunk _ _) (Glued _) = ?unify_missing_casee_21
+  unify _ (RigidThunk _ _) (SimpApps _) = ?unify_missing_casee_22
+  unify _ (RigidThunk _ _) (MtaCallable _) = ?unify_missing_casee_23
+  unify _ (RigidThunk _ _) (SimpObjCallable _) = ?unify_missing_casee_24
+  unify _ (RigidThunk _ _) (SimpPrimNormal _) = ?unify_missing_casee_25
   unify _ (SimpPrimNormal _) (Glued _) = ?unify_missing_casee_26
   unify _ (SimpPrimNormal _) (SimpApps _) = ?unify_missing_casee_27
   unify _ (SimpPrimNormal _) (MtaCallable _) = ?unify_missing_casee_28
   unify _ (SimpPrimNormal _) (SimpObjCallable _) = ?unify_missing_casee_29
-  unify _ (SimpPrimNormal _) (RigidThunk _) = ?unify_missing_casee_30
+  unify _ (SimpPrimNormal _) (RigidThunk _ _) = ?unify_missing_casee_30
 
   -- never happens

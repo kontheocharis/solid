@@ -1,6 +1,7 @@
 -- Helper definitions related to working with stuff involving variables
 module Core.Context
 
+import Decidable.Equality
 import Data.Singleton
 import Utils
 
@@ -46,11 +47,6 @@ data Idx : Ctx -> Type where
   IZ : Idx (ns :< n)
   IS : Idx ns -> Idx (ns :< n)
 
-Eq (Idx ns) where
-  (==) IZ IZ = True
-  (==) (IS i) (IS i') = i == i'
-  (==) _ _ = False
-
 -- De-Brujin levels.
 --
 -- Careful! LZ does not index the name n!
@@ -60,10 +56,15 @@ data Lvl : Ctx -> Type where
   LZ : Lvl (ns :< n)
   LS : Lvl ns -> Lvl (ns :< n)
 
-Eq (Lvl ns) where
-  (==) LZ LZ = True
-  (==) (LS l) (LS l') = l == l'
-  (==) _ _ = False
+-- This better be optimised
+public export
+DecEq (Lvl ns) where
+  decEq LZ LZ = Yes Refl
+  decEq (LS l) (LS l') with (decEq l l')
+    decEq (LS l) (LS l) | Yes Refl = Yes Refl
+    _ | No contra = No (\Refl => contra Refl)
+  decEq (LS l) LZ = No (\Refl impossible)
+  decEq LZ (LS l) = No (\Refl impossible)
 
 -- Remember only the size of a context skeleton.
 public export
@@ -251,30 +252,44 @@ public export
 
 -- Unification
 
+-- Unification outcome
+--
+-- Observationally means under all substitutions from the empty context.
 public export
 data Unification : Type where
+  -- Are observationally the same
   AreSame : Unification
+  -- Are observationally different
   AreDifferent : Unification
+  -- Don't look the same but could become the same (or different) under
+  -- appropriate substitutions
   DontKnow : Unification
 
+-- Definitively decide a unification outcome based on a decidable equality
 public export
-byEq : Eq a => a -> a -> Unification
-byEq x y = case x == y of
-  True => AreSame
-  False => AreDifferent
+ifAndOnlyIf : Dec (a ~=~ b) -> ((a ~=~ b) -> Unification) -> Unification
+ifAndOnlyIf (Yes Refl) f = f Refl
+ifAndOnlyIf (No _) _ = AreDifferent
 
+-- Definitively decide a unification outcome based on a semi-decidable equality
+--
+-- This is a "hack" because really we should be providing DecEq to be sure they
+-- are different. However sometimes it is super annoying to implement DecEq so
+-- we just use this instead.
 public export
-byProofOrDiff : Maybe (x ~=~ y) -> Unification
-byProofOrDiff (Just Refl) = AreSame
-byProofOrDiff Nothing = AreDifferent
+ifAndOnlyIfHack : Maybe (a ~=~ b) -> ((a ~=~ b) -> Unification) -> Unification
+ifAndOnlyIfHack (Just Refl) f = f Refl
+ifAndOnlyIfHack Nothing _ = AreDifferent
 
+-- Partially decide a unification outcome based on a semi-decidable equality
 public export
-byProofOrIdk : Maybe (x ~=~ y) -> Unification
-byProofOrIdk (Just Refl) = AreSame
-byProofOrIdk Nothing = DontKnow
+inCase : Maybe (a ~=~ b) -> ((a ~=~ b) -> Unification) -> Unification
+inCase (Just Refl) f = f Refl
+inCase Nothing _ = DontKnow
 
 export infixr 4 /\
 
+-- Conjunction of unification outcomes
 public export
 (/\) : Unification -> Lazy Unification -> Unification
 (/\) AreDifferent x = AreDifferent
@@ -284,13 +299,16 @@ public export
 (/\) AreSame DontKnow = DontKnow
 (/\) DontKnow DontKnow = DontKnow
 
+-- The typeclass for unification
 public export
 interface Unify (0 lhs : Ctx -> Type) (0 rhs : Ctx -> Type) where
   unify : Size ns -> lhs ns -> rhs ns -> Unification
 
+-- Basic implementations
+
 public export
 Unify Lvl Lvl where
-  unify s = byEq
+  unify s l l' = ifAndOnlyIf (decEq l l') (\Refl => AreSame)
 
 public export
 Unify val val' => Unify (Spine as val) (Spine as' val') where

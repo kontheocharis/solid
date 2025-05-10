@@ -3,6 +3,7 @@ module Core.Syntax
 
 import Utils
 import Core.Context
+import Decidable.Equality
 
 %default total
 
@@ -16,6 +17,13 @@ record MetaVar where
 -- This is a two-level language.
 public export
 data Stage = Obj | Mta
+
+public export
+DecEq Stage where
+  decEq Obj Obj = Yes Refl
+  decEq Mta Mta = Yes Refl
+  decEq Obj Mta = No (\Refl impossible)
+  decEq Mta Obj = No (\Refl impossible)
 
 -- Whether an expression head is reducible
 public export
@@ -213,7 +221,7 @@ data Term where
   SimpObjCallable : Thunk Obj Callable Value ns -> Term Value ns
 
   -- Rigid thunk, never applied.
-  RigidThunk : Thunk s Rigid d ns -> Term d ns
+  RigidThunk : (md : Stage) -> Thunk md Rigid d ns -> Term d ns
 
   -- Normal primitives, never applied.
   SynPrimNormal : PrimitiveApplied PrimNorm Syntax NA ns -> Term Syntax ns
