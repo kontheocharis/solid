@@ -31,9 +31,8 @@ data Reducibility : Type where
   -- Reducible because it is callable with an argument.
   Callable : Reducibility
 
-  -- Reducible because it is a lazy value, it can be forced (but has currently
-  -- not been).
-  Unforced : Reducibility
+  -- Reducible because it is a lazy value, it can be forced (i.e. a thunk).
+  Thunk : Reducibility
   -- Irreducible, i.e. rigid.
   Rigid : Reducibility
 
@@ -91,7 +90,7 @@ data Binder : Stage -> Reducibility -> Domain -> Ctx -> Type where
   BindLam : Binder s Callable d ns
 
   -- Meta or object-level let
-  BindLet : (ty : Term d ns) -> (rhs : Term d ns) -> Binder s Unforced d ns
+  BindLet : (ty : Term d ns) -> (rhs : Term d ns) -> Binder s Thunk d ns
 
   -- Meta or object-level pi
   BindPi : (dom : Term d ns) -> Binder s Rigid d ns
@@ -122,14 +121,14 @@ data Body : Domain -> Ident -> Ctx -> Type where
 
 -- Helper to package a binder with its body.
 public export
-data Thunk : Stage -> Reducibility -> Domain -> Ctx -> Type where
-  Bound : (md : Stage) -> (n : Ident) -> Binder md r d ns -> Body d n ns -> Thunk md r d ns
+data Binding : Stage -> Reducibility -> Domain -> Ctx -> Type where
+  Bound : (md : Stage) -> (n : Ident) -> Binder md r d ns -> Body d n ns -> Binding md r d ns
 
 -- Different spine heads, meaning x in `x a1 ... an`, are reduced
 -- to different extents.
 --
 -- Unification might have to look at simplified heads, but code extraction only
--- needs normalised heads. I.e. we never reduce object thunks unless we have to.
+-- needs normalised heads. I.e. we never reduce object bindings unless we have to.
 public export
 data HeadKind : Domain -> Type where
   -- Anything goes in syntax
@@ -166,15 +165,15 @@ data Head : (d : Domain) -> HeadKind d -> Ctx -> Type where
   SynMeta : MetaVar -> Head Syntax NA ns
   ValMeta : MetaVar -> Head Value Simplified ns
 
-  -- A syntactic thunk
-  SynThunk : (s : Stage) -> (r : Reducibility) -> Thunk s r Syntax ns -> Head Syntax NA ns
+  -- A syntactic binding
+  SynBinding : (s : Stage) -> (r : Reducibility) -> Binding s r Syntax ns -> Head Syntax NA ns
 
-  -- Meta-level callable thunks cannot appear as heads in values.
+  -- Meta-level callable bindings cannot appear as heads in values.
   --
-  -- Thus, all we have are object-level thunks (which are merely normalised because
+  -- Thus, all we have are object-level bindings (which are merely normalised because
   -- they can technically be more simplified)
-  ObjCallable : Thunk Obj Callable Value ns -> Head Value Normalised ns
-  ObjLazy : Thunk Obj Unforced Value ns -> Head Value Normalised ns
+  ObjCallable : Binding Obj Callable Value ns -> Head Value Normalised ns
+  ObjLazy : Binding Obj Thunk Value ns -> Head Value Normalised ns
 
   -- An applied primitive can only be a head if it is neutral.
   PrimNeutral : PrimitiveApplied PrimNeu d e ns -> Head d e ns
@@ -212,16 +211,16 @@ data Term where
   -- Cannot be reduced further
   SimpApps : HeadApplied Value Simplified ns -> Term Value ns
 
-  -- Callable meta thunk, never applied to a spine
-  MtaCallable : Thunk Mta Callable Value ns -> Term Value ns
+  -- Callable meta binding, never applied to a spine
+  MtaCallable : Binding Mta Callable Value ns -> Term Value ns
 
-  -- Callable object thunk that must be simplified if applied to anything.
+  -- Callable object binding that must be simplified if applied to anything.
   --
   -- If it shouldn't be simplified it should be a GluedApps (ObjCallable ..) instead.
-  SimpObjCallable : Thunk Obj Callable Value ns -> Term Value ns
+  SimpObjCallable : Binding Obj Callable Value ns -> Term Value ns
 
-  -- Rigid thunk, never applied.
-  RigidThunk : (md : Stage) -> Thunk md Rigid d ns -> Term d ns
+  -- Rigid binding, never applied (e.g. Pi).
+  RigidBinding : (md : Stage) -> Binding md Rigid d ns -> Term d ns
 
   -- Normal primitives, never applied.
   SynPrimNormal : PrimitiveApplied PrimNorm Syntax NA ns -> Term Syntax ns

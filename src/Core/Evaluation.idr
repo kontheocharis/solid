@@ -27,14 +27,14 @@ EvalPrim = forall k, e . Eval (Term Value) (PrimitiveApplied k Syntax e) (Term V
 
 -- Evaluation and quoting for all the syntax:
 
--- Every callable thunk can be applied to a term.
+-- Every callable binding value can be applied to a term.
 public export
-callThunk : EvalTm => Thunk s Callable Value ns -> Term Value ns -> Term Value ns
-callThunk (Bound s n BindLam (Closure env body)) arg = eval (env :< arg) body
+callBinding : EvalTm => Binding s Callable Value ns -> Term Value ns -> Term Value ns
+callBinding (Bound s n BindLam (Closure env body)) arg = eval (env :< arg) body
 
--- Every unforced thunk can be forced.
+-- Every thunk can be forced.
 public export
-forceThunk : EvalTm => Thunk s Unforced Value ns -> Term Value ns
+forceThunk : EvalTm => Binding s Thunk Value ns -> Term Value ns
 forceThunk (Bound s n (BindLet _ v) (Closure env body)) = eval (env :< v) body
 
 public export
@@ -90,15 +90,15 @@ ThinVal => Thin (Body Value n) where
   thin e (Closure env t) = Closure (env . e) t
 
 public export
-EvalTm => Eval (Term Value) (Thunk s r Syntax) (Thunk s r Value) where
+EvalTm => Eval (Term Value) (Binding s r Syntax) (Binding s r Value) where
   eval env (Bound s n bind body) = Bound s n (eval env bind) (eval env body)
 
 public export
-(ThinVal, QuoteVal, EvalTm) => Quote (Thunk s r Value) (Thunk s r Syntax) where
+(ThinVal, QuoteVal, EvalTm) => Quote (Binding s r Value) (Binding s r Syntax) where
   quote s (Bound s' n bind body) = Bound s' n (quote s bind) (quote s body)
 
 public export
-ThinVal => Thin (Thunk s r Value) where
+ThinVal => Thin (Binding s r Value) where
   thin s (Bound s' n bind body) = Bound s' n (thin s bind) (thin s body)
 
 -- Helper to apply a value to a spine.
@@ -110,10 +110,10 @@ apps : EvalTm => Term Value ns -> Spine ar (Term Value) ns -> Term Value ns
 apps (Glued (LazyApps (v $$ sp) gl)) sp' = Glued (LazyApps (v $$ sp ++ sp') (apps gl sp'))
 apps (SimpApps (v $$ sp)) sp' = SimpApps (v $$ sp ++ sp')
 apps (MtaCallable t) [] = MtaCallable t
-apps (MtaCallable t) (x :: sp') = apps (callThunk t x) sp'
+apps (MtaCallable t) (x :: sp') = apps (callBinding t x) sp'
 apps (SimpObjCallable t) [] = SimpObjCallable t
-apps (SimpObjCallable t) (x :: sp') = apps (callThunk t x) sp'
-apps (RigidThunk _ _) _ = error "impossible"
+apps (SimpObjCallable t) (x :: sp') = apps (callBinding t x) sp'
+apps (RigidBinding _ _) _ = error "impossible"
 apps (SimpPrimNormal _) sp' = error "impossible"
 apps (Glued (LazyPrimNormal _)) sp' = error "impossible"
 
@@ -121,19 +121,19 @@ public export
 (EvalTm, EvalPrim) => Eval (Term Value) (Head Syntax NA) (Term Value) where
   eval env (SynVar v) = eval env v
   eval env (SynMeta v) = SimpApps (ValMeta v $$ [])
-  eval env (SynThunk md Rigid t) = RigidThunk md (eval env t)
-  eval env (SynThunk Obj Callable t) = Glued (LazyApps (ObjCallable (eval env t) $$ []) (SimpObjCallable (eval env t)))
-  eval env (SynThunk Obj Unforced t) = Glued (LazyApps (ObjLazy (eval env t) $$ []) (forceThunk {s = Obj} (eval env t)))
-  eval env (SynThunk Mta Callable t) = MtaCallable (eval env t)
-  eval env (SynThunk Mta Unforced t) = forceThunk {s = Mta} (eval env t)
+  eval env (SynBinding md Rigid t) = RigidBinding md (eval env t)
+  eval env (SynBinding Obj Callable t) = Glued (LazyApps (ObjCallable (eval env t) $$ []) (SimpObjCallable (eval env t)))
+  eval env (SynBinding Obj Thunk t) = Glued (LazyApps (ObjLazy (eval env t) $$ []) (forceThunk {s = Obj} (eval env t)))
+  eval env (SynBinding Mta Callable t) = MtaCallable (eval env t)
+  eval env (SynBinding Mta Thunk t) = forceThunk {s = Mta} (eval env t)
   eval env (PrimNeutral prim) = eval env prim
 
 public export
 (ThinVal, QuoteVal, EvalTm) => Quote (Head Value hk) (Head Syntax NA) where
   quote s (ValVar v) = SynVar (quote s v)
   quote s (ValMeta m) = SynMeta m
-  quote s (ObjCallable t) = SynThunk Obj Callable (quote s t)
-  quote s (ObjLazy t) = SynThunk Obj Unforced (quote s t)
+  quote s (ObjCallable t) = SynBinding Obj Callable (quote s t)
+  quote s (ObjLazy t) = SynBinding Obj Thunk (quote s t)
   quote s (PrimNeutral p) = PrimNeutral {e = NA} (quote s p)
 
 public export
@@ -159,13 +159,13 @@ Thin (Term Value) where
   thin e (SimpApps a) = SimpApps (thin e a)
   thin e (MtaCallable c) = MtaCallable (thin e c)
   thin e (SimpObjCallable c) = SimpObjCallable (thin e c)
-  thin e (RigidThunk md c) = RigidThunk md (thin e c)
+  thin e (RigidBinding md c) = RigidBinding md (thin e c)
   thin e (SimpPrimNormal p) = SimpPrimNormal (thin e p)
 
 public export
 EvalPrim => Eval (Term Value) (Term Syntax) (Term Value) where
   eval env (SynApps (($$) {ar = ar} h sp)) = apps {ar = ar} (eval env h) (eval env sp)
-  eval env (RigidThunk md t) = RigidThunk md (eval env t)
+  eval env (RigidBinding md t) = RigidBinding md (eval env t)
   eval env (SynPrimNormal prim) = eval env prim
 
 public export
@@ -173,9 +173,9 @@ EvalPrim => Quote (Term Value) (Term Syntax) where
   quote s (Glued (LazyApps a _)) = SynApps (quote s a)
   quote s (Glued (LazyPrimNormal a)) = SynPrimNormal (quote s a)
   quote s (SimpApps a) = SynApps (quote s a)
-  quote s (MtaCallable c) = SynApps (SynThunk Mta Callable (quote s c) $$ [])
-  quote s (SimpObjCallable c) = SynApps (SynThunk Obj Callable (quote s c) $$ [])
-  quote s (RigidThunk md c) = RigidThunk md (quote s c)
+  quote s (MtaCallable c) = SynApps (SynBinding Mta Callable (quote s c) $$ [])
+  quote s (SimpObjCallable c) = SynApps (SynBinding Obj Callable (quote s c) $$ [])
+  quote s (RigidBinding md c) = RigidBinding md (quote s c)
   quote s (SimpPrimNormal p) = SynPrimNormal (quote s p)
 
 -- Primitives:
