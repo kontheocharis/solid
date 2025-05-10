@@ -287,24 +287,29 @@ inCase : Maybe (a ~=~ b) -> ((a ~=~ b) -> Unification) -> Unification
 inCase (Just Refl) f = f Refl
 inCase Nothing _ = DontKnow
 
--- Try one unification, and if it "doesn't know" try another
-public export
-orTry : Unification -> Lazy Unification -> Unification
-orTry AreSame x = AreSame
-orTry AreDifferent x = AreDifferent
-orTry DontKnow x = x
-
-export infixr 4 /\
+export infixr 5 /\
+export infixr 4 \/
 
 -- Conjunction of unification outcomes
 public export
 (/\) : Unification -> Lazy Unification -> Unification
-(/\) AreDifferent x = AreDifferent
-(/\) x AreDifferent = AreDifferent
-(/\) AreSame AreSame = AreSame
-(/\) DontKnow AreSame = DontKnow
-(/\) AreSame DontKnow = DontKnow
-(/\) DontKnow DontKnow = DontKnow
+AreDifferent /\ x = AreDifferent
+x /\ AreDifferent = AreDifferent
+AreSame /\ AreSame = AreSame
+DontKnow /\ AreSame = DontKnow
+AreSame /\ DontKnow = DontKnow
+DontKnow /\ DontKnow = DontKnow
+
+-- Disjunction of unification outcomes
+-- In particular, when this is used, we shall not solve any metas.
+public export
+(\/) : Unification -> Lazy Unification -> Unification
+AreSame \/ x = AreSame
+x \/ AreSame = AreSame
+AreDifferent \/ AreDifferent = AreDifferent
+DontKnow \/ AreDifferent = DontKnow
+AreDifferent \/ DontKnow = DontKnow
+DontKnow \/ DontKnow = DontKnow
 
 -- The typeclass for unification
 public export

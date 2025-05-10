@@ -11,11 +11,23 @@ import Core.Evaluation
 
 Unify (Term Value) (Term Value)
 
+-- Note: a lot of the intermediate unification implementations might return
+-- DontKnow for things that are actually the same--they do not actually
+-- perform any reductions for a proper check. In other words they are quite
+-- conservative.
+--
+-- For example, the LazyValue unification does not try to reduce lazy apps,
+-- it just returns DontKnow if they mismatch. It is up to the caller to then
+-- perform the appropriate reduction. This also includes all `normalised` (but
+-- not simplified) things.
+
+
 -- Unification outcome depends on reducibility
+--
 -- Must also be in the same stage to be unifiable.
 {r, r' : Reducibility} -> Unify (Binder md r Value) (Binder md r' Value) where
   unify _ BindLam BindLam = AreSame
-  unify s (BindLet tyA a) (BindLet tyB b) = unify s tyA tyB /\ unify s a b
+  unify s (BindLet tyA a) (BindLet tyB b) = (unify s tyA tyB /\ unify s a b) \/ DontKnow
   unify s (BindPi a) (BindPi b) = unify s a b
   unify {r = Rigid} {r' = Rigid} _ _ _ = AreDifferent
   unify _ _ _ = DontKnow
@@ -37,7 +49,12 @@ Unify (Body Value n) (Body Value n') where
   unify s (SimpApplied {r = PrimIrreducible} p sp) (SimpApplied {r = PrimIrreducible} p' sp')
     = ifAndOnlyIfHack (primEq p p') (\Refl => unify s sp sp')
   unify s (SimpApplied p sp) (SimpApplied p' sp')
-    = inCase (primEq p p') (\Refl => unify s sp sp')
+    = inCase (primEq p p') (\Refl => unify s sp sp') \/ DontKnow
+
+{hk : PrimitiveClass} -> Unify (PrimitiveApplied hk Value Normalised) (PrimitiveApplied hk Value Normalised) where
+  -- conservative
+  unify s (LazyApplied p sp gl) (LazyApplied p' sp' gl')
+    = inCase (primEq p p') (\Refl => unify s sp sp') \/ DontKnow
 
 Unify (Head Value Simplified) (Head Value Simplified) where
   unify s (ValVar v) (ValVar v') = unify s v v'
@@ -46,13 +63,23 @@ Unify (Head Value Simplified) (Head Value Simplified) where
   unify s _ _ = DontKnow
 
 Unify (HeadApplied Value Simplified) (HeadApplied Value Simplified) where
-  unify s (h $$ sp) (h' $$ sp') = unify s h h' /\ unify s sp sp'
+  unify s (h $$ sp) (h' $$ sp') = (unify s h h' /\ unify s sp sp') \/ DontKnow
+
+Unify (Head Value Normalised) (Head Value Normalised) where
+  -- conservative
+  unify s (ObjCallable a) (ObjCallable a') = unify s a a'
+  unify s (ObjLazy a) (ObjLazy b) = unify s a b
+  unify s (PrimNeutral p) (PrimNeutral p') = unify s p p'
+  unify _ _ _ = DontKnow
+
+Unify (HeadApplied Value Normalised) (HeadApplied Value Normalised) where
+  unify s (h $$ sp) (h' $$ sp') = (unify s h h' /\ unify s sp sp') \/ DontKnow
 
 Unify LazyValue LazyValue where
-  unify s (LazyApps h sp) (LazyApps h' sp') = ?fx /\ unify s sp sp'
-  unify s (LazyPrimNormal p) (LazyPrimNormal p') = ?fy
-  unify s (LazyApps h sp) (LazyPrimNormal p') = ?fz
-  unify s (LazyPrimNormal p) (LazyApps h' sp') = ?fw
+  -- conservative
+  unify s (LazyApps h sp) (LazyApps h' sp') = (unify s h h' /\ unify s sp sp') \/ DontKnow
+  unify s (LazyPrimNormal p) (LazyPrimNormal p') = unify s p p'
+  unify _ _ _ = DontKnow
 
 Unify (Term Value) (Term Value) where
   unify s (SimpApps a) (SimpApps a') = unify s a a'
@@ -62,7 +89,7 @@ Unify (Term Value) (Term Value) where
   unify s (RigidBinding md r) (RigidBinding md' r') = ifAndOnlyIf (decEq md md') (\Refl => unify s r r')
 
   -- glued stuff
-  unify s (Glued a) (Glued b) = unify s a b `orTry` unify s (simplified a) (simplified b)
+  unify s (Glued a) (Glued b) = unify s a b \/ unify s (simplified a) (simplified b)
   unify s a (Glued b) = unify s a (simplified b)
   unify s (Glued a) b = unify s (simplified a) b
 
@@ -72,16 +99,3 @@ Unify (Term Value) (Term Value) where
 
   -- everything else is different
   unify _ _ _ = AreDifferent
-
-  -- unify _ (RigidBinding _ _) (SimpPrimNormal _) = ?unify_missing_casee_25
-  -- unify _ (RigidBinding _ _) (SimpObjCallable _) = ?unify_missing_casee_24
-  -- unify _ (RigidBinding _ _) (MtaCallable _) = ?unify_missing_casee_23
-  -- unify _ (MtaCallable _) (SimpObjCallable _) = ?unify_missing_casee_13
-  -- unify _ (MtaCallable _) (RigidBinding _ _) = ?unify_missing_casee_14
-  -- unify _ (MtaCallable _) (SimpPrimNormal _) = ?unify_missing_casee_15
-  -- unify _ (SimpObjCallable _) (MtaCallable _) = ?unify_missing_casee_18
-  -- unify _ (SimpObjCallable _) (RigidBinding _ _) = ?unify_missing_casee_19
-  -- unify _ (SimpObjCallable _) (SimpPrimNormal _) = ?unify_missing_casee_20
-  -- unify _ (SimpPrimNormal _) (MtaCallable _) = ?unify_missing_casee_28
-  -- unify _ (SimpPrimNormal _) (SimpObjCallable _) = ?unify_missing_casee_29
-  -- unify _ (SimpPrimNormal _) (RigidBinding _ _) = ?unify_missing_casee_30

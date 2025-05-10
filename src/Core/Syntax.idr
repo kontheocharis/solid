@@ -152,7 +152,7 @@ data PrimitiveApplied : PrimitiveClass -> (d : Domain) -> HeadKind d -> Ctx -> T
     -> Spine ar (Term Value) ns
     -> PrimitiveApplied k Value Simplified ns
   -- Glued normalised primitive value, which can (definitely) be evaluated further, stored in a lazy value.
-  GluedApplied : {k : PrimitiveClass} -> Primitive k PrimReducible ar
+  LazyApplied : {k : PrimitiveClass} -> Primitive k PrimReducible ar
     -> Spine ar (Term Value) ns
     -> Lazy (Term Value ns)
     -> PrimitiveApplied k Value Normalised ns
@@ -196,7 +196,7 @@ data LazyValue : Ctx -> Type where
 public export
 simplified : LazyValue ns -> Lazy (Term Value ns)
 simplified (LazyApps h f) = f
-simplified (LazyPrimNormal (GluedApplied _ _ f)) = f
+simplified (LazyPrimNormal (LazyApplied _ _ f)) = f
 
 public export
 data Term where

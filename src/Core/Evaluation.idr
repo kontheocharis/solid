@@ -40,12 +40,12 @@ forceThunk (Bound s n (BindLet _ v) (Closure env body)) = eval (env :< v) body
 public export
 QuoteVal => Quote (PrimitiveApplied k Value e) (PrimitiveApplied k Syntax NA) where
   quote s (SimpApplied h sp) = h $$ quote s sp
-  quote s (GluedApplied h sp _) = h $$ quote s sp
+  quote s (LazyApplied h sp _) = h $$ quote s sp
 
 public export
 ThinVal => Thin (PrimitiveApplied k Value e) where
   thin e (SimpApplied h sp) = SimpApplied h (thin e sp)
-  thin e (GluedApplied h sp gl) = GluedApplied h (thin e sp) (thin e gl)
+  thin e (LazyApplied h sp gl) = LazyApplied h (thin e sp) (thin e gl)
 
 public export
 Eval over (Term d) (Term d') => Eval over (Binder md r d) (Binder md r d') where
@@ -189,8 +189,8 @@ EvalPrim => Quote (Term Value) (Term Syntax) where
 primAddBYTES : Term Value ns -> Term Value ns -> Term Value ns
 primAddBYTES (SimpPrimNormal (SimpApplied PrimZeroBYTES [])) b = b
 primAddBYTES a (SimpPrimNormal (SimpApplied PrimZeroBYTES [])) = a
-primAddBYTES a@(Glued a') b = Glued (LazyPrimNormal (GluedApplied PrimAddBYTES [a, b] (primAddBYTES (simplified a') b)))
-primAddBYTES a b@(Glued b') = Glued (LazyPrimNormal (GluedApplied PrimAddBYTES [a, b] (primAddBYTES a (simplified b'))))
+primAddBYTES a@(Glued a') b = Glued (LazyPrimNormal (LazyApplied PrimAddBYTES [a, b] (primAddBYTES (simplified a') b)))
+primAddBYTES a b@(Glued b') = Glued (LazyPrimNormal (LazyApplied PrimAddBYTES [a, b] (primAddBYTES a (simplified b'))))
 primAddBYTES a b = SimpPrimNormal (SimpApplied PrimAddBYTES [a, b])
 
 primAddBytes : Term Value ns -> Term Value ns -> Term Value ns
@@ -198,8 +198,8 @@ primAddBytes (SimpPrimNormal (SimpApplied PrimEmbedBYTES [a])) (SimpPrimNormal (
   = SimpPrimNormal (SimpApplied PrimEmbedBYTES [primAddBYTES a b])
 primAddBytes (SimpPrimNormal (SimpApplied PrimEmbedBYTES [SimpPrimNormal (SimpApplied PrimZeroBYTES [])])) b = b
 primAddBytes a (SimpPrimNormal (SimpApplied PrimEmbedBYTES [SimpPrimNormal (SimpApplied PrimZeroBYTES [])])) = a
-primAddBytes a@(Glued a') b = Glued (LazyPrimNormal (GluedApplied PrimAddBytes [a, b] (primAddBytes (simplified a') b)))
-primAddBytes a b@(Glued b') = Glued (LazyPrimNormal (GluedApplied PrimAddBytes [a, b] (primAddBytes a (simplified b'))))
+primAddBytes a@(Glued a') b = Glued (LazyPrimNormal (LazyApplied PrimAddBytes [a, b] (primAddBytes (simplified a') b)))
+primAddBytes a b@(Glued b') = Glued (LazyPrimNormal (LazyApplied PrimAddBytes [a, b] (primAddBytes a (simplified b'))))
 primAddBytes a b = SimpPrimNormal (SimpApplied PrimAddBytes [a, b])
 
 public export
