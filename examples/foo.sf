@@ -1,0 +1,79 @@
+
+-- Sugar for unit
+--
+-- `()` means either `tt` or `Unit`
+
+-- Sugar for pairs
+--
+-- A ** B means `Pair A (\_ => B)`
+-- (x : A ** B) means `Pair A (\x => B)`
+-- (x, y) means `pair x y`
+
+-- Nat postulates
+Nat : Type size
+zero : Nat
+succ : Code (Nat -> Nat)
+rec-nat : {b} {T : Type b} -> Code (Nat -> T -> (Nat -> T -> T) -> T)
+ind-nat : {b} (P : Nat -> Type b) -> Code ((n : Nat) -> P zero -> ((m : Nat) -> P n -> P (succ m)) -> P n)
+-- can have multiple versions of eliminators that do or don't partially evaluate
+-- for this our primitive evaluation must be glued?
+
+-- e.g. these don't:
+rec-natNE : {b} {T : Type b} -> Code (Nat -> T -> (Nat -> T -> T) -> T)
+ind-natNE : {b} (P : Nat -> Type b) -> Code ((n : Nat) -> P zero -> ((m : Nat) -> P n -> P (succ m)) -> P n)
+
+Make : Type ptr
+give : {b} {A : Type b} -> A -> Make A
+unbox : {b} {A : Unsized b} -> Box A -> Make A
+
+-- support both these kind of definitions
+Array : {b} (T : Type b) (n : Nat) -> Unsized (n * b)
+Array T n = rec-nat n () (\n' Arr => T ** Arr)
+
+zeros : {b} {n : Nat} {T : Type b} -> Make (Array n T)
+zeros {n} {T} = ind-nat (Array T) n (give ()) (\n' arr => (give zero, arr))
+
+-- semicolons not needed after lets if there is a newline
+
+-- monads support
+main : IO ()
+main = {
+  x <- return 3
+  y <- return 4
+  z := 5
+  return x + y + z
+}
+
+-- Sugar:
+
+x : T
+x a1..an = t
+
+-- means
+
+x : T = \a1..an => t
+
+
+-- lets are
+
+{
+  x1 : T1 = u1
+  y
+}
+
+-- could have modifiers
+{
+  rec irr x1 : T1 = u1
+  y
+}
+
+-- could be monadic
+{
+  x1 : T1 <- u1
+  y
+}
+
+-- means
+bind u1 (\(x1 : T1) => y)
+
+-- lambdas are allowed parameter lists
