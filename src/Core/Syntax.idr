@@ -61,20 +61,18 @@ data Term : Domain -> Ctx -> Type
 public export
 data PrimitiveClass = PrimNeu | PrimNorm
 
+-- Whether a primitive is reducible or not.
+--
+-- If it is redicuble, it might have some computation rules depending on its arguments.
+data PrimitiveReducibility = PrimReducible | PrimIrreducible
+
 -- The theory of primitives.
 --
 -- These essentially form a Lawvere theory, though the equations are given
 -- separately later (they are the reduction rules). They will also be given
 -- proper types later.
 public export
-data Primitive : PrimitiveClass -> Arity -> Type
-
--- This is a fully applied term for some operator in a theory.
---
--- Used to represent fully applied primitives.
-public export
-data Applied : (Arity -> Type) -> Domain -> Ctx -> Type where
-  ($$) : k as -> Spine as (Term d) ns -> Applied k d ns
+data Primitive : PrimitiveClass -> PrimitiveReducibility -> Arity -> Type
 
 export infixr 5 $$
 
@@ -136,6 +134,16 @@ data HeadKind : Domain -> Type where
   -- A fully simplified head, fully forced.
   Simplified : HeadKind Value
 
+-- This is a fully applied primitive.
+public export
+data PrimitiveApplied : PrimitiveClass -> (d : Domain) -> HeadKind d -> Ctx -> Type where
+  -- Syntactic primitive
+  ($$) : Primitive k r as -> Spine as (Term Syntax) ns -> PrimitiveApplied k Syntax NA ns
+  -- Fully simplified primitive value
+  SimpApplied : Primitive k r as -> Spine as (Term Value) ns -> PrimitiveApplied k Value Simplified ns
+  -- Glued normalised primitive value, which can (definitely) be evaluated further, stored in a lazy value.
+  GluedApplied : Primitive k PrimReducible as -> Spine as (Term Value) ns -> Lazy (Term Value ns) -> PrimitiveApplied k Value Normalised ns
+
 public export
 data Head : (d : Domain) -> HeadKind d -> Ctx -> Type where
   -- Variables and metas are simplified if they are values
@@ -155,7 +163,7 @@ data Head : (d : Domain) -> HeadKind d -> Ctx -> Type where
   ObjLazy : Thunk Obj Unforced Value ns -> Head Value Normalised ns
 
   -- An applied primitive can only be a head if it is neutral.
-  PrimNeutral : Applied (Primitive PrimNeu) d ns -> Head d e ns
+  PrimNeutral : PrimitiveApplied PrimNeu d e ns -> Head d e ns
 
 -- Head applied to a spine.
 namespace HeadApplied
@@ -163,17 +171,27 @@ namespace HeadApplied
   data HeadApplied : (d : Domain) -> HeadKind d -> Ctx -> Type where
     ($$) : Head d hk ns -> Spine as (Term d) ns -> HeadApplied d hk ns
 
+-- A lazy value could be evaluated further.
+public export
+data LazyValue : Ctx -> Type where
+  -- A lazy application with a merely normalised (but not fully simplified) head.
+  LazyApps : HeadApplied Value Normalised ns -> Lazy (Term Value ns) -> LazyValue ns
+  -- A lazy primitive which might reduce further if its arguments do.
+  LazyPrimNormal : PrimitiveApplied PrimNorm Value Normalised ns -> LazyValue ns
+
+-- Extract the fully simplified form of a lazy value.
+public export
+simplified : LazyValue ns -> Lazy (Term Value ns)
+simplified (LazyApps h f) = f
+simplified (LazyPrimNormal (GluedApplied _ _ f)) = f
+
 public export
 data Term where
   -- Spine applied to syntactic head
   SynApps : HeadApplied Syntax NA ns -> Term Syntax ns
 
-  -- Spine applied to a normalised value head
-  --
-  -- Also stores the fully simplified form lazily (glued eval trick)
-  -- This makes unification much faster in some cases. It also allows us
-  -- to extract either normalised or simplified syntax during quoting.
-  GluedApps : HeadApplied Value Normalised ns -> Lazy (Term Value ns) -> Term Value ns
+  -- A lazy glued value, which could be evaluated further.
+  Glued : LazyValue ns -> Term Value ns
 
   -- Spine applied to a simplified value head
   --
@@ -191,8 +209,10 @@ data Term where
   -- Rigid thunk, never applied.
   RigidThunk : Thunk s Rigid d ns -> Term d ns
 
-  -- Normal primitive, never applied.
-  PrimNormal : Applied (Primitive PrimNorm) d ns -> Term d ns
+  -- Normal primitives, never applied.
+  SynPrimNormal : PrimitiveApplied PrimNorm Syntax NA ns -> Term Syntax ns
+  -- Fully simplified primitives, cannot be reduced further, stable under OPEs.
+  SimpPrimNormal : PrimitiveApplied PrimNorm Value Simplified ns -> Term Value ns
 
 -- Some convenient shorthands
 
@@ -228,35 +248,13 @@ varApp n {prf = prf} a v = SynApps (SynVar (Index (idx @{prf})) $$ ((::) {a = a}
 
 -- Finally we define the primitives:
 data Primitive where
-  PrimTYPE : Primitive PrimNorm []
-  PrimBYTES : Primitive PrimNorm []
-  PrimBytes : Primitive PrimNorm []
-  PrimEmbedBYTES : Primitive PrimNorm [(Explicit, "staticBytes")]
-  PrimUnsized : Primitive PrimNorm [(Explicit, "bytes")]
-
--- Shorthands for some primitives
--- Sad that Idris doesn't have pattern synonyms
-
-public export
-TYPE : Term d ns
-TYPE = PrimNormal (PrimTYPE $$ [])
-
-public export
-BYTES : Term d ns
-BYTES = PrimNormal (PrimBYTES $$ [])
-
-public export
-Bytes : Term d ns
-Bytes = PrimNormal (PrimBytes $$ [])
-
-public export
-Unsized : Term d ns -> Term d ns
-Unsized b = PrimNormal (PrimUnsized $$ [b])
-
-public export
-EmbedBYTES : Term d ns -> Term d ns
-EmbedBYTES b = PrimNormal (PrimEmbedBYTES $$ [b])
-
-public export
-Sized : Term d ns -> Term d ns
-Sized b = Unsized (EmbedBYTES b)
+  PrimTYPE : Primitive PrimNorm PrimIrreducible []
+  PrimBYTES : Primitive PrimNorm PrimIrreducible []
+  PrimZeroBYTES : Primitive PrimNorm PrimIrreducible []
+  PrimSizeBYTES : Primitive PrimNorm PrimIrreducible []
+  PrimPtrBYTES : Primitive PrimNorm PrimIrreducible []
+  PrimBytes : Primitive PrimNorm PrimIrreducible []
+  PrimEmbedBYTES : Primitive PrimNorm PrimIrreducible [(Explicit, "staticBytes")]
+  PrimUnsized : Primitive PrimNorm PrimIrreducible [(Explicit, "bytes")]
+  PrimAddBYTES : Primitive PrimNorm PrimReducible [(Explicit, "a"), (Explicit, "b")]
+  PrimAddBytes : Primitive PrimNorm PrimReducible [(Explicit, "a"), (Explicit, "b")]

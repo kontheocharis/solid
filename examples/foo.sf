@@ -37,18 +37,18 @@ Bytes : Static
 Dynamic : Bytes -> Dynamic 0
 
 -- Partially static stuff
-Type : Bytes -> Static
-Type b = (Sta : Static ** Dyn : Dynamic b ** emb : D -> S)
+Data : Bytes -> Static
+Data b = (Sta : Static ** Dyn : Dynamic b ** emb : D -> S)
 
 -- inductive basically
-PS : {b} -> Type b -> Static
-sta : {b} {d : Type b} -> d.Sta -> PS d
-dyn : {b} {d : Type b} -> d.Dyn -> PS d
-inspect : {b} {d : Type b} (P : PS d -> Static)
+PS : {b} -> Data b -> Static
+sta : {b} {d : Data b} -> d.Sta -> PS d
+dyn : {b} {d : Data b} -> d.Dyn -> PS d
+inspect : {b} {d : Data b} (P : PS d -> Static)
   (z : PS d)
   (st : (x : d.Sta) -> P (sta x))
   (dy : (y : d.Dyn) -> P (dyn x)) -> P z
-switch : {b} {d : Type b} {P : Static} (z : PS d) (st : d.Sta -> P) (dy : d.Dyn -> P) -> P
+switch : {b} {d : Data b} {P : Static} (z : PS d) (st : d.Sta -> P) (dy : d.Dyn -> P) -> P
 
 inj : {d} -> PS d -> d.Dyn
 inj p = switch p emb id
@@ -58,7 +58,7 @@ BytesD : Dynamic size
 embBytes : BytesS -> BytesD
 addD : BytesD -> BytesD -> BytesD
 
-BytesData : Type size
+BytesData : Data size
 BytesData = (Sta = BytesS, Dyn = BytesD, emb = embBytes)
 
 -- now we define bytes
@@ -93,7 +93,7 @@ succD : NatD -> NatD
 rec-natD : {b} {T : Dynamic (sta b)} -> NatD -> T -> (NatD -> T -> T) -> T
 ind-natD : {b} (P : NatD -> Dynamic (sta b)) -> (n : NatD) -> P zeroD -> ((m : NatD) -> P m -> P (succD m)) -> P n
 
-NatData : Type size
+NatData : Data size
 NatData = (NatS, NatD, embNat)
 
 Nat : Static
@@ -116,8 +116,12 @@ ind-nat {b} {p} n z s = inspect (\n' => PS (p n')) n
   (\nD => dyn (ind-natD {b} {p = \n' => (p (dyn n')).Dyn} nD (inj z) (\n' ih => inj (s (dyn n') (dyn ih)))))
 
 -- more primitives
-Make : Type ptr
-give : {b} {A : Type b} -> A -> Make A
+
+
+Make : {br} -> Data br -> Data ptr
+Make d = (Sta = d.Sta, Dyn = MakeD d.Dyn, emb = )
+
+give : {b} {A : Data (sta b)} -> PS A -> Make A
 unbox : {b} {A : Unsized b} -> Box A -> Make A
 
 mul : Nat -> Bytes -> Nat

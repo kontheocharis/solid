@@ -1,9 +1,9 @@
 module Main
 
 import Utils
-import Context
-import Syntax
-import Evaluation
+import Core.Context
+import Core.Syntax
+import Core.Evaluation
 
 %default total
 
