@@ -35,7 +35,7 @@ callThunk (Bound s n BindLam (Closure env body)) arg = eval (env :< arg) body
 -- Every unforced thunk can be forced.
 public export
 forceThunk : EvalTm => Thunk s Unforced Value ns -> Term Value ns
-forceThunk (Bound s n (BindLet v) (Closure env body)) = eval (env :< v) body
+forceThunk (Bound s n (BindLet _ v) (Closure env body)) = eval (env :< v) body
 
 public export
 QuoteVal => Quote (PrimitiveApplied k Value e) (PrimitiveApplied k Syntax NA) where
@@ -106,7 +106,7 @@ ThinVal => Thin (Thunk s r Value) where
 -- This is the only place where it could crash if there is a bug, because
 -- the syntax is not well-typed (only well-scoped).
 public export
-apps : EvalTm => Term Value ns -> Spine as (Term Value) ns -> Term Value ns
+apps : EvalTm => Term Value ns -> Spine ar (Term Value) ns -> Term Value ns
 apps (Glued (LazyApps (v $$ sp) gl)) sp' = Glued (LazyApps (v $$ sp ++ sp') (apps gl sp'))
 apps (SimpApps (v $$ sp)) sp' = SimpApps (v $$ sp ++ sp')
 apps (MtaCallable t) [] = MtaCallable t
@@ -146,7 +146,7 @@ ThinVal => Thin (Head Value hk) where
 
 public export
 (ThinVal, QuoteVal, EvalTm) => Quote (HeadApplied Value hk) (HeadApplied Syntax NA) where
-  quote s (($$) {as = as} h sp) = ($$) {as = as} (quote s h) (quote s sp)
+  quote s (($$) {ar = ar} h sp) = ($$) {ar = ar} (quote s h) (quote s sp)
 
 public export
 ThinVal => Thin (HeadApplied Value hk) where
@@ -164,7 +164,7 @@ Thin (Term Value) where
 
 public export
 EvalPrim => Eval (Term Value) (Term Syntax) (Term Value) where
-  eval env (SynApps (($$) {as = as} h sp)) = apps {as = as} (eval env h) (eval env sp)
+  eval env (SynApps (($$) {ar = ar} h sp)) = apps {ar = ar} (eval env h) (eval env sp)
   eval env (RigidThunk {s = s} t) = RigidThunk {s = s} (eval env t)
   eval env (SynPrimNormal prim) = eval env prim
 

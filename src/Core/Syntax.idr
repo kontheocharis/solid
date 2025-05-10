@@ -83,7 +83,7 @@ data Binder : Stage -> Reducibility -> Domain -> Ctx -> Type where
   BindLam : Binder s Callable d ns
 
   -- Meta or object-level let
-  BindLet : (rhs : Term d ns) -> Binder s Unforced d ns
+  BindLet : (ty : Term d ns) -> (rhs : Term d ns) -> Binder s Unforced d ns
 
   -- Meta or object-level pi
   BindPi : (dom : Term d ns) -> Binder s Rigid d ns
@@ -92,7 +92,7 @@ data Binder : Stage -> Reducibility -> Domain -> Ctx -> Type where
 public export
 mapBinder : (Term d ns -> Term d' ms) -> Binder md r d ns -> Binder md r d' ms
 mapBinder _ BindLam = BindLam
-mapBinder f (BindLet t) = BindLet (f t)
+mapBinder f (BindLet ty t) = BindLet (f ty) (f t)
 mapBinder f (BindPi t) = BindPi (f t)
 
 -- Variables are de-Brujin indices or levels depending on if we are in value or
@@ -108,14 +108,14 @@ data Variable : Domain -> Ctx -> Type where
 -- Either a term with a free variable or a (defunctionalised) delayed
 -- evaluation.
 public export
-data Body : Domain -> Name -> Ctx -> Type where
+data Body : Domain -> Ident -> Ctx -> Type where
   Delayed : Term Syntax (ns :< n) -> Body Syntax n ns
   Closure : Sub ns (Term Value) ms -> Term Syntax (ms :< n) -> Body Value n ns
 
 -- Helper to package a binder with its body.
 public export
 data Thunk : Stage -> Reducibility -> Domain -> Ctx -> Type where
-  Bound : (s : Stage) -> (n : Name) -> Binder s r d ns -> Body d n ns -> Thunk s r d ns
+  Bound : (md : Stage) -> (n : Ident) -> Binder md r d ns -> Body d n ns -> Thunk md r d ns
 
 -- Different spine heads, meaning x in `x a1 ... an`, are reduced
 -- to different extents.
@@ -136,17 +136,17 @@ public export
 data PrimitiveApplied : PrimitiveClass -> (d : Domain) -> HeadKind d -> Ctx -> Type where
   -- Syntactic primitive
   ($$) : {k : PrimitiveClass} -> {r : PrimitiveReducibility}
-    -> Primitive k r as
-    -> Spine as (Term Syntax) ns
+    -> Primitive k r ar
+    -> Spine ar (Term Syntax) ns
     -> PrimitiveApplied k Syntax NA ns
   -- Fully simplified primitive value
   SimpApplied : {k : PrimitiveClass} -> {r : PrimitiveReducibility}
-    -> Primitive k r as
-    -> Spine as (Term Value) ns
+    -> Primitive k r ar
+    -> Spine ar (Term Value) ns
     -> PrimitiveApplied k Value Simplified ns
   -- Glued normalised primitive value, which can (definitely) be evaluated further, stored in a lazy value.
-  GluedApplied : {k : PrimitiveClass} -> Primitive k PrimReducible as
-    -> Spine as (Term Value) ns
+  GluedApplied : {k : PrimitiveClass} -> Primitive k PrimReducible ar
+    -> Spine ar (Term Value) ns
     -> Lazy (Term Value ns)
     -> PrimitiveApplied k Value Normalised ns
 
@@ -175,7 +175,7 @@ data Head : (d : Domain) -> HeadKind d -> Ctx -> Type where
 namespace HeadApplied
   public export
   data HeadApplied : (d : Domain) -> HeadKind d -> Ctx -> Type where
-    ($$) : Head d hk ns -> Spine as (Term d) ns -> HeadApplied d hk ns
+    ($$) : Head d hk ns -> Spine ar (Term d) ns -> HeadApplied d hk ns
 
 -- A lazy value could be evaluated further.
 public export
@@ -249,7 +249,7 @@ var : (n : String) -> {auto prf : In n ns} -> Tm ns
 var n {prf = prf} = SynApps (SynVar (Index (idx @{prf})) $$ [])
 
 public export
-varApp : (n : String) -> {auto prf : In n ns} -> Name -> Term Syntax ns -> Tm ns
+varApp : (n : String) -> {auto prf : In n ns} -> Ident -> Term Syntax ns -> Tm ns
 varApp n {prf = prf} a v = SynApps (SynVar (Index (idx @{prf})) $$ ((::) {a = a} v []))
 
 -- Finally we define the primitives:
@@ -264,3 +264,18 @@ data Primitive where
   PrimUnsized : Primitive PrimNorm PrimIrreducible [(Explicit, "bytes")]
   PrimAddBYTES : Primitive PrimNorm PrimReducible [(Explicit, "a"), (Explicit, "b")]
   PrimAddBytes : Primitive PrimNorm PrimReducible [(Explicit, "a"), (Explicit, "b")]
+
+-- Can't be DecEq without writing out all cases smh
+public export
+primEq : (a : Primitive k r ar) -> (b : Primitive k' r' ar') -> Maybe (a = b)
+primEq PrimTYPE PrimTYPE = Just Refl
+primEq PrimBYTES PrimBYTES = Just Refl
+primEq PrimZeroBYTES PrimZeroBYTES = Just Refl
+primEq PrimSizeBYTES PrimSizeBYTES = Just Refl
+primEq PrimPtrBYTES PrimPtrBYTES = Just Refl
+primEq PrimBytes PrimBytes = Just Refl
+primEq PrimEmbedBYTES PrimEmbedBYTES = Just Refl
+primEq PrimUnsized PrimUnsized = Just Refl
+primEq PrimAddBYTES PrimAddBYTES = Just Refl
+primEq PrimAddBytes PrimAddBytes = Just Refl
+primEq _ _ = Nothing

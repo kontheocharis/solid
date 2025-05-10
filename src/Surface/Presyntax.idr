@@ -23,7 +23,7 @@ public export
 record PParam where
   constructor MkPParam
   loc : Loc
-  name : Name
+  name : Ident
   ty : Maybe PTy
 
 public export
@@ -51,8 +51,8 @@ data BinOp : Type where
 
 public export
 data PTm : Type where
-  PName : String -> PTm
-  PLam : Name -> Maybe PTy -> PTm -> PTm
+  PIdent : String -> PTm
+  PLam : Ident -> Maybe PTy -> PTm -> PTm
   PApp : PTm -> PTm -> PTm
   PPi : PParam -> PTy -> PTy
   PSigma : PParam -> PTy -> PTy
@@ -77,7 +77,7 @@ pGatherPis (PPi p b) = let (MkPTel ps, ret) = pGatherPis b in (MkPTel (p :: ps),
 pGatherPis t = (MkPTel [], t)
 
 public export
-pGatherLams : PTm -> (List (Name, Maybe PTy), PTm)
+pGatherLams : PTm -> (List (Ident, Maybe PTy), PTm)
 pGatherLams (PLam n ty t) = let (ns, t') = pGatherLams t in ((n, ty) :: ns, t')
 pGatherLams (PLoc _ t) = pGatherLams t
 pGatherLams t = ([], t)
@@ -103,7 +103,7 @@ Show PTel where
   show (MkPTel ts) = " " ++ (map show ts |> cast |> joinBy " ")
 
 isAtomic : PTm -> Bool
-isAtomic (PName _) = True
+isAtomic (PIdent _) = True
 isAtomic (PLoc _ t) = isAtomic t
 isAtomic _ = False
 
@@ -128,7 +128,7 @@ where
 
 public export covering
 Show PTm where
-  show (PName n) = show n
+  show (PIdent n) = show n
   show t@(PLam _ _ _) = let (args, ret) = pGatherLams t in "\\" ++ joinBy " " (map (\((md, n), ty) =>
         show (MkPParam dummyLoc (md, n) ty)
       ) args) ++ " => " ++ show ret

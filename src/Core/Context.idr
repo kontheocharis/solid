@@ -14,8 +14,8 @@ data PiMode = Explicit | Implicit
 
 -- A name is a member of a 'context skeleton'
 public export
-0 Name : Type
-Name = (PiMode, String)
+0 Ident : Type
+Ident = (PiMode, String)
 
 -- A context skeleton.
 --
@@ -23,14 +23,14 @@ Name = (PiMode, String)
 -- Used to make syntax well-scoped.
 public export
 0 Ctx : Type
-Ctx = SnocList Name
+Ctx = SnocList Ident
 
 -- An arity is a context skeleton linked forward instead of backward.
 --
 -- This is to avoid green slime like [< x] ++ xs in later definitions.
 public export
 0 Arity : Type
-Arity = List Name
+Arity = List Ident
 
 export infixl 7 ::<
 
@@ -46,6 +46,11 @@ data Idx : Ctx -> Type where
   IZ : Idx (ns :< n)
   IS : Idx ns -> Idx (ns :< n)
 
+Eq (Idx ns) where
+  (==) IZ IZ = True
+  (==) (IS i) (IS i') = i == i'
+  (==) _ _ = False
+
 -- De-Brujin levels.
 --
 -- Careful! LZ does not index the name n!
@@ -54,6 +59,11 @@ public export
 data Lvl : Ctx -> Type where
   LZ : Lvl (ns :< n)
   LS : Lvl ns -> Lvl (ns :< n)
+
+Eq (Lvl ns) where
+  (==) LZ LZ = True
+  (==) (LS l) (LS l') = l == l'
+  (==) _ _ = False
 
 -- Remember only the size of a context skeleton.
 public export
@@ -64,7 +74,7 @@ data Size : Ctx -> Type where
 public export
 data Count : Arity -> Type where
   CZ : Count []
-  CS : Count as -> Count (a :: as)
+  CS : Count ar -> Count (a :: ar)
 
 -- Some de-Brujin helpers:
 
@@ -95,28 +105,28 @@ namespace Tel
   public export
   data Tel : Arity -> (Ctx -> Type) -> Ctx -> Type where
     Nil : Tel [] f ms
-    (::) : f ms -> Tel as f (ms :< a) -> Tel (a :: as) f ms
+    (::) : f ms -> Tel ar f (ms :< a) -> Tel (a :: ar) f ms
 
 namespace Spine
   public export
   data Spine : Arity -> (Ctx -> Type) -> Ctx -> Type where
     Nil : Spine [] f ns
-    (::) : f ns -> Spine as f ns -> Spine (a :: as) f ns
+    (::) : f ns -> Spine ar f ns -> Spine (a :: ar) f ns
 
   public export
-  (++) : Spine as f ns -> Spine bs f ns -> Spine (as ++ bs) f ns
+  (++) : Spine ar f ns -> Spine bs f ns -> Spine (ar ++ bs) f ns
   [] ++ sp' = sp'
   (x :: sp) ++ sp' = x :: (sp ++ sp')
 
   public export
-  (.count) : Spine as f ns -> Count as
+  (.count) : Spine ar f ns -> Count ar
   (.count) [] = CZ
   (.count) (x :: xs) = CS xs.count
 
 namespace Con
   data Con : (Ctx -> Type) -> Ctx -> Type where
     Lin : Con f [<]
-    (:<) : Con f as -> f as -> Con f (as :< a)
+    (:<) : Con f ar -> f ar -> Con f (ar :< a)
 
 namespace Sub
   public export
@@ -156,7 +166,7 @@ interface (Thin tm) => Vars (0 tm : Ctx -> Type) where
   here : Size ns -> tm (ns :< n)
 
 public export
-lift : (Thin tm, Vars tm) => Size ns -> Sub ns tm ms -> Sub (ns :< a) tm (ms :< a)
+lift : (Thin tm, Vars tm) => Size ns -> Sub ns tm ms -> Sub (ns :< a) tm (ms :< a')
 lift s env = env . Drop Id :< here s
 
 public export
@@ -168,7 +178,7 @@ public export
 proj : (Thin tm, Vars tm) => Size ns -> Sub (ns :< n) tm ns
 proj s = id s . Drop Id
 
--- Evaluation and quoting interfaces
+-- Evaluation, quoting and unification interfaces
 
 public export
 interface Eval (0 over : Ctx -> Type) (0 tm : Ctx -> Type) (0 val : Ctx -> Type) where
@@ -201,28 +211,28 @@ Thin Idx where
   thin Id i = i
 
 public export
-(Thin tm) => Thin (Spine as tm) where
+Quote Lvl Idx where
+  quote = lvlToIdx
+
+public export
+(Thin tm) => Thin (Spine ar tm) where
   thin e [] = []
   thin e (x :: xs) = thin e x :: thin e xs
 
-public export
-(Quote val tm) => Quote (Tel as val) (Tel as tm) where
-  quote s [] = []
-  quote s (x :: xs) = quote s x :: quote (SS s) xs
+-- public export
+-- (Quote val tm) => Quote (Tel ar val) (Tel ar tm) where
+--   quote s [] = []
+--   quote s (x :: xs) = quote s x :: quote (SS s) xs
 
 public export
-Eval over tm val => Eval over (Spine as tm) (Spine as val) where
+Eval over tm val => Eval over (Spine ar tm) (Spine ar val) where
   eval env [] = []
   eval env (x :: xs) = eval env x :: eval env xs
 
 public export
-Quote val tm => Quote (Spine as val) (Spine as tm) where
+Quote val tm => Quote (Spine ar val) (Spine ar tm) where
   quote s [] = []
   quote s (x :: xs) = quote s x :: quote s xs
-
-public export
-Quote Lvl Idx where
-  quote = lvlToIdx
 
 -- Finding variables by name through auto implicits!
 
@@ -237,3 +247,53 @@ In n (ns :< (m, n)) where
 public export
 (In n ns) => In n (ns :< n') where
   idx @{f} = IS (idx @{f})
+
+
+-- Unification
+
+public export
+data Unification : Type where
+  AreSame : Unification
+  AreDifferent : Unification
+  DontKnow : Unification
+
+public export
+byEq : Eq a => a -> a -> Unification
+byEq x y = case x == y of
+  True => AreSame
+  False => AreDifferent
+
+public export
+byProofOrDiff : Maybe (x ~=~ y) -> Unification
+byProofOrDiff (Just Refl) = AreSame
+byProofOrDiff Nothing = AreDifferent
+
+public export
+byProofOrIdk : Maybe (x ~=~ y) -> Unification
+byProofOrIdk (Just Refl) = AreSame
+byProofOrIdk Nothing = DontKnow
+
+export infixr 4 /\
+
+public export
+(/\) : Unification -> Lazy Unification -> Unification
+(/\) AreDifferent x = AreDifferent
+(/\) x AreDifferent = AreDifferent
+(/\) AreSame AreSame = AreSame
+(/\) DontKnow AreSame = DontKnow
+(/\) AreSame DontKnow = DontKnow
+(/\) DontKnow DontKnow = DontKnow
+
+public export
+interface Unify (0 lhs : Ctx -> Type) (0 rhs : Ctx -> Type) where
+  unify : Size ns -> lhs ns -> rhs ns -> Unification
+
+public export
+Unify Lvl Lvl where
+  unify s = byEq
+
+public export
+Unify val val' => Unify (Spine as val) (Spine as' val') where
+  unify s [] [] = AreSame
+  unify s (x :: xs) (y :: ys) = unify s x y /\ unify s xs ys
+  unify s _ _ = AreDifferent
