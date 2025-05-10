@@ -2,7 +2,7 @@
 module Core.Evaluation
 
 import Utils
-import Core.Context
+import Core.Base
 import Core.Syntax
 
 %default covering -- won't bother with the totality checker here

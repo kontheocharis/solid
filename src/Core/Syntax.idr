@@ -2,7 +2,7 @@
 module Core.Syntax
 
 import Utils
-import Core.Context
+import Core.Base
 import Decidable.Equality
 
 %default total

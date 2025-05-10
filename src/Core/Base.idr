@@ -1,5 +1,5 @@
--- Helper definitions related to working with stuff involving variables
-module Core.Context
+-- Helper definitions related to working with the core language
+module Core.Base
 
 import Decidable.Equality
 import Data.Singleton

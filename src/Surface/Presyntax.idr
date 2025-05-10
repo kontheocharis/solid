@@ -2,7 +2,7 @@ module Surface.Presyntax
 
 import Core.Syntax
 import Surface.Text
-import Core.Context
+import Core.Base
 import Data.String
 import Data.SnocList
 import Data.DPair

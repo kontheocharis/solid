@@ -1,7 +1,7 @@
 module Main
 
 import Utils
-import Core.Context
+import Core.Base
 import Core.Syntax
 import Core.Evaluation
 

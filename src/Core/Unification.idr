@@ -1,8 +1,9 @@
+-- Unification for values in the core language
 module Core.Unification
 
 import Utils
 import Decidable.Equality
-import Core.Context
+import Core.Base
 import Core.Syntax
 import Core.Evaluation
 
