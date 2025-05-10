@@ -3,32 +3,129 @@
 --
 -- `()` means either `tt` or `Unit`
 
+-- operators desugar to their names
+
 -- Sugar for pairs
 --
 -- A ** B means `Pair A (\_ => B)`
 -- (x : A ** B) means `Pair A (\x => B)`
 -- (x, y) means `pair x y`
 
--- Nat postulates
-Nat : Type size
+-- base primitives
+
+-- Desugar for projections
+-- if    f : (x : A ** y : B)   then f.x : A = fst f,  f.y : B f.x = snd f
+-- tuple initialisation
+-- (x = a, y = b) means (a, b)
+
+-- Static types
+Static : Static
+
+-- Bytes
+BytesS : Static
+0S : BytesS
+ptrS : BytesS
+sizeS : BytesS
+if0S : {A : Static} -> BytesS -> A -> A -> A
+addS : BytesS -> BytesS -> BytesS
+
+-- Fwd decl
+Bytes : Static
+0 : Bytes
+
+-- Dynamic types
+Dynamic : Bytes -> Dynamic 0
+
+-- Partially static stuff
+Type : Bytes -> Static
+Type b = (Sta : Static ** Dyn : Dynamic b ** emb : D -> S)
+
+-- inductive basically
+PS : {b} -> Type b -> Static
+sta : {b} {d : Type b} -> d.Sta -> PS d
+dyn : {b} {d : Type b} -> d.Dyn -> PS d
+inspect : {b} {d : Type b} (P : PS d -> Static)
+  (z : PS d)
+  (st : (x : d.Sta) -> P (sta x))
+  (dy : (y : d.Dyn) -> P (dyn x)) -> P z
+switch : {b} {d : Type b} {P : Static} (z : PS d) (st : d.Sta -> P) (dy : d.Dyn -> P) -> P
+
+inj : {d} -> PS d -> d.Dyn
+inj p = switch p emb id
+
+-- dynamic bytes
+BytesD : Dynamic size
+embBytes : BytesS -> BytesD
+addD : BytesD -> BytesD -> BytesD
+
+BytesData : Type size
+BytesData = (Sta = BytesS, Dyn = BytesD, emb = embBytes)
+
+-- now we define bytes
+Bytes = PS BytesData
+0 = sta 0S
+
+size : Bytes
+size = sta sizeS
+
+ptr : Bytes
+ptr = sta ptrS
+
+add : Bytes -> Bytes -> Bytes
+add x y = switch x
+  (\xS => switch y (\yS => sta (addS xS yS)) (\yD => dyn (if0S xS yD (addD (embBytes xS) yD))))
+  (\xD => switch y (\yS => dyn (if0S yS xD (addD xD (embBytes yS))) (\yD => dyn (addD xD yD)) ))
+
+-- Nats
+NatS : Static
+zeroS : NatS
+succS : NatS -> NatS
+rec-natS : {T : Static} -> NatS -> T -> (NatS -> T -> T) -> T
+ind-natS : (P : NatS -> Static) -> (n : NatS) -> P zeroS -> ((m : NatS) -> P m -> P (succS m)) -> P n
+
+NatD : Dynamic size
+embNat : NatS -> NatD
+
+zeroD : NatD
+zeroD = embNat zeroS
+
+succD : NatD -> NatD
+rec-natD : {b} {T : Dynamic (sta b)} -> NatD -> T -> (NatD -> T -> T) -> T
+ind-natD : {b} (P : NatD -> Dynamic (sta b)) -> (n : NatD) -> P zeroD -> ((m : NatD) -> P m -> P (succD m)) -> P n
+
+NatData : Type size
+NatData = (NatS, NatD, embNat)
+
+Nat : Static
+Nat = PS NatData
+
 zero : Nat
-succ : Code (Nat -> Nat)
-rec-nat : {b} {T : Type b} -> Code (Nat -> T -> (Nat -> T -> T) -> T)
-ind-nat : {b} (P : Nat -> Type b) -> Code ((n : Nat) -> P zero -> ((m : Nat) -> P n -> P (succ m)) -> P n)
--- can have multiple versions of eliminators that do or don't partially evaluate
--- for this our primitive evaluation must be glued?
+zero = sta zeroS
 
--- e.g. these don't:
-rec-natNE : {b} {T : Type b} -> Code (Nat -> T -> (Nat -> T -> T) -> T)
-ind-natNE : {b} (P : Nat -> Type b) -> Code ((n : Nat) -> P zero -> ((m : Nat) -> P n -> P (succ m)) -> P n)
+succ : Nat -> Nat
+succ n = switch n (\nS => sta (succS nS)) (\nD => dyn (succD nD))
 
+rec-nat : {b} {d : Data b} -> Nat -> PS d -> (Nat -> PS d -> PS d) -> PS d
+rec-nat {b} {d} n z s = switch n
+  (\nS => rec-natS {T = PS d} nS z s)
+  (\nD => dyn (rec-natD {b} {T = d.Dyn} nD (inj z) (\n' ih => inj (s (dyn n') (dyn ih)))))
+
+ind-nat : {b} (p : Nat -> Data b) -> (n : Nat) -> PS (p zero) -> ((m : Nat) -> PS (p m) -> PS (p (succ m))) -> PS (p n)
+ind-nat {b} {p} n z s = inspect (\n' => PS (p n')) n
+  (\nS => ind-natS {p = \n' => PS (p (sta n'))} nS z s)
+  (\nD => dyn (ind-natD {b} {p = \n' => (p (dyn n')).Dyn} nD (inj z) (\n' ih => inj (s (dyn n') (dyn ih)))))
+
+-- more primitives
 Make : Type ptr
 give : {b} {A : Type b} -> A -> Make A
 unbox : {b} {A : Unsized b} -> Box A -> Make A
 
+mul : Nat -> Bytes -> Nat
+mul n b = rec-nat n 0 (\_ b' => b + b')
+
 -- support both these kind of definitions
-Array : {b} (T : Type b) (n : Nat) -> Unsized (n * b)
-Array T n = rec-nat n () (\n' Arr => T ** Arr)
+Array : {b} (T : Type b) (n : Nat) -> Unsized (n * emb b)
+Array T n = ind-nat (\n' => Unsized (n' * b)) n () (\n' Arr => T ** Arr)
 
 zeros : {b} {n : Nat} {T : Type b} -> Make (Array n T)
 zeros {n} {T} = ind-nat (Array T) n (give ()) (\n' arr => (give zero, arr))
