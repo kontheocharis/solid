@@ -18,19 +18,16 @@ public export
 data Stage = Obj | Mta
 
 -- Whether an expression head is reducible
---
--- Remembers the stage at which it is reducible
--- For now this is uniform over stages.
 public export
-data Reducibility : Stage -> Type where
+data Reducibility : Type where
   -- Reducible because it is callable with an argument.
-  Callable : Reducibility s
+  Callable : Reducibility
 
   -- Reducible because it is a lazy value, it can be forced (but has currently
   -- not been).
-  Unforced : Reducibility s
+  Unforced : Reducibility
   -- Irreducible, i.e. rigid.
-  Rigid : Reducibility s
+  Rigid : Reducibility
 
 -- Whether we are talking about syntax or values.
 --
@@ -64,6 +61,7 @@ data PrimitiveClass = PrimNeu | PrimNorm
 -- Whether a primitive is reducible or not.
 --
 -- If it is redicuble, it might have some computation rules depending on its arguments.
+public export
 data PrimitiveReducibility = PrimReducible | PrimIrreducible
 
 -- The theory of primitives.
@@ -80,7 +78,7 @@ export infixr 5 $$
 --
 -- Each of these might carry some data.
 public export
-data Binder : (s : Stage) -> Reducibility s -> Domain -> Ctx -> Type where
+data Binder : Stage -> Reducibility -> Domain -> Ctx -> Type where
   -- Meta or object-level lambda
   BindLam : Binder s Callable d ns
 
@@ -116,9 +114,8 @@ data Body : Domain -> Name -> Ctx -> Type where
 
 -- Helper to package a binder with its body.
 public export
-data Thunk : (s : Stage) -> Reducibility s -> Domain -> Ctx -> Type where
-  Bound : (s : Stage) -> {0 r : Reducibility s}
-      -> (n : Name) -> Binder s r d ns -> Body d n ns -> Thunk s r d ns
+data Thunk : Stage -> Reducibility -> Domain -> Ctx -> Type where
+  Bound : (s : Stage) -> (n : Name) -> Binder s r d ns -> Body d n ns -> Thunk s r d ns
 
 -- Different spine heads, meaning x in `x a1 ... an`, are reduced
 -- to different extents.
@@ -138,11 +135,20 @@ data HeadKind : Domain -> Type where
 public export
 data PrimitiveApplied : PrimitiveClass -> (d : Domain) -> HeadKind d -> Ctx -> Type where
   -- Syntactic primitive
-  ($$) : Primitive k r as -> Spine as (Term Syntax) ns -> PrimitiveApplied k Syntax NA ns
+  ($$) : {k : PrimitiveClass} -> {r : PrimitiveReducibility}
+    -> Primitive k r as
+    -> Spine as (Term Syntax) ns
+    -> PrimitiveApplied k Syntax NA ns
   -- Fully simplified primitive value
-  SimpApplied : Primitive k r as -> Spine as (Term Value) ns -> PrimitiveApplied k Value Simplified ns
+  SimpApplied : {k : PrimitiveClass} -> {r : PrimitiveReducibility}
+    -> Primitive k r as
+    -> Spine as (Term Value) ns
+    -> PrimitiveApplied k Value Simplified ns
   -- Glued normalised primitive value, which can (definitely) be evaluated further, stored in a lazy value.
-  GluedApplied : Primitive k PrimReducible as -> Spine as (Term Value) ns -> Lazy (Term Value ns) -> PrimitiveApplied k Value Normalised ns
+  GluedApplied : {k : PrimitiveClass} -> Primitive k PrimReducible as
+    -> Spine as (Term Value) ns
+    -> Lazy (Term Value ns)
+    -> PrimitiveApplied k Value Normalised ns
 
 public export
 data Head : (d : Domain) -> HeadKind d -> Ctx -> Type where
@@ -153,7 +159,7 @@ data Head : (d : Domain) -> HeadKind d -> Ctx -> Type where
   ValMeta : MetaVar -> Head Value Simplified ns
 
   -- A syntactic thunk
-  SynThunk : (s : Stage) -> (r : Reducibility s) -> Thunk s r Syntax ns -> Head Syntax NA ns
+  SynThunk : (s : Stage) -> (r : Reducibility) -> Thunk s r Syntax ns -> Head Syntax NA ns
 
   -- Meta-level callable thunks cannot appear as heads in values.
   --

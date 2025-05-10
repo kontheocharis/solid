@@ -116,7 +116,6 @@ apps (SimpObjCallable t) (x :: sp') = apps (callThunk t x) sp'
 apps (RigidThunk _) _ = error "impossible"
 apps (SimpPrimNormal _) sp' = error "impossible"
 apps (Glued (LazyPrimNormal _)) sp' = error "impossible"
--- apps (PrimNormal _) _ = error "impossible"
 
 public export
 (EvalTm, EvalPrim) => Eval (Term Value) (Head Syntax NA) (Term Value) where
@@ -182,7 +181,7 @@ EvalPrim => Quote (Term Value) (Term Syntax) where
 -- Primitives:
 
 -- Note: for every primitive that might reduce on an argument, in addition to
--- matching the on the actual shape that it reduces on, we must also match on
+-- matching the the actual shape that it reduces on, we must also match on
 -- (Glued _). We must do this for each argument that might cause a reduction. In
 -- each case we must form a new glued term as a result, which lazily unfolds the
 -- argument and recurses.
@@ -205,13 +204,7 @@ primAddBytes a b = SimpPrimNormal (SimpApplied PrimAddBytes [a, b])
 
 public export
 Eval (Term Value) (PrimitiveApplied k Syntax h) (Term Value) where
-  eval env (PrimTYPE $$ []) = SimpPrimNormal (SimpApplied PrimTYPE [])
-  eval env (PrimBYTES $$ []) = SimpPrimNormal (SimpApplied PrimBYTES [])
-  eval env (PrimZeroBYTES $$ []) = SimpPrimNormal (SimpApplied PrimZeroBYTES [])
-  eval env (PrimSizeBYTES $$ []) = SimpPrimNormal (SimpApplied PrimSizeBYTES [])
-  eval env (PrimPtrBYTES $$ []) = SimpPrimNormal (SimpApplied PrimPtrBYTES [])
-  eval env (PrimBytes $$ []) =  SimpPrimNormal (SimpApplied PrimBytes [])
-  eval env (PrimEmbedBYTES $$ [b]) = SimpPrimNormal (SimpApplied PrimEmbedBYTES [eval env b])
-  eval env (PrimUnsized $$ [b]) =  SimpPrimNormal (SimpApplied PrimUnsized [eval env b])
+  eval env (($$) {r = PrimIrreducible} {k = PrimNorm} p sp) = SimpPrimNormal (SimpApplied p (eval env sp))
+  eval env (($$) {r = PrimIrreducible} {k = PrimNeu} p sp) = SimpApps (PrimNeutral (SimpApplied p (eval env sp)) $$ [])
   eval env (PrimAddBYTES $$ [a, b]) = primAddBYTES (eval env a) (eval env b)
   eval env (PrimAddBytes $$ [a, b]) = primAddBytes (eval env a) (eval env b)
