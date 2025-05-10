@@ -57,8 +57,9 @@ Unify (Body Value n) (Body Value n') where
     = inCase (primEq p p') (\Refl => unify s sp sp') \/ DontKnow
 
 Unify (Head Value Simplified) (Head Value Simplified) where
+  -- conservative for meta solutions
   unify s (ValVar v) (ValVar v') = unify s v v'
-  unify s (ValMeta m) (ValMeta m') = ?metasBro
+  unify s (ValMeta m) (ValMeta m') = inCase (decToSemiDec (decEq m m')) (\Refl => AreSame)
   unify s (PrimNeutral p) (PrimNeutral p') = unify s p p'
   unify s _ _ = DontKnow
 
@@ -73,6 +74,7 @@ Unify (Head Value Normalised) (Head Value Normalised) where
   unify _ _ _ = DontKnow
 
 Unify (HeadApplied Value Normalised) (HeadApplied Value Normalised) where
+  -- conservative
   unify s (h $$ sp) (h' $$ sp') = (unify s h h' /\ unify s sp sp') \/ DontKnow
 
 Unify LazyValue LazyValue where
@@ -81,19 +83,38 @@ Unify LazyValue LazyValue where
   unify s (LazyPrimNormal p) (LazyPrimNormal p') = unify s p p'
   unify _ _ _ = DontKnow
 
+-- Meta solving
+
+data Flex : MetaVar -> Ctx -> Type where
+  MkFlex : (m : MetaVar) -> (sp : Spine ar (Term Value) ns) -> Flex m ns
+
+solve : Size ns -> Flex m ns -> Term Value ns -> Unification
+solve s fl = ?solveMeta_rhs
+
+intersect : Size ns -> Flex m ns -> Flex m ns -> Unification
+intersect s fl fl' = ?intersect_rhs
+
+merge : Size ns -> Flex m ns -> Flex m' ns -> Unification
+merge s fl fl' = ?join_rhs
+
+-- Finally, term unification
+
 Unify (Term Value) (Term Value) where
-  unify s (SimpApps a) (SimpApps a') = unify s a a'
   unify s (MtaCallable m) (MtaCallable m') = unify s m m'
   unify s (SimpPrimNormal p) (SimpPrimNormal p') = unify s p p'
   unify s (SimpObjCallable o) (SimpObjCallable o') = unify s o o'
   unify s (RigidBinding md r) (RigidBinding md' r') = ifAndOnlyIf (decEq md md') (\Refl => unify s r r')
 
-  -- glued stuff
+  unify s a (SimpApps (ValMeta m $$ sp)) = ?rhs
+  unify s (SimpApps (ValMeta m $$ sp)) b = ?rhs2
+
+  -- glued terms can reduce further
   unify s (Glued a) (Glued b) = unify s a b \/ unify s (simplified a) (simplified b)
   unify s a (Glued b) = unify s a (simplified b)
   unify s (Glued a) b = unify s (simplified a) b
 
-  -- i dont know
+  -- simplified (rigid) applications
+  unify s (SimpApps a) (SimpApps a') = unify s a a'
   unify _ (SimpApps _) _ = DontKnow
   unify _ _ (SimpApps _) = DontKnow
 

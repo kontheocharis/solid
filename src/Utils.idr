@@ -27,3 +27,8 @@ public export
 public export
 (.identity) : {0 x : a} -> (s : Singleton x) -> s.value = x
 (.identity) (Val y) = Refl
+
+public export
+decToSemiDec : Dec a -> Maybe a
+decToSemiDec (Yes x) = Just x
+decToSemiDec (No _) = Nothing
