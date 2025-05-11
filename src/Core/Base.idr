@@ -135,48 +135,46 @@ namespace Sub
     Lin : Sub ns f [<]
     (:<) : Sub ns f ms -> f ns -> Sub ns f (ms :< m)
 
--- Order-preserving embeddings, AKA thinnings
-namespace OPE
+-- Weakenings
+namespace Wk
   public export
-  data OPE : Ctx -> Ctx -> Type where
-    Lin : OPE [<] [<]
-    Id : OPE ns ns -- explicit identity to make `wk` easier to implement
-    Keep : OPE ns ms -> OPE (ns :< n) (ms :< n)
-    Drop : OPE ns ms -> OPE (ns :< n) ms
+  data Wk : Ctx -> Ctx -> Type where
+    Id : Wk ns ns
+    Drop : Wk ns ms -> Wk (ns :< n) ms
 
 -- Some interfaces for syntax that involves variables
 
 -- Weakening
 public export
-interface Thin (0 tm : Ctx -> Type) where
-  thin : OPE ns ms -> tm ms -> tm ns
+interface Weak (0 tm : Ctx -> Type) where
+  weak : Wk ns ms -> tm ms -> tm ns
 
 public export
-(.) : Thin tm => Sub ms tm qs -> OPE ns ms -> Sub ns tm qs
+(.) : Weak tm => Sub ms tm qs -> Wk ns ms -> Sub ns tm qs
 [<] . e = [<]
-(xs :< x) . e = xs . e :< thin e x
+(xs :< x) . e = xs . e :< weak e x
 
 public export
-wk : Thin tm => tm ns -> tm (ns :< n)
-wk x = thin (Drop Id) x
+wk : Weak tm => tm ns -> tm (ns :< n)
+wk x = weak (Drop Id) x
 
 -- Syntax supports variables if it supports thinnings and the zero-th deBrujin
 -- index.
 public export
-interface (Thin tm) => Vars (0 tm : Ctx -> Type) where
+interface (Weak tm) => Vars (0 tm : Ctx -> Type) where
   here : Size ns -> tm (ns :< n)
 
 public export
-lift : (Thin tm, Vars tm) => Size ns -> Sub ns tm ms -> Sub (ns :< a) tm (ms :< a')
+lift : (Weak tm, Vars tm) => Size ns -> Sub ns tm ms -> Sub (ns :< a) tm (ms :< a')
 lift s env = env . Drop Id :< here s
 
 public export
-id : (Thin tm, Vars tm) => Size ns -> Sub ns tm ns
+id : (Weak tm, Vars tm) => Size ns -> Sub ns tm ns
 id SZ = [<]
 id (SS k) = lift k (id k)
 
 public export
-proj : (Thin tm, Vars tm) => Size ns -> Sub (ns :< n) tm ns
+proj : (Weak tm, Vars tm) => Size ns -> Sub (ns :< n) tm ns
 proj s = id s . Drop Id
 
 -- Evaluation, quoting and unification interfaces
@@ -192,38 +190,24 @@ interface Quote (0 val : Ctx -> Type) (0 tm : Ctx -> Type) where
 -- Basic implementations for the defined types
 
 public export
-Thin Lvl where
+Weak Lvl where
   -- @@Todo: use %transform, do not rely on identity optimisation
-  thin (Keep x) LZ = LZ
-  thin (Keep x) (LS l) = LS (thin x l)
-  thin (Drop x) LZ = LZ
-  thin (Drop x) (LS l) = LS (thin x (wkLvl l))
+  weak Id l = l
+  weak (Drop x) LZ = LZ
+  weak (Drop x) (LS l) = LS (weak x (wkLvl l))
     where
       wkLvl : Lvl us -> Lvl (us :< u)
       wkLvl LZ = LZ
       wkLvl (LS l) = LS (wkLvl l)
-  thin Id l = l
-
-public export
-Thin Idx where
-  thin (Keep x) IZ = IZ
-  thin (Keep x) (IS i) = IS (thin x i)
-  thin (Drop x) i = IS (thin x i) -- here is the non-free bit for indices!
-  thin Id i = i
 
 public export
 Quote Lvl Idx where
   quote = lvlToIdx
 
 public export
-(Thin tm) => Thin (Spine ar tm) where
-  thin e [] = []
-  thin e (x :: xs) = thin e x :: thin e xs
-
--- public export
--- (Quote val tm) => Quote (Tel ar val) (Tel ar tm) where
---   quote s [] = []
---   quote s (x :: xs) = quote s x :: quote (SS s) xs
+(Weak tm) => Weak (Spine ar tm) where
+  weak e [] = []
+  weak e (x :: xs) = weak e x :: weak e xs
 
 public export
 Eval over tm val => Eval over (Spine ar tm) (Spine ar val) where
