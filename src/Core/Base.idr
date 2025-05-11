@@ -53,6 +53,15 @@ data Idx : Ctx -> Type where
   IZ : Idx (ns :< n)
   IS : Idx ns -> Idx (ns :< n)
 
+public export
+DecEq (Idx ns) where
+  decEq IZ IZ = Yes Refl
+  decEq (IS l) (IS l') with (decEq l l')
+    decEq (IS l) (IS l) | Yes Refl = Yes Refl
+    _ | No contra = No (\Refl => contra Refl)
+  decEq (IS l) IZ = No (\Refl impossible)
+  decEq IZ (IS l) = No (\Refl impossible)
+
 -- De-Brujin levels.
 --
 -- Careful! LZ does not index the name n!
@@ -62,7 +71,6 @@ data Lvl : Ctx -> Type where
   LZ : Lvl (ns :< n)
   LS : Lvl ns -> Lvl (ns :< n)
 
--- This better be optimised
 public export
 DecEq (Lvl ns) where
   decEq LZ LZ = Yes Refl
@@ -102,6 +110,11 @@ public export
 lvlToIdx : Size ns -> Lvl ns -> Idx ns
 lvlToIdx (SS n) LZ = firstIdx n
 lvlToIdx (SS n) (LS l) = nextIdx (lvlToIdx n l)
+
+public export
+idxToLvl : Size ns -> Idx ns -> Lvl ns
+idxToLvl = ?fafa
+
 
 -- Give the last level in the context---most recently added variable.
 public export
@@ -154,6 +167,16 @@ namespace Sub
   data Sub : Ctx -> (Ctx -> Type) -> Ctx -> Type where
     Lin : Sub ns f [<]
     (:<) : Sub ns f ms -> f ns -> Sub ns f (ms :< m)
+
+  public export
+  (++) : Sub ns f ms -> Sub ns f ms' -> Sub ns f (ms ++ ms')
+  s ++ [<] = s
+  s ++ (xs :< x) = (s ++ xs) :< x
+
+public export
+subFromSpine : Spine ar f ns -> Sub ns f (arityToCtx ar)
+subFromSpine [] = [<]
+subFromSpine (x :: xs) = [< x] ++ subFromSpine xs
 
 -- Weakenings
 namespace Wk

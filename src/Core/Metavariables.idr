@@ -3,6 +3,7 @@ module Core.Metavariables
 
 import Utils
 import Decidable.Equality
+import Data.Maybe
 import Core.Base
 import Core.Syntax
 import Core.Evaluation
@@ -14,47 +15,46 @@ import Core.Evaluation
 --
 -- The strengthening can fail, which means some variables are "escaping".
 namespace PRen
+  -- Here we represent a partial renaming as a partial function from indices to
+  -- indices.
   public export
-  data PRen : Ctx -> Ctx -> Type where
-    Terminal : PRen ns [<]
-    Retain : PRen ns ms -> Lvl ns -> PRen ns (ms :< n)
-    Remove : PRen ns ms -> PRen ns (ms :< n)
-
-  public export
-  (.size) : PRen ns ms -> Size ms
-  (.size) Terminal = SZ
-  (.size) (Retain p l) = SS p.size
-  (.size) (Remove p) = SS p.size
-
-  -- Closed under post-composition with weakenings
-  public export
-  (.) : PRen ms qs -> Wk ns ms -> PRen ns qs
-  Terminal . e = Terminal
-  Retain p l . e = Retain (p . e) (weak e l)
-  Remove p . e = Remove (p . e)
+  record PRen (ns : Ctx) (ms : Ctx) where
+    constructor MkPRen
+    dom : Size ns
+    cod : Size ms
+    contains : Idx ms -> Maybe (Idx ns)
 
   public export
   id : Size ns -> PRen ns ns
-  id SZ = Terminal
-  id (SS k) = Retain (id k . Drop Id) LZ
+  id s = MkPRen s s (\i => Just i)
 
   public export
   removeAll : Size ns -> PRen [<] ns
-  removeAll SZ = Terminal
-  removeAll (SS k) = Remove (removeAll k)
+  removeAll s = MkPRen SZ s (\i => Nothing)
 
   public export
-  contains : Lvl ns -> PRen ns ms -> Bool
-  contains l Terminal = False
-  contains l (Retain p l') = case decEq l l' of
-    Yes Refl => True
-    No _ => contains l p
-  contains l (Remove p) = contains l p
+  lift : PRen ns ms -> PRen (ns :< n) (ms :< n')
+  lift (MkPRen dom cod contains) = MkPRen (SS dom) (SS cod) (\i => case i of
+    IZ => Just IZ
+    IS k => map IS (contains k))
 
-  public export
-  lift : Size ns -> PRen ns ms -> PRen (ns :< n) (ms :< n')
-  lift s p = Retain (p . Drop Id) (here s)
+-- Invert a renaming.
+--
+-- This yields a partial renaming.
+--
+-- Note: a renaming is just a substitution containing only variables.
+invertRen : Size ns -> Sub ns Idx ms -> Maybe (PRen ms ns)
+invertRen sns [<] = Just (removeAll sns)
+invertRen sns (xs :< x) = do
+  MkPRen dom cod contains <- invertRen sns xs
+  case contains x of
+    Nothing => Nothing
+    Just i => Just (MkPRen (SS dom) cod
+      (\i' => case decEq i' x of
+        Yes Refl => Just (firstIdx dom)
+        No _ => map IS (contains i')))
 
+-- An error while performing renaming on a term.
 public export
 data PRenError : Ctx -> Type where
   -- A variable does not appear in the strengthening
@@ -66,23 +66,26 @@ Weak PRenError where
   weak s (Escapes l) = Escapes (weak s l)
   weak s (InvalidMeta m) = InvalidMeta m
 
+-- Whether a metavariable is allowed to appear in a term being renamed.
+data MetaValidity : Type where
+  Valid : MetaValidity
+  Invalid : MetaValidity
+
 -- What is the plan? It consists of a partial renaming and a function that
 -- decides whether a meta variable can appear here.
 public export
 record Plan (ns : Ctx) (ms : Ctx) (us : Ctx) where
   constructor MkPlan
-  dom : Size ns
-  cod : Size ms
   ren : PRen ns ms
   lifted : Size us -- how many times we lifted the renaming
-  metaIsValid : MetaVar -> Bool
+  metaValidity : MetaVar -> MetaValidity
 
 -- Lift the plan by a bound variable
 --
 -- Does not affect the renaming.
 public export
 lift : Plan ns ms us -> Plan ns ms (us :< u)
-lift (MkPlan dom cod ren lifted v) = MkPlan dom cod ren (SS lifted) v
+lift (MkPlan ren lifted v) = MkPlan ren (SS lifted) v
 
 -- The renaming interface
 public export
@@ -91,8 +94,8 @@ interface Rename (0 tm : Ctx -> Type) where
 
 -- Should use this function for doing the actual renaming
 public export
-ren : Rename tm => Size ns -> PRen ns ms -> (MetaVar -> Bool) -> tm ms -> Either (PRenError ms) (tm ns)
-ren dom p metaIsValid = rename (MkPlan dom p.size p SZ metaIsValid)
+ren : Rename tm => PRen ns ms -> (MetaVar -> MetaValidity) -> tm ms -> Either (PRenError ms) (tm ns)
+ren p m = rename (MkPlan p SZ m)
 
 -- Renaming for the syntax:
 
@@ -112,15 +115,13 @@ Rename (Binder md r Syntax) where
 
 Rename Idx where
   -- We have not lifted; proceed with renaming
-  rename (MkPlan dom (SS cod) (Retain p l) SZ v) IZ = pure (lvlToIdx dom l)
-  -- Found an escaping variable! it is currently the first index so the last level
-  rename (MkPlan dom (SS cod) (Remove p) SZ v) IZ = Left (Escapes (lastLvl cod))
-  rename (MkPlan dom (SS cod) (Retain p l) SZ v) (IS i') = mapFst wk (rename (MkPlan dom cod p SZ v) i')
-  rename (MkPlan dom (SS cod) (Remove p) SZ v) (IS i') = mapFst wk (rename (MkPlan dom cod p SZ v) i')
+  rename (MkPlan pren SZ v) i = case pren.contains i of
+    Just j => pure j
+    Nothing => Left (Escapes (idxToLvl pren.cod i))
 
   -- We have lifted. Do not rename, just recurse
-  rename (MkPlan dom cod p (SS lifted) v) IZ = pure IZ
-  rename (MkPlan dom cod p (SS lifted) v) (IS i') = [| IS (rename (MkPlan dom cod p lifted v) i') |]
+  rename (MkPlan pren (SS lifted) v) IZ = pure IZ
+  rename (MkPlan pren (SS lifted) v) (IS i') = [| IS (rename (MkPlan pren lifted v) i') |]
 
 Rename (Variable Syntax) where
   rename p (Index l) = [| Index (rename p l) |]
@@ -133,7 +134,9 @@ Rename (Binding md r Syntax) where
 
 Rename (Head Syntax NA) where
   rename p (SynVar v) = SynVar <$> rename p v
-  rename p (SynMeta v) = if p.metaIsValid v then pure (SynMeta v) else Left (InvalidMeta v)
+  rename p (SynMeta v) = case p.metaValidity v of
+    Valid => pure (SynMeta v)
+    Invalid => Left (InvalidMeta v)
   rename p (SynBinding md r t) = SynBinding md r <$> rename p t
   rename p (PrimNeutral prim) = PrimNeutral <$> rename p prim
 
@@ -146,10 +149,8 @@ Rename (Term Syntax) where
   rename p (RigidBinding md t) = RigidBinding md <$> rename p t
   rename p (SynPrimNormal prim) = [| SynPrimNormal (rename p prim) |]
 
--- Spine inversion
-
 data InvertError : Ctx -> Type where
-  -- The given variable appears more than once in the spine
+  -- The given variable appears more than once in the renaming
   NonLinear : Lvl ns -> InvertError ns
   -- The spine contains the given non-variable entry
   NonVar : Term Value ns -> InvertError ns
@@ -158,36 +159,18 @@ Weak InvertError where
   weak s (NonLinear l) = NonLinear (weak s l)
   weak s (NonVar t) = NonVar (weak s t)
 
--- 0 Ren' : Ctx -> Ctx -> Type
--- Ren' ns ms = List (Lvl ns, Lvl ms)
---
-
-lookup : Sub ns Lvl ms -> Lvl ns -> Maybe (Lvl ms)
-
-invert : Size ns -> Sub ns Lvl ms -> Either (InvertError ns) (PRen ms ns)
-invert SZ sp = pure Terminal
-invert (SS s) sp = case lookup sp (lastLvl s) of
-  Just l => ?fafaa
-  Nothing => pure (Remove ?fafa)
-
-  -- return ()
-
--- invert
--- invert SZ sp = pure Terminal
--- invert (SS u) (sp :< x) = Right (Retain (?ff) x)
--- invert s [<] = pure (removeAll s)
--- invert s@(SS _) (xs :< x) = do
---   pren <- invert s xs
---   let x' = ?x
---   if contains x' pren
---     then Left (NonLinear x)
---     else Right ?ff
-
--- invert (SS s) sp = do
---   l <- mapFst wk (invert s ?sp)
---   pure (Retain l ?ff)
-
--- Retain <$> (?o) <*> pure ?ff
+-- Ensure that a spine contains all variables, and thus
+-- turn it into a renaming.
+spineToRen : (resolve : Term Value ns -> Term Value ns)
+  -> Size ns
+  -> Spine ar (Term Value) ns
+  -> Maybe (Sub ns Idx (arityToCtx ar))
+spineToRen resolve s [] = Just [<]
+spineToRen resolve s (x :: xs) = case resolve x of
+  SimpApps (ValVar (Level l) $$ []) => do
+    xs' <- spineToRen resolve s xs
+    pure $ [<lvlToIdx s l] ++ xs'
+  _ => Nothing
 
 -- Actually solving metavariables
 
