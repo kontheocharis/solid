@@ -9,41 +9,37 @@ import Core.Syntax
 
 -- Terms can be evalued and quoted (given later)
 public export
-0 EvalTm : Type
-EvalTm = Eval (Term Value) (Term Syntax) (Term Value)
+Eval (Term Value) (Term Syntax) (Term Value)
 
 public export
-0 WeakVal : Type
-WeakVal = Weak (Term Value)
+Weak (Term Value)
 
 public export
-0 QuoteVal : Type
-QuoteVal = Quote (Term Value) (Term Syntax)
+Quote (Term Value) (Term Syntax)
 
 -- We will give the reduction rules of primitives separately
 public export
-0 EvalPrim : Type
-EvalPrim = forall k, e . Eval (Term Value) (PrimitiveApplied k Syntax e) (Term Value)
+Eval (Term Value) (PrimitiveApplied k Syntax e) (Term Value)
 
 -- Evaluation and quoting for all the syntax:
 
 -- Every callable binding value can be applied to a term.
 public export
-callBinding : EvalTm => Binding s Callable Value ns -> Term Value ns -> Term Value ns
+callBinding : Binding s Callable Value ns -> Term Value ns -> Term Value ns
 callBinding (Bound s n BindLam (Closure env body)) arg = eval (env :< arg) body
 
 -- Every thunk can be forced.
 public export
-forceThunk : EvalTm => Binding s Thunk Value ns -> Term Value ns
+forceThunk : Binding s Thunk Value ns -> Term Value ns
 forceThunk (Bound s n (BindLet _ v) (Closure env body)) = eval (env :< v) body
 
 public export
-QuoteVal => Quote (PrimitiveApplied k Value e) (PrimitiveApplied k Syntax NA) where
+Quote (PrimitiveApplied k Value e) (PrimitiveApplied k Syntax NA) where
   quote s (SimpApplied h sp) = h $$ quote s sp
   quote s (LazyApplied h sp _) = h $$ quote s sp
 
 public export
-WeakVal => Weak (PrimitiveApplied k Value e) where
+Weak (PrimitiveApplied k Value e) where
   weak e (SimpApplied h sp) = SimpApplied h (weak e sp)
   weak e (LazyApplied h sp gl) = LazyApplied h (weak e sp) (weak e gl)
 
@@ -56,7 +52,7 @@ Quote (Term d) (Term d') => Quote (Binder md r d) (Binder md r d') where
   quote s b = mapBinder (quote s) b
 
 public export
-WeakVal => Weak (Binder md r Value) where
+Weak (Binder md r Value) where
   weak e b = mapBinder (weak e) b
 
 public export
@@ -70,11 +66,11 @@ Quote (Variable Value) (Variable Syntax) where
   quote s (Level l) = Index (quote s l)
 
 public export
-(WeakVal) => Weak (Variable Value) where
+Weak (Variable Value) where
   weak s (Level l) = Level (weak s l)
 
 public export
-WeakVal => Vars (Term Value) where
+Vars (Term Value) where
   here s = SimpApps (ValVar (Level (lastLvl s)) $$ [])
 
 public export
@@ -82,31 +78,31 @@ Eval (Term Value) (Body Syntax n) (Body Value n) where
   eval env (Delayed t) = Closure env t
 
 public export
-(WeakVal, QuoteVal, EvalTm) => Quote (Body Value n) (Body Syntax n) where
+Quote (Body Value n) (Body Syntax n) where
   quote s (Closure env t) = Delayed (quote {val = Term Value} (SS s) (eval (lift s env) t))
 
 public export
-WeakVal => Weak (Body Value n) where
+Weak (Body Value n) where
   weak e (Closure env t) = Closure (env . e) t
 
 public export
-EvalTm => Eval (Term Value) (Binding s r Syntax) (Binding s r Value) where
+Eval (Term Value) (Binding s r Syntax) (Binding s r Value) where
   eval env (Bound s n bind body) = Bound s n (eval env bind) (eval env body)
 
 public export
-(WeakVal, QuoteVal, EvalTm) => Quote (Binding s r Value) (Binding s r Syntax) where
-  quote s (Bound s' n bind body) = Bound s' n (quote s bind) (quote s body)
+Quote (Binding md r Value) (Binding md r Syntax) where
+  quote s (Bound md n bind body) = Bound md n (quote s bind) (quote s body)
 
 public export
-WeakVal => Weak (Binding s r Value) where
-  weak s (Bound s' n bind body) = Bound s' n (weak s bind) (weak s body)
+Weak (Binding md r Value) where
+  weak s (Bound md n bind body) = Bound md n (weak s bind) (weak s body)
 
 -- Helper to apply a value to a spine.
 --
 -- This is the only place where it could crash if there is a bug, because
 -- the syntax is not well-typed (only well-scoped).
 public export
-apps : EvalTm => Term Value ns -> Spine ar (Term Value) ns -> Term Value ns
+apps : Term Value ns -> Spine ar (Term Value) ns -> Term Value ns
 apps (Glued (LazyApps (v $$ sp) gl)) sp' = Glued (LazyApps (v $$ sp ++ sp') (apps gl sp'))
 apps (SimpApps (v $$ sp)) sp' = SimpApps (v $$ sp ++ sp')
 apps (MtaCallable t) [] = MtaCallable t
@@ -118,7 +114,7 @@ apps (SimpPrimNormal _) sp' = error "impossible"
 apps (Glued (LazyPrimNormal _)) sp' = error "impossible"
 
 public export
-(EvalTm, EvalPrim) => Eval (Term Value) (Head Syntax NA) (Term Value) where
+Eval (Term Value) (Head Syntax NA) (Term Value) where
   eval env (SynVar v) = eval env v
   eval env (SynMeta v) = SimpApps (ValMeta v $$ [])
   eval env (SynBinding md Rigid t) = RigidBinding md (eval env t)
@@ -129,7 +125,7 @@ public export
   eval env (PrimNeutral prim) = eval env prim
 
 public export
-(WeakVal, QuoteVal, EvalTm) => Quote (Head Value hk) (Head Syntax NA) where
+Quote (Head Value hk) (Head Syntax NA) where
   quote s (ValVar v) = SynVar (quote s v)
   quote s (ValMeta m) = SynMeta m
   quote s (ObjCallable t) = SynBinding Obj Callable (quote s t)
@@ -137,7 +133,7 @@ public export
   quote s (PrimNeutral p) = PrimNeutral {e = NA} (quote s p)
 
 public export
-WeakVal => Weak (Head Value hk) where
+Weak (Head Value hk) where
   weak s (ValVar v) = ValVar (weak s v)
   weak s (ValMeta m) = ValMeta m
   weak s (ObjCallable t) = ObjCallable (weak s t)
@@ -145,11 +141,15 @@ WeakVal => Weak (Head Value hk) where
   weak s (PrimNeutral p) = PrimNeutral (weak s p)
 
 public export
-(WeakVal, QuoteVal, EvalTm) => Quote (HeadApplied Value hk) (HeadApplied Syntax NA) where
+Eval (Term Value) (HeadApplied Syntax NA) (Term Value) where
+  eval env (($$) {ar = ar} h sp) = apps {ar = ar} (eval env h) (eval env sp)
+
+public export
+Quote (HeadApplied Value hk) (HeadApplied Syntax NA) where
   quote s (($$) {ar = ar} h sp) = ($$) {ar = ar} (quote s h) (quote s sp)
 
 public export
-WeakVal => Weak (HeadApplied Value hk) where
+Weak (HeadApplied Value hk) where
   weak e (h $$ sp) = weak e h $$ weak e sp
 
 public export
@@ -163,13 +163,13 @@ Weak (Term Value) where
   weak e (SimpPrimNormal p) = SimpPrimNormal (weak e p)
 
 public export
-EvalPrim => Eval (Term Value) (Term Syntax) (Term Value) where
-  eval env (SynApps (($$) {ar = ar} h sp)) = apps {ar = ar} (eval env h) (eval env sp)
+Eval (Term Value) (Term Syntax) (Term Value) where
+  eval env (SynApps ha) = eval env ha
   eval env (RigidBinding md t) = RigidBinding md (eval env t)
   eval env (SynPrimNormal prim) = eval env prim
 
 public export
-EvalPrim => Quote (Term Value) (Term Syntax) where
+Quote (Term Value) (Term Syntax) where
   quote s (Glued (LazyApps a _)) = SynApps (quote s a)
   quote s (Glued (LazyPrimNormal a)) = SynPrimNormal (quote s a)
   quote s (SimpApps a) = SynApps (quote s a)

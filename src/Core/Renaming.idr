@@ -1,3 +1,4 @@
+-- (Parital) renaming and other transformations on syntax, used for solving metavariables.
 module Core.Renaming
 
 import Utils
@@ -8,7 +9,7 @@ import Core.Evaluation
 
 %default covering
 
--- A partial renaming is a "strengthening" followed by an epimorphism, followed
+-- A partial renaming is a "strengthening" followed by a monomorphism, followed
 -- by a weakening.
 --
 -- The strengthening can fail, which means some variables are "escaping".
@@ -40,7 +41,7 @@ public export
 data PRenError : Ctx -> Type where
   -- A variable does not appear in the strengthening
   Escapes : Lvl ms -> PRenError ms
-  -- A meta is invalid, basically trying to create a cyclic solution.
+  -- A meta is invalid, e.g. trying to create a cyclic solution.
   InvalidMeta : MetaVar -> PRenError ms
 
 Weak PRenError where
@@ -50,45 +51,71 @@ Weak PRenError where
 -- What is the plan? It consists of a partial renaming and a function that
 -- decides whether a meta variable can appear here.
 public export
-record Plan (ns : Ctx) (ms : Ctx) where
+record Plan (ns : Ctx) (ms : Ctx) (us : Ctx) where
   constructor MkPlan
   dom : Size ns
   cod : Size ms
   ren : PRen ns ms
+  lifted : Size us -- how many times we lifted the renaming
   metaIsValid : MetaVar -> Bool
 
 public export
-interface Rename (0 src : Ctx -> Type) (0 dest : Ctx -> Type) where
-  rename : Plan ns ms -> src ms -> Either (PRenError ms) (dest ns)
+lift : Plan ns ms us -> Plan ns ms (us :< u)
+lift (MkPlan dom cod ren lifted v) = MkPlan dom cod ren (SS lifted) v
 
-renameLazy : Rename src dest => Plan ns ms -> Lazy (src ms) -> Either (PRenError ms) (Lazy (dest ns))
+public export
+interface Rename (0 tm : Ctx -> Type) where
+  rename : Plan ns ms us -> tm (ms ++ us) -> Either (PRenError ms) (tm (ns ++ us))
+
+renameLazy : Rename tm => Plan ns ms us -> Lazy (tm (ms ++ us)) -> Either (PRenError ms) (Lazy (tm (ns ++ us)))
 renameLazy @{t} p gl = delay <$> rename @{t} p (force gl)
 
-Rename (Term Value) (Term Value)
+Rename (Term Syntax)
 
-Rename (Spine ar (Term Value)) (Spine ar (Term Value)) where
+Rename (Spine ar (Term Syntax)) where
   rename p sp = traverseSpine (rename p) sp
 
-Rename (PrimitiveApplied k Value e) (PrimitiveApplied k Value e) where
-  rename p (SimpApplied h sp) = [| SimpApplied (pure h) (rename p sp) |]
-  rename p (LazyApplied h sp gl) = [| LazyApplied (pure h) (rename p sp) (renameLazy p gl) |]
+Rename (PrimitiveApplied k Syntax e) where
+  rename p (h $$ sp) = [| pure h $$ rename p sp |]
 
 public export
-Rename (Binder md r Value) (Binder md r Value) where
+Rename (Binder md r Syntax) where
   rename p b = traverseBinder (rename p) b
 
--- We do the renaming on indices, because renaming is index-based.
 public export
-Rename Idx Lvl where
-  rename (MkPlan dom (SS cod) (Retain p l) v) IZ = pure l
-  rename (MkPlan dom (SS cod) (Remove p) v) IZ = Left (Escapes (lastLvl cod))
-  rename (MkPlan dom (SS cod) (Retain p l) v) (IS i') = mapFst wk (rename (MkPlan dom cod p v) i')
-  rename (MkPlan dom (SS cod) (Remove p) v) (IS i') = mapFst wk (rename (MkPlan dom cod p v) i')
+Rename Idx where
+  rename (MkPlan dom (SS cod) (Retain p l) SZ v) IZ = pure (lvlToIdx dom l)
+  rename (MkPlan dom (SS cod) (Remove p) SZ v) IZ = Left (Escapes (lastLvl cod))
+  rename (MkPlan dom (SS cod) (Retain p l) SZ v) (IS i') = mapFst wk (rename (MkPlan dom cod p SZ v) i')
+  rename (MkPlan dom (SS cod) (Remove p) SZ v) (IS i') = mapFst wk (rename (MkPlan dom cod p SZ v) i')
+  rename (MkPlan dom cod p (SS lifted) v) IZ = pure IZ
+  rename (MkPlan dom cod p (SS lifted) v) (IS i') = [| IS (rename (MkPlan dom cod p lifted v) i') |]
 
 public export
-Rename Lvl Lvl where
-  rename p l = rename p (lvlToIdx p.cod l)
+Rename (Variable Syntax) where
+  rename p (Index l) = [| Index (rename p l) |]
 
 public export
-Rename (Variable Value) (Variable Value) where
-  rename p (Level l) = [| Level (rename p l) |]
+Rename (Body Syntax n) where
+  rename p (Delayed t) = [| Delayed (rename (lift p) t) |]
+
+public export
+Rename (Binding md r Syntax) where
+  rename p (Bound md n bind body) = Bound md n <$> rename p bind <*> rename p body
+
+public export
+  Rename (Head Syntax NA) where
+    rename p (SynVar v) = SynVar <$> rename p v
+    rename p (SynMeta v) = if p.metaIsValid v then pure (SynMeta v) else Left (InvalidMeta v)
+    rename p (SynBinding md r t) = SynBinding md r <$> rename p t
+    rename p (PrimNeutral prim) = PrimNeutral <$> rename p prim
+
+public export
+Rename (HeadApplied Syntax NA) where
+  rename p (($$) {ar = ar} h sp) = [| ($$) {ar = ar} (rename p h) (rename p sp) |]
+
+public export
+Rename (Term Syntax) where
+  rename p (SynApps as) = [| SynApps (rename p as) |]
+  rename p (RigidBinding md t) = RigidBinding md <$> rename p t
+  rename p (SynPrimNormal prim) = [| SynPrimNormal (rename p prim) |]
