@@ -38,7 +38,7 @@ namespace PRen
     IZ => Just IZ
     IS k => map IS (contains k))
 
--- Invert a renaming.
+-- Invert a renaming if possible (i.e. if it is linear).
 --
 -- This yields a partial renaming.
 --
@@ -149,16 +149,6 @@ Rename (Term Syntax) where
   rename p (RigidBinding md t) = RigidBinding md <$> rename p t
   rename p (SynPrimNormal prim) = [| SynPrimNormal (rename p prim) |]
 
-data InvertError : Ctx -> Type where
-  -- The given variable appears more than once in the renaming
-  NonLinear : Lvl ns -> InvertError ns
-  -- The spine contains the given non-variable entry
-  NonVar : Term Value ns -> InvertError ns
-
-Weak InvertError where
-  weak s (NonLinear l) = NonLinear (weak s l)
-  weak s (NonVar t) = NonVar (weak s t)
-
 -- Ensure that a spine contains all variables, and thus
 -- turn it into a renaming.
 spineToRen : (resolve : Term Value ns -> Term Value ns)
@@ -173,6 +163,12 @@ spineToRen resolve s (x :: xs) = case resolve x of
   _ => Nothing
 
 -- Actually solving metavariables
+
+data SolveError : Type where
+  -- A variable appears more than once in the metavariable spine.
+  NonLinear : SolveError
+  -- The metavariable spine contains a non-variable entry
+  NonVar : SolveError
 
 data Flex : MetaVar -> Ctx -> Type where
   MkFlex : (m : MetaVar) -> (sp : Spine ar (Term Value) ns) -> Flex m ns
