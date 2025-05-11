@@ -201,6 +201,10 @@ Weak Lvl where
       wkLvl (LS l) = LS (wkLvl l)
 
 public export
+Vars Lvl where
+  here s = lastLvl s
+
+public export
 Quote Lvl Idx where
   quote = lvlToIdx
 
