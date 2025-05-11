@@ -14,7 +14,8 @@ authors = "Constantine Theocharis"
 
 -- packages to add to search path
 depends = base >= 0.5.1
-          , elab-util
+        , hashable
+        , hashmap
 
 -- modules to install
 -- modules =
