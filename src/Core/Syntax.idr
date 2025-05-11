@@ -4,6 +4,7 @@ module Core.Syntax
 import Utils
 import Core.Base
 import Decidable.Equality
+import Control.Monad.Identity
 
 %default total
 
@@ -107,12 +108,15 @@ data Binder : Stage -> Reducibility -> Domain -> Ctx -> Type where
   -- Meta or object-level pi
   BindPi : (dom : Term d ns) -> Binder s Rigid d ns
 
--- Binder is a functor
+public export
+traverseBinder : Applicative f => (Term d ns -> f (Term d' ms)) -> Binder md r d ns -> f (Binder md r d' ms)
+traverseBinder _ BindLam = pure BindLam
+traverseBinder f (BindLet ty t) = [| BindLet (f ty) (f t) |]
+traverseBinder f (BindPi t) = [| BindPi (f t) |]
+
 public export
 mapBinder : (Term d ns -> Term d' ms) -> Binder md r d ns -> Binder md r d' ms
-mapBinder _ BindLam = BindLam
-mapBinder f (BindLet ty t) = BindLet (f ty) (f t)
-mapBinder f (BindPi t) = BindPi (f t)
+mapBinder f b = (traverseBinder (Id . f) b).runIdentity
 
 -- Variables are de-Brujin indices or levels depending on if we are in value or
 -- syntax ~> fast variable lookup during evaluation, and free weakening for
