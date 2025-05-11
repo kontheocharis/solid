@@ -83,20 +83,6 @@ Unify LazyValue LazyValue where
   unify s (LazyPrimNormal p) (LazyPrimNormal p') = unify s p p'
   unify _ _ _ = DontKnow
 
--- Meta solving
-
-data Flex : MetaVar -> Ctx -> Type where
-  MkFlex : (m : MetaVar) -> (sp : Spine ar (Term Value) ns) -> Flex m ns
-
-solve : Size ns -> Flex m ns -> Term Value ns -> Unification
-solve s fl = ?solveMeta_rhs
-
-intersect : Size ns -> Flex m ns -> Flex m ns -> Unification
-intersect s fl fl' = ?intersect_rhs
-
-merge : Size ns -> Flex m ns -> Flex m' ns -> Unification
-merge s fl fl' = ?join_rhs
-
 -- Finally, term unification
 
 Unify (Term Value) (Term Value) where

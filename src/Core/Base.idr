@@ -36,6 +36,11 @@ Arity = List Ident
 
 export infixl 7 ::<
 
+public export
+arityToCtx : Arity -> Ctx
+arityToCtx [] = [<]
+arityToCtx (a :: as) = [< a] ++ arityToCtx as
+
 -- Extend a context skeleton with some arity.
 public export
 (::<) : Ctx -> Arity -> Ctx
