@@ -138,7 +138,7 @@ HasMetas m => Unify m sm (Term Value) (Term Value)
 -- Must also be in the same stage to be unifiable.
 {r, r' : Reducibility} -> HasMetas m => Unify m sm (Binder md r Value n) (Binder md r' Value n') where
   unify _ (BindLam _) (BindLam _) = pure AreSame
-  unify s (BindLet _ tyA a) (BindLet _ tyB b) = (unify s tyA tyB /\ unify s a b) \/ pure DontKnow
+  unify s (BindLet _ tyA a) (BindLet _ tyB b) = noSolving ((unify s tyA tyB /\ unify s a b) \/ pure DontKnow)
   unify s (BindPi _ a) (BindPi _ b) = unify s a b
   unify {r = Rigid} {r' = Rigid} _ _ _ = pure AreDifferent
   unify _ _ _ = pure DontKnow
@@ -156,16 +156,18 @@ HasMetas m => Unify m sm (Body Value n) (Body Value n') where
   unify s (Bound md bindA bodyA) (Bound md bindB bodyB)
     = unify s bindA bindB /\ unify s bodyA bodyB
 
-{hk : PrimitiveClass} -> HasMetas m => Unify m sm (PrimitiveApplied hk Value Simplified) (PrimitiveApplied hk Value Simplified) where
-  unify s (SimpApplied {r = PrimIrreducible} p sp) (SimpApplied {r = PrimIrreducible} p' sp')
-    = ifAndOnlyIfHack (primEq p p') (\Refl => unify s sp sp')
-  unify s (SimpApplied p sp) (SimpApplied p' sp')
-    = noSolving (inCase (primEq p p') (\Refl => unify s sp sp') \/ pure DontKnow)
+{hk : PrimitiveClass} -> HasMetas m =>
+  Unify m sm (PrimitiveApplied hk Value Simplified) (PrimitiveApplied hk Value Simplified) where
+    unify s (SimpApplied {r = PrimIrreducible} p sp) (SimpApplied {r = PrimIrreducible} p' sp')
+      = ifAndOnlyIfHack (primEq p p') (\Refl => unify s sp sp')
+    unify s (SimpApplied p sp) (SimpApplied p' sp')
+      = noSolving (inCase (primEq p p') (\Refl => unify s sp sp') \/ pure DontKnow)
 
-{hk : PrimitiveClass} -> HasMetas m => Unify m SolvingNotAllowed (PrimitiveApplied hk Value Normalised) (PrimitiveApplied hk Value Normalised) where
-  -- conservative
-  unify s (LazyApplied p sp gl) (LazyApplied p' sp' gl')
-    = inCase (primEq p p') (\Refl => unify s sp sp') \/ pure DontKnow
+{hk : PrimitiveClass} -> HasMetas m =>
+  Unify m SolvingNotAllowed (PrimitiveApplied hk Value Normalised) (PrimitiveApplied hk Value Normalised) where
+    -- conservative
+    unify s (LazyApplied p sp gl) (LazyApplied p' sp' gl')
+      = inCase (primEq p p') (\Refl => unify s sp sp') \/ pure DontKnow
 
 HasMetas m => Unify m SolvingNotAllowed (Head Value Simplified) (Head Value Simplified) where
   -- conservative for meta solutions
@@ -175,6 +177,7 @@ HasMetas m => Unify m SolvingNotAllowed (Head Value Simplified) (Head Value Simp
   unify s _ _ = pure DontKnow
 
 HasMetas m => Unify m sm (HeadApplied Value Simplified) (HeadApplied Value Simplified) where
+  -- will never retry from this so it's fine to say DontKnow in the end
   unify s (h $$ sp) (h' $$ sp') = (noSolving (unify s h h') /\ unify s sp sp') \/ pure DontKnow
 
 HasMetas m => Unify m SolvingNotAllowed (Head Value Normalised) (Head Value Normalised) where
