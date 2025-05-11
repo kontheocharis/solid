@@ -80,21 +80,25 @@ data Count : Arity -> Type where
 
 -- Some de-Brujin helpers:
 
+-- Give the first index in the context---least recently added variable.
 public export
 firstIdx : Size ns -> Idx (ns :< n)
 firstIdx SZ = IZ
 firstIdx (SS n) = IS (firstIdx n)
 
+-- Give the next index (i.e. the index of the element after the given one).
 public export
 nextIdx : Idx ns -> Idx (ns :< n)
 nextIdx IZ = IZ
 nextIdx (IS i) = IS (nextIdx i)
 
+-- Get the corresponding index for a level in the context.
 public export
 lvlToIdx : Size ns -> Lvl ns -> Idx ns
 lvlToIdx (SS n) LZ = firstIdx n
 lvlToIdx (SS n) (LS l) = nextIdx (lvlToIdx n l)
 
+-- Give the last level in the context---most recently added variable.
 public export
 lastLvl : Size ns -> Lvl (ns :< n)
 lastLvl SZ = LZ

@@ -84,10 +84,13 @@ Rename (Binder md r Syntax) where
 
 public export
 Rename Idx where
+  -- We have not lifted; proceed with renaming
   rename (MkPlan dom (SS cod) (Retain p l) SZ v) IZ = pure (lvlToIdx dom l)
   rename (MkPlan dom (SS cod) (Remove p) SZ v) IZ = Left (Escapes (lastLvl cod))
   rename (MkPlan dom (SS cod) (Retain p l) SZ v) (IS i') = mapFst wk (rename (MkPlan dom cod p SZ v) i')
   rename (MkPlan dom (SS cod) (Remove p) SZ v) (IS i') = mapFst wk (rename (MkPlan dom cod p SZ v) i')
+
+  -- We have lifted. Do not rename, just recurse
   rename (MkPlan dom cod p (SS lifted) v) IZ = pure IZ
   rename (MkPlan dom cod p (SS lifted) v) (IS i') = [| IS (rename (MkPlan dom cod p lifted v) i') |]
 
