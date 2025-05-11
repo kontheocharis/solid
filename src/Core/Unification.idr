@@ -136,10 +136,10 @@ HasMetas m => Unify m sm (Term Value) (Term Value)
 -- Unification outcome depends on reducibility
 --
 -- Must also be in the same stage to be unifiable.
-{r, r' : Reducibility} -> HasMetas m => Unify m sm (Binder md r Value) (Binder md r' Value) where
-  unify _ BindLam BindLam = pure AreSame
-  unify s (BindLet tyA a) (BindLet tyB b) = (unify s tyA tyB /\ unify s a b) \/ pure DontKnow
-  unify s (BindPi a) (BindPi b) = unify s a b
+{r, r' : Reducibility} -> HasMetas m => Unify m sm (Binder md r Value n) (Binder md r' Value n') where
+  unify _ (BindLam _) (BindLam _) = pure AreSame
+  unify s (BindLet _ tyA a) (BindLet _ tyB b) = (unify s tyA tyB /\ unify s a b) \/ pure DontKnow
+  unify s (BindPi _ a) (BindPi _ b) = unify s a b
   unify {r = Rigid} {r' = Rigid} _ _ _ = pure AreDifferent
   unify _ _ _ = pure DontKnow
 
@@ -153,7 +153,7 @@ HasMetas m => Unify m sm (Body Value n) (Body Value n') where
       (eval (lift s envB) tB)
 
 {r, r' : Reducibility} -> HasMetas m => Unify m sm (Binding md r Value) (Binding md r' Value) where
-  unify s (Bound md n bindA bodyA) (Bound md n' bindB bodyB)
+  unify s (Bound md bindA bodyA) (Bound md bindB bodyB)
     = unify s bindA bindB /\ unify s bodyA bodyB
 
 {hk : PrimitiveClass} -> HasMetas m => Unify m sm (PrimitiveApplied hk Value Simplified) (PrimitiveApplied hk Value Simplified) where

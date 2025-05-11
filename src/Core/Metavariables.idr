@@ -71,6 +71,11 @@ data MetaValidity : Type where
   Valid : MetaValidity
   Invalid : MetaValidity
 
+differentFrom : MetaVar -> MetaVar -> MetaValidity
+differentFrom m m' = case decEq m m' of
+  Yes Refl => Invalid
+  No _ => Valid
+
 -- What is the plan? It consists of a partial renaming and a function that
 -- decides whether a meta variable can appear here.
 public export
@@ -110,7 +115,7 @@ Rename (Spine ar (Term Syntax)) where
 Rename (PrimitiveApplied k Syntax e) where
   rename p (h $$ sp) = [| pure h $$ rename p sp |]
 
-Rename (Binder md r Syntax) where
+Rename (Binder md r Syntax n) where
   rename p b = traverseBinder (rename p) b
 
 Rename Idx where
@@ -130,7 +135,7 @@ Rename (Body Syntax n) where
   rename p (Delayed t) = [| Delayed (rename (lift p) t) |]
 
 Rename (Binding md r Syntax) where
-  rename p (Bound md n bind body) = Bound md n <$> rename p bind <*> rename p body
+  rename p (Bound md {n = n} bind body) = Bound md {n = n} <$> rename p bind <*> rename p body
 
 Rename (Head Syntax NA) where
   rename p (SynVar v) = SynVar <$> rename p v
@@ -151,6 +156,8 @@ Rename (Term Syntax) where
 
 -- Ensure that a spine contains all variables, and thus
 -- turn it into a renaming.
+--
+-- This returns nothing if the spine contains a non-variable.
 spineToRen : (resolve : Term Value ns -> Term Value ns)
   -> Size ns
   -> Spine ar (Term Value) ns
@@ -164,20 +171,42 @@ spineToRen resolve s (x :: xs) = case resolve x of
 
 -- Actually solving metavariables
 
-data SolveError : Type where
+data SolveError : Ctx -> Type where
   -- A variable appears more than once in the metavariable spine.
-  NonLinear : SolveError
+  NonLinear : Spine ar (Term Value) ns -> SolveError ns
   -- The metavariable spine contains a non-variable entry
-  NonVar : SolveError
+  NonVar : Spine ar (Term Value) ns -> SolveError ns
+  -- A renaming error occurred while preparing the solution
+  RenamingError : PRenError ns -> SolveError ns
 
+Weak SolveError where
+  weak s (NonLinear sp) = NonLinear (weak s sp)
+  weak s (NonVar sp) = NonVar (weak s sp)
+  weak s (RenamingError err) = RenamingError (weak s err)
+
+-- A flex is a metavariable applied to a spine of arguments
 data Flex : MetaVar -> Ctx -> Type where
   MkFlex : (m : MetaVar) -> (sp : Spine ar (Term Value) ns) -> Flex m ns
 
-solve : Size ns -> Flex m ns -> Term Value ns -> Unification
-solve s fl = ?solveMeta_rhs
-
-intersect : Size ns -> Flex m ns -> Flex m ns -> Unification
-intersect s fl fl' = ?intersect_rhs
-
-merge : Size ns -> Flex m ns -> Flex m' ns -> Unification
-merge s fl fl' = ?join_rhs
+-- Solve a problem of the form
+--
+-- ?m sp =? t
+solve : (resolve : Term Value ns -> Term Value ns)
+  -> Size ns
+  -> Flex m ns
+  -> Term Value ns
+  -> Either (SolveError ns) (Term Value [<])
+solve resolve s (MkFlex m sp) t =
+  -- Turn the spine into a renaming
+  case spineToRen resolve s sp of
+    Nothing => Left (NonVar sp)
+    -- Invert to get a partial renaming
+    Just sp' => case invertRen s sp' of
+      Nothing => Left (NonLinear sp)
+      Just pren =>
+        -- Apply the partial renaming to the term, and wrap it in lambdas to
+        -- close it
+        let st : Term Syntax _ = quote s t in
+        case ren pren (differentFrom m) st of
+          Left err => Left (RenamingError err)
+          Right t' => Right (eval {over = Term Value} [<] $ lams pren.dom t')

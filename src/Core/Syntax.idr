@@ -92,24 +92,28 @@ export infixr 5 $$
 --
 -- Each of these might carry some data.
 public export
-data Binder : Stage -> Reducibility -> Domain -> Ctx -> Type where
+data Binder : Stage -> Reducibility -> Domain -> Ident -> Ctx -> Type where
+  -- Internal lambda, does not store a name
+  InternalLam : Binder s Callable d n ns
+
   -- Meta or object-level lambda
-  BindLam : Binder s Callable d ns
+  BindLam : (n : Ident) -> Binder s Callable d n ns
 
   -- Meta or object-level let
-  BindLet : (ty : Term d ns) -> (rhs : Term d ns) -> Binder s Thunk d ns
+  BindLet : (n : Ident) -> (ty : Term d ns) -> (rhs : Term d ns) -> Binder s Thunk d n ns
 
   -- Meta or object-level pi
-  BindPi : (dom : Term d ns) -> Binder s Rigid d ns
+  BindPi : (n : Ident) -> (dom : Term d ns) -> Binder s Rigid d n ns
 
 public export
-traverseBinder : Applicative f => (Term d ns -> f (Term d' ms)) -> Binder md r d ns -> f (Binder md r d' ms)
-traverseBinder _ BindLam = pure BindLam
-traverseBinder f (BindLet ty t) = [| BindLet (f ty) (f t) |]
-traverseBinder f (BindPi t) = [| BindPi (f t) |]
+traverseBinder : Applicative f => (Term d ns -> f (Term d' ms)) -> Binder md r d n ns -> f (Binder md r d' n ms)
+traverseBinder _ InternalLam = pure InternalLam
+traverseBinder _ (BindLam n) = pure (BindLam n)
+traverseBinder f (BindLet n ty t) = BindLet n <$> (f ty) <*> (f t)
+traverseBinder f (BindPi n t) = BindPi n <$> f t
 
 public export
-mapBinder : (Term d ns -> Term d' ms) -> Binder md r d ns -> Binder md r d' ms
+mapBinder : (Term d ns -> Term d' ms) -> Binder md r d n ns -> Binder md r d' n ms
 mapBinder f b = (traverseBinder (Id . f) b).runIdentity
 
 -- Variables are de-Brujin indices or levels depending on if we are in value or
@@ -132,7 +136,7 @@ data Body : Domain -> Ident -> Ctx -> Type where
 -- Helper to package a binder with its body.
 public export
 data Binding : Stage -> Reducibility -> Domain -> Ctx -> Type where
-  Bound : (md : Stage) -> (n : Ident) -> Binder md r d ns -> Body d n ns -> Binding md r d ns
+  Bound : (md : Stage) -> Binder md r d n ns -> Body d n ns -> Binding md r d ns
 
 -- Different spine heads, meaning x in `x a1 ... an`, are reduced
 -- to different extents.
@@ -258,6 +262,17 @@ ValTy = Val
 public export
 0 Env : Ctx -> Ctx -> Type
 Env ms ns = Sub ms Val ns
+
+-- Helpers to create (internal) lambdas
+
+public export
+lam : (0 n : Ident) -> Term Syntax (ns :< n) -> Term Syntax ns
+lam _ t = SynApps (SynBinding Mta Callable (Bound Mta InternalLam (Delayed t)) $$ [])
+
+public export
+lams : Size ns -> Term Syntax ns -> Term Syntax [<]
+lams SZ t = t
+lams (SS s) t = lams s (lam _ t)
 
 -- We can extend the variable search machinery to the syntax:
 

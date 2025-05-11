@@ -179,11 +179,15 @@ subFromSpine [] = [<]
 subFromSpine (x :: xs) = [< x] ++ subFromSpine xs
 
 -- Weakenings
+--
+-- These are technically free for de-Bruijn levels. We must use %transform on a
+-- bunch of stuff to make sure.
 namespace Wk
   public export
   data Wk : Ctx -> Ctx -> Type where
     Id : Wk ns ns
     Drop : Wk ns ms -> Wk (ns :< n) ms
+    Relabel : Wk (ns :< n) (ns :< m) -- this is useful sometimes
 
 -- Some interfaces for syntax that involves variables
 
@@ -236,6 +240,8 @@ public export
 Weak Lvl where
   -- @@Todo: use %transform, do not rely on identity optimisation
   weak Id l = l
+  weak Relabel LZ = LZ
+  weak Relabel (LS l) = LS l
   weak (Drop x) LZ = LZ
   weak (Drop x) (LS l) = LS (weak x (wkLvl l))
     where

@@ -26,12 +26,13 @@ Eval (Term Value) (PrimitiveApplied k Syntax e) (Term Value)
 -- Every callable binding value can be applied to a term.
 public export
 callBinding : Binding s Callable Value ns -> Term Value ns -> Term Value ns
-callBinding (Bound s n BindLam (Closure env body)) arg = eval (env :< arg) body
+callBinding (Bound s (BindLam _) (Closure env body)) arg = eval (env :< arg) body
+callBinding (Bound s InternalLam (Closure env body)) arg = eval (env :< arg) body
 
 -- Every thunk can be forced.
 public export
 forceThunk : Binding s Thunk Value ns -> Term Value ns
-forceThunk (Bound s n (BindLet _ v) (Closure env body)) = eval (env :< v) body
+forceThunk (Bound s (BindLet _ _ v) (Closure env body)) = eval (env :< v) body
 
 public export
 Quote (PrimitiveApplied k Value e) (PrimitiveApplied k Syntax NA) where
@@ -44,15 +45,15 @@ Weak (PrimitiveApplied k Value e) where
   weak e (LazyApplied h sp gl) = LazyApplied h (weak e sp) (weak e gl)
 
 public export
-Eval over (Term d) (Term d') => Eval over (Binder md r d) (Binder md r d') where
+Eval over (Term d) (Term d') => Eval over (Binder md r d n) (Binder md r d' n) where
   eval env b = mapBinder (eval env) b
 
 public export
-Quote (Term d) (Term d') => Quote (Binder md r d) (Binder md r d') where
+Quote (Term d) (Term d') => Quote (Binder md r d n) (Binder md r d' n) where
   quote s b = mapBinder (quote s) b
 
 public export
-Weak (Binder md r Value) where
+Weak (Binder md r Value n) where
   weak e b = mapBinder (weak e) b
 
 public export
@@ -86,16 +87,16 @@ Weak (Body Value n) where
   weak e (Closure env t) = Closure (env . e) t
 
 public export
-Eval (Term Value) (Binding s r Syntax) (Binding s r Value) where
-  eval env (Bound s n bind body) = Bound s n (eval env bind) (eval env body)
+Eval (Term Value) (Binding md r Syntax) (Binding md r Value) where
+  eval env (Bound {n = n} md bind body) = Bound {n = n} md (eval env bind) (eval env body)
 
 public export
 Quote (Binding md r Value) (Binding md r Syntax) where
-  quote s (Bound md n bind body) = Bound md n (quote s bind) (quote s body)
+  quote s (Bound {n = n} md bind body) = Bound {n = n} md (quote s bind) (quote s body)
 
 public export
 Weak (Binding md r Value) where
-  weak s (Bound md n bind body) = Bound md n (weak s bind) (weak s body)
+  weak s (Bound {n = n} md bind body) = Bound {n = n} md (weak s bind) (weak s body)
 
 -- Helper to apply a value to a spine.
 --
