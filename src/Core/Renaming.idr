@@ -67,8 +67,7 @@ renameLazy @{t} p gl = delay <$> rename @{t} p (force gl)
 Rename (Term Value) (Term Value)
 
 Rename (Spine ar (Term Value)) (Spine ar (Term Value)) where
-  rename p [] = pure []
-  rename p (x :: xs) = [| rename p x :: rename p xs |]
+  rename p sp = traverseSpine (rename p) sp
 
 Rename (PrimitiveApplied k Value e) (PrimitiveApplied k Value e) where
   rename p (SimpApplied h sp) = [| SimpApplied (pure h) (rename p sp) |]
@@ -89,3 +88,7 @@ Rename Idx Lvl where
 public export
 Rename Lvl Lvl where
   rename p l = rename p (lvlToIdx p.cod l)
+
+public export
+Rename (Variable Value) (Variable Value) where
+  rename p (Level l) = [| Level (rename p l) |]

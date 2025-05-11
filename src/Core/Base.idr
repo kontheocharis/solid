@@ -3,6 +3,7 @@ module Core.Base
 
 import Decidable.Equality
 import Data.Singleton
+import Control.Monad.Identity
 import Utils
 
 %default total
@@ -124,6 +125,16 @@ namespace Spine
   (.count) [] = CZ
   (.count) (x :: xs) = CS xs.count
 
+  public export
+  traverseSpine : Applicative m => (f ns -> m (g ns')) -> Spine ar f ns -> m (Spine ar g ns')
+  traverseSpine f [] = pure []
+  traverseSpine f (x :: xs) = [| f x :: traverseSpine f xs |]
+
+  public export
+  mapSpine : (f ns -> g ns') -> Spine ar f ns -> Spine ar g ns'
+  mapSpine f sp = (traverseSpine (Id . f) sp).runIdentity
+
+
 namespace Con
   data Con : (Ctx -> Type) -> Ctx -> Type where
     Lin : Con f [<]
@@ -210,18 +221,15 @@ Quote Lvl Idx where
 
 public export
 (Weak tm) => Weak (Spine ar tm) where
-  weak e [] = []
-  weak e (x :: xs) = weak e x :: weak e xs
+  weak e sp = mapSpine (weak e) sp
 
 public export
 Eval over tm val => Eval over (Spine ar tm) (Spine ar val) where
-  eval env [] = []
-  eval env (x :: xs) = eval env x :: eval env xs
+  eval env sp = mapSpine (eval env) sp
 
 public export
 Quote val tm => Quote (Spine ar val) (Spine ar tm) where
-  quote s [] = []
-  quote s (x :: xs) = quote s x :: quote s xs
+  quote s sp = mapSpine (quote s) sp
 
 -- Finding variables by name through auto implicits!
 
