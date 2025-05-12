@@ -164,6 +164,7 @@ namespace Spine
 
 
 namespace Con
+  public export
   data Con : (Ctx -> Type) -> Ctx -> Type where
     Lin : Con f [<]
     (:<) : Con f ar -> f ar -> Con f (ar :< a)
