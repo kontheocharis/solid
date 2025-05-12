@@ -111,6 +111,18 @@ mx \/ my = do
         AreDifferent => pure DontKnow
         DontKnow => pure DontKnow
 
+-- Solve a unification problem if possible, and return an appropriate outcome
+solve : HasMetas m => Size ns
+  -> MetaVar
+  -> Spine ar (Term Value) ns
+  -> Term Value ns
+  -> m sm (Unification ns)
+solve s m sp t = canSolve >>= \case
+  Val SolvingAllowed => solveProblem s (MkFlex m sp) t >>= \case
+    Left err => pure $ Error {under = []} err
+    Right () => pure AreSame
+  Val SolvingNotAllowed => pure DontKnow
+
 -- Basic implementations
 
 public export
@@ -208,8 +220,9 @@ HasMetas m => Unify m sm (Term Value) (Term Value) where
   unify s (SimpObjCallable o) (SimpObjCallable o') = unify s o o'
   unify s (RigidBinding md r) (RigidBinding md' r') = ifAndOnlyIf (decEq md md') (\Refl => unify s r r')
 
-  unify s a (SimpApps (ValMeta m $$ sp)) = ?rhs
-  unify s (SimpApps (ValMeta m $$ sp)) b = ?rhs2
+  -- Solve metas
+  unify s a (SimpApps (ValMeta m' $$ sp')) = solve s m' sp' a
+  unify s (SimpApps (ValMeta m $$ sp)) b = solve s m sp b
 
   -- glued terms can reduce further
   unify s (Glued a) (Glued b) = noSolving (unify s a b) \/ unify s (simplified a) (simplified b)

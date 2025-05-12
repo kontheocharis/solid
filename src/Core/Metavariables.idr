@@ -202,6 +202,7 @@ data Flex : MetaVar -> Ctx -> Type where
 (.meta) (MkFlex m _) = m
 
 -- Resolve any top-level metas appearing in the value
+public export
 resolveMetas : HasMetas m => Term Value ns -> m sm (Term Value ns)
 resolveMetas t@(SimpApps (ValMeta m $$ sp)) = getMeta m >>= \case
   Nothing => pure t
@@ -245,10 +246,11 @@ solution s (MkFlex m sp) t =
           Right t' => pure $ Right (eval {over = Term Value} [<] $ lams pren.dom t')
 
 -- -- Solve a problem and store it in the metavariable context
-solve : (HasMetas m) => Size ns
+public export
+solveProblem : (HasMetas m) => Size ns
   -> Flex meta ns
   -> Term Value ns
   -> m SolvingAllowed (Either (SolveError ns) ())
-solve s fl t = solution s fl t >>= \case
+solveProblem s fl t = solution s fl t >>= \case
   Left err => pure $ Left err
   Right t' => Right <$> setSolution fl.meta t'
