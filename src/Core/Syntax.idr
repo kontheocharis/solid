@@ -3,6 +3,7 @@ module Core.Syntax
 
 import Utils
 import Core.Base
+import Data.Singleton
 import Decidable.Equality
 import Control.Monad.Identity
 
@@ -115,6 +116,13 @@ traverseBinder f (BindPi n t) = BindPi n <$> f t
 public export
 mapBinder : (Term d ns -> Term d' ms) -> Binder md r d n ns -> Binder md r d' n ms
 mapBinder f b = (traverseBinder (Id . f) b).runIdentity
+
+public export
+displayIdent : Binder md r d n ns -> Maybe (Singleton n)
+displayIdent InternalLam = Nothing
+displayIdent (BindLam n) = Just (Val n)
+displayIdent (BindLet n _ _) = Just (Val n)
+displayIdent (BindPi n _) = Just (Val n)
 
 -- Variables are de-Brujin indices or levels depending on if we are in value or
 -- syntax ~> fast variable lookup during evaluation, and free weakening for

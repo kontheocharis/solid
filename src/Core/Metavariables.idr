@@ -4,6 +4,7 @@ module Core.Metavariables
 import Utils
 import Decidable.Equality
 import Data.Maybe
+import Data.Singleton
 import Core.Base
 import Core.Syntax
 import Core.Evaluation
@@ -154,23 +155,30 @@ Rename (Term Syntax) where
   rename p (RigidBinding md t) = RigidBinding md <$> rename p t
   rename p (SynPrimNormal prim) = [| SynPrimNormal (rename p prim) |]
 
--- Ensure that a spine contains all variables, and thus
--- turn it into a renaming.
---
--- This returns nothing if the spine contains a non-variable.
-spineToRen : (resolve : Term Value ns -> Term Value ns)
-  -> Size ns
-  -> Spine ar (Term Value) ns
-  -> Maybe (Sub ns Idx (arityToCtx ar))
-spineToRen resolve s [] = Just [<]
-spineToRen resolve s (x :: xs) = case resolve x of
-  SimpApps (ValVar (Level l) $$ []) => do
-    xs' <- spineToRen resolve s xs
-    pure $ [<lvlToIdx s l] ++ xs'
-  _ => Nothing
-
 -- Actually solving metavariables
 
+-- Whether we are allowed to solve metavariables in a given context.
+public export
+data SolvingMode : Type where
+  SolvingAllowed : SolvingMode
+  SolvingNotAllowed : SolvingMode
+
+-- A monad for metavariable solving.
+public export
+interface (forall sm . Monad (m sm)) => HasMetas (0 m : SolvingMode -> Type -> Type) where
+  -- Get the solution of a metavariable, if any.
+  getMeta : MetaVar -> m sm (Maybe (Term Value [<]))
+
+  -- Check if we are allowed to solve metavariables.
+  canSolve : m sm (Singleton sm)
+
+  -- Solve a metavariable.
+  setSolution : MetaVar -> Term Value [<] -> m SolvingAllowed ()
+
+  -- Switch to a context where we are not allowed to solve metavariables.
+  noSolving : m SolvingNotAllowed a -> m sm a
+
+public export
 data SolveError : Ctx -> Type where
   -- A variable appears more than once in the metavariable spine.
   NonLinear : Spine ar (Term Value) ns -> SolveError ns
@@ -179,34 +187,68 @@ data SolveError : Ctx -> Type where
   -- A renaming error occurred while preparing the solution
   RenamingError : PRenError ns -> SolveError ns
 
+public export
 Weak SolveError where
   weak s (NonLinear sp) = NonLinear (weak s sp)
   weak s (NonVar sp) = NonVar (weak s sp)
   weak s (RenamingError err) = RenamingError (weak s err)
 
 -- A flex is a metavariable applied to a spine of arguments
+public export
 data Flex : MetaVar -> Ctx -> Type where
-  MkFlex : (m : MetaVar) -> (sp : Spine ar (Term Value) ns) -> Flex m ns
+  MkFlex : (meta : MetaVar) -> (sp : Spine ar (Term Value) ns) -> Flex meta ns
 
--- Solve a problem of the form
+(.meta) : Flex meta ns -> MetaVar
+(.meta) (MkFlex m _) = m
+
+-- Resolve any top-level metas appearing in the value
+resolveMetas : HasMetas m => Term Value ns -> m sm (Term Value ns)
+resolveMetas t@(SimpApps (ValMeta m $$ sp)) = getMeta m >>= \case
+  Nothing => pure t
+  Just t' => pure $ apps (weak Terminal t') sp
+resolveMetas t = pure t
+
+-- Ensure that a spine contains all variables, and thus
+-- turn it into a renaming.
+--
+-- This returns nothing if the spine contains a non-variable.
+spineToRen : (HasMetas m) => Size ns
+  -> Spine ar (Term Value) ns
+  -> m sm (Maybe (Sub ns Idx (arityToCtx ar)))
+spineToRen s [] = pure $ Just [<]
+spineToRen s (x :: xs) = resolveMetas x >>= \case
+  SimpApps (ValVar (Level l) $$ []) => do
+    xs' <- spineToRen s xs
+    pure $ ([<lvlToIdx s l] ++) <$> xs'
+  _ => pure Nothing
+
+-- Create the solution to a problem of the form
 --
 -- ?m sp =? t
-solve : (resolve : Term Value ns -> Term Value ns)
-  -> Size ns
-  -> Flex m ns
+solution : (HasMetas m) => Size ns
+  -> Flex meta ns
   -> Term Value ns
-  -> Either (SolveError ns) (Term Value [<])
-solve resolve s (MkFlex m sp) t =
+  -> m sm (Either (SolveError ns) (Term Value [<]))
+solution s (MkFlex m sp) t =
   -- Turn the spine into a renaming
-  case spineToRen resolve s sp of
-    Nothing => Left (NonVar sp)
+  spineToRen s sp >>= \case
+    Nothing => pure $ Left (NonVar sp)
     -- Invert to get a partial renaming
     Just sp' => case invertRen s sp' of
-      Nothing => Left (NonLinear sp)
+      Nothing => pure $ Left (NonLinear sp)
       Just pren =>
         -- Apply the partial renaming to the term, and wrap it in lambdas to
         -- close it
         let st : Term Syntax _ = quote s t in
         case ren pren (differentFrom m) st of
-          Left err => Left (RenamingError err)
-          Right t' => Right (eval {over = Term Value} [<] $ lams pren.dom t')
+          Left err => pure $ Left (RenamingError err)
+          Right t' => pure $ Right (eval {over = Term Value} [<] $ lams pren.dom t')
+
+-- -- Solve a problem and store it in the metavariable context
+solve : (HasMetas m) => Size ns
+  -> Flex meta ns
+  -> Term Value ns
+  -> m SolvingAllowed (Either (SolveError ns) ())
+solve s fl t = solution s fl t >>= \case
+  Left err => pure $ Left err
+  Right t' => Right <$> setSolution fl.meta t'

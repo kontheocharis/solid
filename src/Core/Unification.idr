@@ -7,6 +7,7 @@ import Data.Singleton
 import Core.Base
 import Core.Syntax
 import Core.Evaluation
+import Core.Metavariables
 
 %default covering
 
@@ -16,45 +17,42 @@ import Core.Evaluation
 --
 -- Observationally means under all substitutions from the empty context.
 public export
-data Unification : Type where
+data Unification : Ctx -> Type where
   -- Are observationally the same
-  AreSame : Unification
+  AreSame : Unification ns
   -- Are observationally different
-  AreDifferent : Unification
+  AreDifferent : Unification ns
   -- Don't look the same but could become the same (or different) under
   -- appropriate substitutions
-  DontKnow : Unification
+  DontKnow : Unification ns
+  -- Solve error
+  --
+  -- An error occurred while solving a metavariable
+  -- Also remembers all the extra binders we were solving under.
+  Error : {under : Arity} -> SolveError (ns ::< under) -> Unification ns
 
--- Whether we are allowed to solve metavariables in a given context.
-data SolvingMode : Type where
-  SolvingAllowed : SolvingMode
-  SolvingNotAllowed : SolvingMode
-
--- A monad for metavariable solving.
-public export
-interface (forall sm . Monad (m sm)) => HasMetas (0 m : SolvingMode -> Type -> Type) where
-  -- Get the solution of a metavariable, if any.
-  getMeta : MetaVar -> m sm (Maybe (Term Value [<]))
-
-  -- Check if we are allowed to solve metavariables.
-  canSolve : m sm (Singleton sm)
-
-  -- Solve a metavariable.
-  solve : MetaVar -> Term Value [<] -> m SolvingAllowed ()
-
-  -- Switch to a context where we are not allowed to solve metavariables.
-  noSolving : m SolvingNotAllowed a -> m sm a
+-- Escape a unification result under a binder, by storing the binder name
+-- in the result.
+--
+-- If the binder didn't have a name, we just use the name `_` which stands for
+-- "internal binder".
+escapeBinder : Maybe (Singleton n) -> Unification (ns :< n) -> Unification ns
+escapeBinder sn AreSame = AreSame
+escapeBinder sn AreDifferent = AreDifferent
+escapeBinder sn DontKnow = DontKnow
+escapeBinder (Just (Val n)) (Error {under = ar} err) = Error {under = n :: ar} err
+escapeBinder Nothing (Error {under = ar} err) = Error {under = (Explicit, "_") :: ar} ?err
 
 -- The typeclass for unification
 --
 -- The monad is indexed over if we are allowed to solve metavariables.
 public export
 interface (HasMetas m) => Unify m sm (0 lhs : Ctx -> Type) (0 rhs : Ctx -> Type) where
-  unify : Size ns -> lhs ns -> rhs ns -> m sm Unification
+  unify : Size ns -> lhs ns -> rhs ns -> m sm (Unification ns)
 
 -- Definitively decide a unification outcome based on a decidable equality
 public export
-ifAndOnlyIf : Monad m => Dec (a ~=~ b) -> ((a ~=~ b) -> m Unification) -> m Unification
+ifAndOnlyIf : Monad m => Dec (a ~=~ b) -> ((a ~=~ b) -> m (Unification ns)) -> m (Unification ns)
 ifAndOnlyIf (Yes Refl) f = f Refl
 ifAndOnlyIf (No _) _ = pure AreDifferent
 
@@ -64,13 +62,13 @@ ifAndOnlyIf (No _) _ = pure AreDifferent
 -- are different. However sometimes it is super annoying to implement DecEq so
 -- we just use this instead.
 public export
-ifAndOnlyIfHack : Monad m => Maybe (a ~=~ b) -> ((a ~=~ b) -> m Unification) -> m Unification
+ifAndOnlyIfHack : Monad m => Maybe (a ~=~ b) -> ((a ~=~ b) -> m (Unification ns)) -> m (Unification ns)
 ifAndOnlyIfHack (Just Refl) f = f Refl
 ifAndOnlyIfHack Nothing _ = pure AreDifferent
 
 -- Partially decide a unification outcome based on a semi-decidable equality
 public export
-inCase : Monad m => Maybe (a ~=~ b) -> ((a ~=~ b) -> m Unification) -> m Unification
+inCase : Monad m => Maybe (a ~=~ b) -> ((a ~=~ b) -> m (Unification ns)) -> m (Unification ns)
 inCase (Just Refl) f = f Refl
 inCase Nothing _ = pure DontKnow
 
@@ -79,30 +77,36 @@ export infixr 4 \/
 
 -- Conjunction of unification outcomes (fully monadic version)
 public export
-(/\) : (Monad m) => m Unification -> m Unification -> m Unification
+(/\) : (Monad m) => m (Unification ns) -> m (Unification ns) -> m (Unification ns)
 mx /\ my = do
   x <- mx
   case x of
+    Error e => pure $ Error e
     AreDifferent => pure AreDifferent
     AreSame => my
     DontKnow => do
       y <- my
       case y of
+        Error e => pure $ Error e
         AreSame => pure DontKnow
         AreDifferent => pure AreDifferent
         DontKnow => pure DontKnow
 
 -- Disjunction of unification outcomes (fully monadic version)
 public export
-(\/) : (Monad m) => m Unification -> m Unification -> m Unification
+(\/) : (Monad m) => m (Unification ns) -> m (Unification ns) -> m (Unification ns)
 mx \/ my = do
   x <- mx
   case x of
+    -- errors always propagate, even in disjunction, because otherwise we might
+    -- partially solve a problem and then fail, then continue in an alternative branch
+    Error e => pure $ Error e
     AreSame => pure AreSame
     AreDifferent => my
     DontKnow => do
       y <- my
       case y of
+        Error e => pure $ Error e
         AreSame => pure AreSame
         AreDifferent => pure DontKnow
         DontKnow => pure DontKnow
@@ -146,15 +150,14 @@ HasMetas m => Unify m sm (Term Value) (Term Value)
 HasMetas m => Unify m SolvingNotAllowed (Variable Value) (Variable Value) where
   unify s (Level l) (Level l') = unify s l l'
 
-HasMetas m => Unify m sm (Body Value n) (Body Value n') where
-  unify s (Closure {n = n} envA tA) (Closure envB tB)
-    = unify {lhs = Term Value} {rhs = Term Value} (SS {n = n} s)
-      (eval (lift s envA) tA)
-      (eval (lift s envB) tB)
-
 {r, r' : Reducibility} -> HasMetas m => Unify m sm (Binding md r Value) (Binding md r' Value) where
-  unify s (Bound md bindA bodyA) (Bound md bindB bodyB)
-    = unify s bindA bindB /\ unify s bodyA bodyB
+  unify s (Bound md bindA (Closure {n = n} envA tA)) (Bound md bindB (Closure envB tB))
+    -- unify the binders
+    = unify s bindA bindB
+      -- unify the bodies, retaining the name of the first binder (kind of arbirary..)
+      /\ (escapeBinder (displayIdent bindA) <$> unify {lhs = Term Value} {rhs = Term Value} (SS s)
+          (eval (lift s envA) tA)
+          (eval (lift s envB) tB))
 
 {hk : PrimitiveClass} -> HasMetas m =>
   Unify m sm (PrimitiveApplied hk Value Simplified) (PrimitiveApplied hk Value Simplified) where

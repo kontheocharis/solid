@@ -111,16 +111,22 @@ lvlToIdx : Size ns -> Lvl ns -> Idx ns
 lvlToIdx (SS n) LZ = firstIdx n
 lvlToIdx (SS n) (LS l) = nextIdx (lvlToIdx n l)
 
+-- Weaken the level, points to the same element in an extended context
 public export
-idxToLvl : Size ns -> Idx ns -> Lvl ns
-idxToLvl = ?fafa
-
+wkLvl : Lvl us -> Lvl (us :< u)
+wkLvl LZ = LZ
+wkLvl (LS l) = LS (wkLvl l)
 
 -- Give the last level in the context---most recently added variable.
 public export
 lastLvl : Size ns -> Lvl (ns :< n)
 lastLvl SZ = LZ
 lastLvl (SS n) = LS (lastLvl n)
+
+public export
+idxToLvl : Size ns -> Idx ns -> Lvl ns
+idxToLvl (SS n) IZ = lastLvl n
+idxToLvl (SS n) (IS i) = wkLvl (idxToLvl n i)
 
 -- Telescopes, spines, contexts and substitutions parameterised over
 -- the actual syntax they contain
@@ -186,6 +192,7 @@ namespace Wk
   public export
   data Wk : Ctx -> Ctx -> Type where
     Id : Wk ns ns
+    Terminal : Wk ns [<]
     Drop : Wk ns ms -> Wk (ns :< n) ms
     Relabel : Wk (ns :< n) (ns :< m) -- this is useful sometimes
 
@@ -205,7 +212,7 @@ public export
 wk : Weak tm => tm ns -> tm (ns :< n)
 wk x = weak (Drop Id) x
 
--- Syntax supports variables if it supports thinnings and the zero-th deBrujin
+-- Syntax supports variables if it supports weakenings and the zero-th deBrujin
 -- index.
 public export
 interface (Weak tm) => Vars (0 tm : Ctx -> Type) where
@@ -224,7 +231,7 @@ public export
 proj : (Weak tm, Vars tm) => Size ns -> Sub (ns :< n) tm ns
 proj s = id s . Drop Id
 
--- Evaluation, quoting and unification interfaces
+-- Evaluation and quoting interfaces
 
 public export
 interface Eval (0 over : Ctx -> Type) (0 tm : Ctx -> Type) (0 val : Ctx -> Type) where
@@ -233,6 +240,10 @@ interface Eval (0 over : Ctx -> Type) (0 tm : Ctx -> Type) (0 val : Ctx -> Type)
 public export
 interface Quote (0 val : Ctx -> Type) (0 tm : Ctx -> Type) where
   quote : Size ns -> val ns -> tm ns
+
+-- Supporting evaluation and quoting gives us normalisation
+nf : (Weak over, Vars over, Eval over tm val, Quote val tm) => Size ns -> tm ns -> tm ns
+nf @{(_, _, e, _)} s tm = quote s (eval @{e} (id s) tm)
 
 -- Basic implementations for the defined types
 
@@ -244,10 +255,6 @@ Weak Lvl where
   weak Relabel (LS l) = LS l
   weak (Drop x) LZ = LZ
   weak (Drop x) (LS l) = LS (weak x (wkLvl l))
-    where
-      wkLvl : Lvl us -> Lvl (us :< u)
-      wkLvl LZ = LZ
-      wkLvl (LS l) = LS (wkLvl l)
 
 public export
 Vars Lvl where
