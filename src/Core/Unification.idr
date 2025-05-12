@@ -22,11 +22,9 @@ data Unification : Ctx -> Type where
   AreSame : Unification ns
   -- Are observationally different
   AreDifferent : Unification ns
-  -- Don't look the same but could become the same (or different) under
+  -- Can't really tell; could become the same (or different) under
   -- appropriate substitutions
   DontKnow : Unification ns
-  -- Solve error
-  --
   -- An error occurred while solving a metavariable
   -- Also remembers all the extra binders we were solving under.
   Error : {under : Arity} -> SolveError (ns ::< under) -> Unification ns

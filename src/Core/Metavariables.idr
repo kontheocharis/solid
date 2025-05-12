@@ -11,10 +11,18 @@ import Core.Evaluation
 
 %default covering
 
--- A partial renaming is a "strengthening" followed by a monomorphism, followed
--- by a weakening.
+-- A renaming is just a substitution containing only variables.
+-- A partial renaming is a renaming that leaves gaps for some variables in the
+-- output context.
 --
--- The strengthening can fail, which means some variables are "escaping".
+-- A partial renaming can be viewed a "strengthening" followed by a
+-- monomorphism, followed by a weakening. The strengthening can fail, which
+-- means some variables are "escaping".
+--
+-- Warning: when it comes to context morphisms, the notions of mono and epi are
+-- intuitively swapped: a mono uses each variable at *least* once, while an
+-- epi uses each variable at *most* once. This is because context morphisms
+-- are sort of contravariant in nature.
 namespace PRen
   -- Here we represent a partial renaming as a partial function from indices to
   -- indices.
@@ -39,11 +47,9 @@ namespace PRen
     IZ => Just IZ
     IS k => map IS (contains k))
 
--- Invert a renaming if possible (i.e. if it is linear).
+-- Invert a renaming if possible (if it is an epimorphism, i.e. if it is linear).
 --
 -- This yields a partial renaming.
---
--- Note: a renaming is just a substitution containing only variables.
 invertRen : Size ns -> Sub ns Idx ms -> Maybe (PRen ms ns)
 invertRen sns [<] = Just (removeAll sns)
 invertRen sns (xs :< x) = do
@@ -79,6 +85,8 @@ differentFrom m m' = case decEq m m' of
 
 -- What is the plan? It consists of a partial renaming and a function that
 -- decides whether a meta variable can appear here.
+--
+-- @@Todo: add spine pruning support to this.
 public export
 record Plan (ns : Ctx) (ms : Ctx) (us : Ctx) where
   constructor MkPlan

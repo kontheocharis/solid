@@ -47,8 +47,6 @@ data BinOp : Type where
   Plus : BinOp
 
 
-
-
 public export
 data PTm : Type where
   PIdent : String -> PTm
