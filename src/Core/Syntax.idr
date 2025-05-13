@@ -282,6 +282,10 @@ lams : Size ns -> Term Syntax ns -> Term Syntax [<]
 lams SZ t = t
 lams (SS s) t = lams s (lam _ t)
 
+public export
+varLvl : Lvl ns -> Val ns
+varLvl l = SimpApps (ValVar (Level l) $$ [])
+
 -- We can extend the variable search machinery to the syntax:
 
 public export

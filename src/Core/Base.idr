@@ -14,10 +14,14 @@ import Utils
 public export
 data PiMode = Explicit | Implicit
 
+public export
+Name : Type
+Name = String
+
 -- A name is a member of a 'context skeleton'
 public export
 0 Ident : Type
-Ident = (PiMode, String)
+Ident = (PiMode, Name)
 
 -- A context skeleton.
 --
@@ -164,6 +168,7 @@ namespace Spine
 
 
 namespace Con
+  public export
   data Con : (Ctx -> Type) -> Ctx -> Type where
     Lin : Con f [<]
     (:<) : Con f ar -> f ar -> Con f (ar :< a)

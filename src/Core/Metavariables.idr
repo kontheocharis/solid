@@ -253,7 +253,7 @@ solution s (MkFlex m sp) t =
           Left err => pure $ Left (RenamingError err)
           Right t' => pure $ Right (eval {over = Term Value} [<] $ lams pren.dom t')
 
--- -- Solve a problem and store it in the metavariable context
+-- Solve a problem and store it in the metavariable context
 public export
 solveProblem : (HasMetas m) => Size ns
   -> Flex meta ns
