@@ -34,10 +34,12 @@ record Annot (ns : Ctx) where
   ty : ValTy ns
   stage : Stage
 
+-- Add a definition to the context that eagerly evaluates to its value.
 eagerDefine : (n : Ident) -> Expr Value ns -> Context ns -> Context (ns :< n)
 eagerDefine n rhs (MkContext con defs stages size) =
   MkContext (con :< rhs.ty) (defs . Drop Id :< wk rhs.tm) (stages :< rhs.stage) (SS size)
 
+-- Add a definition to the context that lazily evaluates to its value.
 lazyDefine : (n : Ident) -> Expr Value ns -> Context ns -> Context (ns :< n)
 lazyDefine n rhs (MkContext con defs stages size) =
   MkContext (con :< rhs.ty)
@@ -45,6 +47,7 @@ lazyDefine n rhs (MkContext con defs stages size) =
     (stages :< rhs.stage)
     (SS size)
 
+-- Add a binding with no value to the context.
 bind : (n : Ident) -> Annot ns -> Context ns -> Context (ns :< n)
 bind n annot (MkContext con defs stages size) =
   MkContext (con :< annot.ty) (defs . Drop Id :< varLvl (lastLvl size)) (stages :< annot.stage) (SS size)
@@ -54,6 +57,9 @@ interface (Monad m) => HasTc m where
 
 resolve : HasTc m => Val ns -> m (Val ns)
 resolve x = resolveMetas {sm = SolvingAllowed} @{metas} x
+
+evaluate : Context ns -> Tm ns -> Val ns
+evaluate ctx t = eval ctx.defs t
 
 data Tc : (0 m : _) -> HasTc m => (md : TcMode) -> Ctx -> Type where
   InCheck : HasTc m => (Context ns -> Annot ns -> m (Tm ns)) -> Tc m Check ns
@@ -81,16 +87,56 @@ check (InInfer f)
   = InCheck $ \ctx, annot => (.tm) <$> (insert ctx $ f ctx)
 check (InCheck f) = InCheck f
 
+runCheck : HasTc m => Tc m Check ns -> Context ns -> Annot ns -> m (Tm ns)
+runCheck (InCheck f) = f
+
+identsMatch : Ident -> Ident -> Bool
+identsMatch (Implicit, n) (Implicit, m) = n == m
+identsMatch (Explicit, _) (Explicit, _) = True
+identsMatch _ _ = False
+
+sizedObjType : (size : Val ns) -> ValTy ns
+sizedObjType size = SimpPrimNormal (SimpApplied PrimUnsized
+    [(SimpPrimNormal (SimpApplied PrimEmbedBYTES [size]))])
+
+zeroBytes : Val ns
+zeroBytes = SimpPrimNormal (SimpApplied PrimZeroBYTES [])
+
+mtaType : ValTy ns
+mtaType = SimpPrimNormal (SimpApplied PrimTYPE [])
+
+sizedTypeOfTypes : Stage -> Annot ns
+sizedTypeOfTypes Mta = MkAnnot mtaType Mta
+sizedTypeOfTypes Obj = MkAnnot (sizedObjType zeroBytes) Obj
+
+unify : HasTc m => Context ns -> Val ns -> Val ns -> m ()
+
+-- Evaluate a closure with a extended environment
+evalClosure : Context ns -> Body Value n ns -> Term Value (ns :< n')
+evalClosure ctx (Closure env body) = eval (lift ctx.size env) body
+
+synLam : Stage -> (n : Ident) -> Term Syntax (ns :< n) -> Term Syntax ns
+synLam s n t = SynApps (SynBinding s Callable (Bound s (BindLam n) (Delayed t)) $$ [])
+
 lamCheck : HasTc m
   => (n : Ident)
-  -> (ty : Maybe (Tc m md ns))
+  -> (bindTy : Maybe (Tc m md ns))
   -> (body : Tc m md (ns :< n))
   -> Tc m Check ns
-lamCheck n bindTy body = InCheck $ \ctx, (MkAnnot ty stage) => do
-  ty' <- resolve ty
-  ?fa
-  -- case ty' of
-  --   RigidBinding a (Bound _ ) => ?fafafa
+lamCheck lamIdent bindTy body = InCheck $ \ctx, (MkAnnot ty resultStage) => do
+  resolve ty >>= \case
+    RigidBinding piStage (Bound piStage (BindPi piIdent a) b) =>
+      if identsMatch lamIdent piIdent then do
+        annotTy : Annot ns <- case bindTy of
+          Nothing => pure $ MkAnnot a piStage
+          Just bindTy => do
+            bindTy' <- evaluate ctx <$> runCheck (check bindTy) ctx (sizedTypeOfTypes piStage)
+            unify ctx a bindTy'
+            pure $ MkAnnot bindTy' piStage
+        bodyExpr <- runCheck (check body) (bind lamIdent annotTy ctx) (MkAnnot (evalClosure ctx b) piStage)
+        pure $ synLam piStage lamIdent bodyExpr
+      else ?fb
+    _ => ?fafafab
 
 -- tcLam : HasTc m => (s : Stage) -> (n : Ident) -> Tc m md (ns :< n) -> Tc m Check ns
 -- tcLam st n body = InCheck $ \ctx, ty => ?fa

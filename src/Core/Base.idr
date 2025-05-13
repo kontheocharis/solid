@@ -184,6 +184,11 @@ namespace Sub
   s ++ [<] = s
   s ++ (xs :< x) = (s ++ xs) :< x
 
+  public export
+  (.size) : Sub ns f ms -> Size ms
+  (.size) [<] = SZ
+  (.size) (xs :< x) = SS xs.size
+
 public export
 subFromSpine : Spine ar f ns -> Sub ns f (arityToCtx ar)
 subFromSpine [] = [<]
