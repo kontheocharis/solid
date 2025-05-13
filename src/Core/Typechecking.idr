@@ -34,9 +34,16 @@ record Annot (ns : Ctx) where
   ty : ValTy ns
   stage : Stage
 
-define : (n : Ident) -> Expr Value ns -> Context ns -> Context (ns :< n)
-define n rhs (MkContext con defs stages size) =
+eagerDefine : (n : Ident) -> Expr Value ns -> Context ns -> Context (ns :< n)
+eagerDefine n rhs (MkContext con defs stages size) =
   MkContext (con :< rhs.ty) (defs . Drop Id :< wk rhs.tm) (stages :< rhs.stage) (SS size)
+
+lazyDefine : (n : Ident) -> Expr Value ns -> Context ns -> Context (ns :< n)
+lazyDefine n rhs (MkContext con defs stages size) =
+  MkContext (con :< rhs.ty)
+    (defs . Drop Id :< Glued (LazyApps (ValDef (Level (lastLvl size)) $$ []) (wk rhs.tm)))
+    (stages :< rhs.stage)
+    (SS size)
 
 bind : (n : Ident) -> Annot ns -> Context ns -> Context (ns :< n)
 bind n annot (MkContext con defs stages size) =

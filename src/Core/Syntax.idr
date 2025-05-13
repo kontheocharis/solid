@@ -187,6 +187,9 @@ data Head : (d : Domain) -> HeadKind d -> Ctx -> Type where
   SynMeta : MetaVar -> Head Syntax NA ns
   ValMeta : MetaVar -> Head Value Simplified ns
 
+  -- A definition, which is unfolded lazily
+  ValDef : Variable Value ns -> Head Value Normalised ns
+
   -- A syntactic binding
   SynBinding : (s : Stage) -> (r : Reducibility) -> Binding s r Syntax ns -> Head Syntax NA ns
 

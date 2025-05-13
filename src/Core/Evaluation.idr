@@ -129,6 +129,7 @@ public export
 Quote (Head Value hk) (Head Syntax NA) where
   quote s (ValVar v) = SynVar (quote s v)
   quote s (ValMeta m) = SynMeta m
+  quote s (ValDef v) = SynVar (quote s v)
   quote s (ObjCallable t) = SynBinding Obj Callable (quote s t)
   quote s (ObjLazy t) = SynBinding Obj Thunk (quote s t)
   quote s (PrimNeutral p) = PrimNeutral {e = NA} (quote s p)
@@ -137,6 +138,7 @@ public export
 Weak (Head Value hk) where
   weak s (ValVar v) = ValVar (weak s v)
   weak s (ValMeta m) = ValMeta m
+  weak s (ValDef v) = ValDef (weak s v)
   weak s (ObjCallable t) = ObjCallable (weak s t)
   weak s (ObjLazy t) = ObjLazy (weak s t)
   weak s (PrimNeutral p) = PrimNeutral (weak s p)

@@ -197,6 +197,7 @@ HasMetas m => Unify m SolvingNotAllowed (Head Value Normalised) (Head Value Norm
   -- conservative
   unify s (ObjCallable a) (ObjCallable a') = unify s a a'
   unify s (ObjLazy a) (ObjLazy b) = unify s a b
+  unify s (ValDef v) (ValDef v') = unify s v v'
   unify s (PrimNeutral p) (PrimNeutral p') = noSolving (unify s p p')
   unify _ _ _ = pure DontKnow
 
@@ -206,7 +207,7 @@ HasMetas m => Unify m SolvingNotAllowed (HeadApplied Value Normalised) (HeadAppl
 
 HasMetas m => Unify m SolvingNotAllowed LazyValue LazyValue where
   -- conservative
-  unify s (LazyApps h sp) (LazyApps h' sp') = (unify s h h' /\ unify s sp sp') \/ pure DontKnow
+  unify s (LazyApps h _) (LazyApps h' _) = unify s h h' \/ pure DontKnow
   unify s (LazyPrimNormal p) (LazyPrimNormal p') = unify s p p'
   unify _ _ _ = pure DontKnow
 
