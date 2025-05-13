@@ -74,15 +74,24 @@ interface (Monad m) => HasTc m where
   -- Explicit instance of metas so that the resolution doesn't die..
   metas : HasMetas (const m)
 
+
 -- This is the type over which we build the typechecking combinators.
 --
--- `Tc m md ns` is a typechecking operation in mode md and context ns.
+-- `TcOp m md ns` is a typechecking operation in mode md.
 --
 -- It can be executed to produce an elaborated expression, depending on what `md` is.
-0 Tc : (md : TcMode) -> (0 m : _) -> HasTc m => Ctx -> Type
-Tc Check m ns = Context ns -> Annot ns -> forall ms . Wk ms ns -> m (Tm ms)
-Tc Infer m ns = Context ns -> forall ms . Wk ms ns -> m (Expr Syntax ms)
-Tc InferAt m ns = Context ns -> (s : Stage) -> forall ms . Wk ms ns -> m (ExprAt s Syntax ms)
+0 TcOp : (md : TcMode) -> (0 m : Type -> Type) -> Ctx -> Type
+TcOp Check m ms = Annot ms -> m (Tm ms)
+TcOp Infer m ms = m (Expr Syntax ms)
+TcOp InferAt m ms = (s : Stage) -> m (ExprAt s Syntax ms)
+
+-- Typechecking in a specific context
+0 TcAt : (md : TcMode) -> (0 m : Type -> Type) -> Ctx -> Type
+TcAt md m ns = Context ns -> TcOp md m ns
+
+-- Typechecking in any context
+0 Tc : (md : TcMode) -> (0 m : Type -> Type) -> Type
+Tc md m = forall ns . TcAt md m ns
 
 -- Some useful shorthands
 
@@ -121,9 +130,9 @@ coerce : (HasTc m) => Expr Syntax ns -> Annot ns -> m (Tm ns)
 
 -- Force a typechecking operation to be in checking mode. This might involve unifying with an
 -- inferred type.
-check : HasTc m => {md : TcMode} -> Tc md m ns -> Tc Check m ns
-check {md = InferAt} f = \ctx, annot, e => (.tm) <$> (insertAt ctx annot.stage $ f ctx annot.stage e)
-check {md = Infer} f = \ctx, annot, e => (.tm) <$> (insert ctx $ f ctx e)
+check : HasTc m => {md : TcMode} -> TcAt md m ns -> TcAt Check m ns
+check {md = InferAt} f = \ctx, annot => (.tm) <$> (insertAt ctx annot.stage $ f ctx annot.stage)
+check {md = Infer} f = \ctx, annot => (.tm) <$> (insert ctx $ f ctx)
 check {md = Check} f = f
 
 -- 0 Run : HasTc m => {md : TcMode} -> Tc m Check ns -> Type
@@ -172,11 +181,11 @@ insertLam : HasTc m => Context ns
   -> (piIdent : Ident)
   -> (bindTy : ValTy ns)
   -> (body : Body Value piIdent ns)
-  -> {md : TcMode} -> (subject : Tc md m (ns :< piIdent))
+  -> {md : TcMode} -> (subject : Tc md m)
   -> m (ExprAt piStage Syntax ns)
 insertLam ctx piStage piIdent bindTy body subject = do
   let b = evalClosure ctx body
-  s <- check subject (bind piIdent (MkAnnot bindTy piStage) ctx) (MkAnnot b piStage) Id
+  s <- check subject (bind piIdent (MkAnnot bindTy piStage) ctx) (MkAnnot b piStage)
   pure $ MkExprAt (sLam piStage piIdent s) (vPi piStage piIdent bindTy body)
 
 closeHere : Context ns -> Ty (ns :< n) -> Body Value n ns
@@ -205,28 +214,25 @@ ifForcePi ctx mode potentialPi ifMatching ifMismatching
 tcLam : HasTc m => (md : TcMode)
   -> (n : Ident)
   -> {md' : TcMode}
-  -> (bindTy : Maybe (Tc md' m ns))
-  -> (body : Tc md' m (ns :< n))
-  -> Tc md m ns
-tcLam @{tc} Check lamIdent bindTy body = \ctx, annot@(MkAnnot ty resultStage), e => do
+  -> (bindTy : Maybe (Tc md' m))
+  -> (body : Tc md' m)
+  -> Tc md m
+tcLam @{tc} Check lamIdent bindTy body = \ctx, annot@(MkAnnot ty resultStage) => do
   ifForcePi ctx (fst lamIdent) ty
-    (\piStage, piIdent, a, b => ?xa)
-    (\piStage, piIdent, a, b => ?xb)
-    -- (\piStage, piIdent, a, b => do
-  --     annotTy : Annot ns <- case bindTy of
-  --       Nothing => pure $ MkAnnot a piStage
-  --       Just bindTy => do
-  --         bindTy' <- evaluate ?ctix <$> check bindTy ctx (sizedTypeOfTypes piStage) e
-  --         unify ctx a bindTy'
-  --         pure $ MkAnnot bindTy' piStage
-  --     bodyExpr <- check body (bind lamIdent annotTy ?ctx) ?c ?e -- (MkAnnot (evalClosure ctx b) piStage)
-  --     ?qq
-  --     -- pure $ sLam piStage lamIdent bodyExpr
-  --   )
-  --   (\piStage, piIdent, a, b => case fst piIdent of
-  --     Implicit => ?fafafa -- (.tm) <$> insertLam {md = Infer} ctx piStage piIdent a b (tcLam Infer lamIdent bindTy body)
-  --     _ => ?error
-  --   )
+    (\piStage, piIdent, a, b => do
+      annotTy : Annot ns <- case bindTy of
+        Nothing => pure $ MkAnnot a piStage
+        Just bindTy => do
+          bindTy' <- evaluate ctx <$> check bindTy ctx (sizedTypeOfTypes piStage)
+          unify ctx a bindTy'
+          pure $ MkAnnot bindTy' piStage
+      bodyExpr <- check body (bind lamIdent annotTy ?ctx) (MkAnnot (evalClosure ctx b) piStage)
+      pure $ sLam piStage lamIdent bodyExpr
+    )
+    (\piStage, piIdent, a, b => case fst piIdent of
+      Implicit => (.tm) <$> insertLam {md = Infer} ctx piStage piIdent a b (tcLam Infer lamIdent bindTy body)
+      _ => ?error
+    )
     -- RigidBinding piStage (Bound piStage (BindPi piIdent@(piMode, _) a) b) =>
     --   if identsMatch lamIdent piIdent then do
     --     annotTy : Annot ns <- case bindTy of

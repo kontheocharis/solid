@@ -216,7 +216,14 @@ namespace Wk
     Id : Wk ns ns
     Terminal : Wk ns [<]
     Drop : Wk ns ms -> Wk (ns :< n) ms
-    Relabel : Wk (ns :< n) (ns :< m) -- this is useful sometimes
+
+  public export
+  (.) : Wk ms ns -> Wk as ms -> Wk as ns
+  x . Id = x
+  Id . x = x
+  Terminal . Terminal = Terminal
+  Terminal . Drop x = Terminal
+  Drop x . Drop y = Drop (x . (Drop Id . y))
 
 -- Some interfaces for syntax that involves variables
 
@@ -273,8 +280,6 @@ public export
 Weak Lvl where
   -- @@Todo: use %transform, do not rely on identity optimisation
   weak Id l = l
-  weak Relabel LZ = LZ
-  weak Relabel (LS l) = LS l
   weak (Drop x) LZ = LZ
   weak (Drop x) (LS l) = LS (weak x (wkLvl l))
 
