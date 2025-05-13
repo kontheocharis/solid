@@ -2,6 +2,7 @@
 module Core.Base
 
 import Decidable.Equality
+import Decidable.Decidable
 import Data.Singleton
 import Control.Monad.Identity
 import Utils
@@ -13,6 +14,17 @@ import Utils
 -- We remember this in the context.
 public export
 data PiMode = Explicit | Implicit
+
+public export
+DecEq PiMode where
+  decEq Explicit Explicit = Yes Refl
+  decEq Implicit Implicit = Yes Refl
+  decEq Explicit Implicit = No (\Refl impossible)
+  decEq Implicit Explicit = No (\Refl impossible)
+
+public export
+Eq PiMode where
+  a == b = isYes $ decEq a b
 
 public export
 Name : Type

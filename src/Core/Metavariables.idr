@@ -209,13 +209,14 @@ data Flex : MetaVar -> Ctx -> Type where
 (.meta) : Flex meta ns -> MetaVar
 (.meta) (MkFlex m _) = m
 
--- Resolve any top-level metas appearing in the value
+-- Resolve any top-level metas appearing in the value, as well as any glued values.
 public export
-resolveMetas : HasMetas m => Term Value ns -> m sm (Term Value ns)
-resolveMetas t@(SimpApps (ValMeta m $$ sp)) = getMeta m >>= \case
+resolveGlueAndMetas : HasMetas m => Term Value ns -> m sm (Term Value ns)
+resolveGlueAndMetas t@(SimpApps (ValMeta m $$ sp)) = getMeta m >>= \case
   Nothing => pure t
-  Just t' => pure $ apps (weak Terminal t') sp
-resolveMetas t = pure t
+  Just t' => resolveGlueAndMetas $ apps (weak Terminal t') sp
+resolveGlueAndMetas (Glued t) = resolveGlueAndMetas (simplified t)
+resolveGlueAndMetas t = pure t
 
 -- Ensure that a spine contains all variables, and thus
 -- turn it into a renaming.
@@ -225,7 +226,7 @@ spineToRen : (HasMetas m) => Size ns
   -> Spine ar (Term Value) ns
   -> m sm (Maybe (Sub ns Idx (arityToCtx ar)))
 spineToRen s [] = pure $ Just [<]
-spineToRen s (x :: xs) = resolveMetas x >>= \case
+spineToRen s (x :: xs) = resolveGlueAndMetas x >>= \case
   SimpApps (ValVar (Level l) $$ []) => do
     xs' <- spineToRen s xs
     pure $ ([<lvlToIdx s l] ++) <$> xs'
@@ -251,7 +252,7 @@ solution s (MkFlex m sp) t =
         let st : Term Syntax _ = quote s t in
         case ren pren (differentFrom m) st of
           Left err => pure $ Left (RenamingError err)
-          Right t' => pure $ Right (eval {over = Term Value} [<] $ lams pren.dom t')
+          Right t' => pure $ Right (eval {over = Term Value} [<] $ closeWithLams pren.dom t')
 
 -- Solve a problem and store it in the metavariable context
 public export

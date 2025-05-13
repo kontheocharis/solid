@@ -277,13 +277,13 @@ Env ms ns = Sub ms Val ns
 -- Helpers to create (internal) lambdas
 
 public export
-lam : (0 n : Ident) -> Term Syntax (ns :< n) -> Term Syntax ns
-lam _ t = SynApps (SynBinding Mta Callable (Bound Mta InternalLam (Delayed t)) $$ [])
+internalLam : (0 n : Ident) -> Term Syntax (ns :< n) -> Term Syntax ns
+internalLam _ t = SynApps (SynBinding Mta Callable (Bound Mta InternalLam (Delayed t)) $$ [])
 
 public export
-lams : Size ns -> Term Syntax ns -> Term Syntax [<]
-lams SZ t = t
-lams (SS s) t = lams s (lam _ t)
+closeWithLams : Size ns -> Term Syntax ns -> Term Syntax [<]
+closeWithLams SZ t = t
+closeWithLams (SS s) t = closeWithLams s (internalLam _ t)
 
 public export
 varLvl : Lvl ns -> Val ns
