@@ -1,10 +1,13 @@
 -- Typechecking combinators for the core language.
 module Core.Typechecking
 
+import Utils
+import Data.Singleton
 import Core.Syntax
 import Core.Base
 import Core.Evaluation
 import Core.Metavariables
+import Core.Unification
 
 %default covering
 
@@ -14,12 +17,21 @@ data TcMode : Type where
   Check : TcMode
   -- Infer to produce an elaborated term and type
   Infer : TcMode
-  -- Infer at a given stage, to produce an elaborated term and type
-  InferAt : TcMode
+
+-- Typechecking errors, context-aware
+data TcErrorAt : Ctx -> Type where
+  -- An error arising from unification
+  WhenUnifying : Val ns -> Val ns -> Unification ns -> TcErrorAt ns
+  -- Mismatching pi modes
+  WrongPiMode : PiMode -> ValTy ns -> TcErrorAt ns
+  -- Cannot infer stage
+  CannotInferStage : TcErrorAt ns
 
 -- Context for typechecking
 record Context (ns : Ctx) where
   constructor MkContext
+  -- All the identifiers in scope
+  idents : Singleton ns
   -- The current context of types
   con : Con ValTy ns
   -- The definitions in the context
@@ -31,6 +43,17 @@ record Context (ns : Ctx) where
   stages : SnocList Stage
   -- The size of the context, for quick access
   size : Size ns
+
+-- Packaging an error with its context
+record TcError where
+  constructor MkTcError
+  {0 conNs : Ctx}
+  -- The context in which the error occurred
+  con : Context conNs
+  -- The location of the error in the source file
+  loc : Loc
+  -- The error itself
+  err : TcErrorAt conNs
 
 -- A typed expression at a given stage
 record ExprAt (s : Stage) (d : Domain) (ns : Ctx) where
@@ -45,35 +68,45 @@ record Expr (d : Domain) (ns : Ctx) where
   ty : ValTy ns
   stage : Stage
 
+-- Turn `ExprAt` into `Expr`
+packStage : {s : Stage} -> ExprAt s d ns -> Expr d ns
+packStage (MkExprAt tm ty) = MkExpr tm ty s
+
+-- Helper to decide which `Expr` to pick based on an optional stage
+0 ExprAtMaybe : Maybe Stage -> Domain -> Ctx -> Type
+ExprAtMaybe Nothing = Expr
+ExprAtMaybe (Just s) = ExprAt s
+
 -- An annotation is a type and a stage
 record Annot (ns : Ctx) where
   constructor MkAnnot
   ty : ValTy ns
   stage : Stage
 
--- Add a definition to the context that eagerly evaluates to its value.
-eagerDefine : (n : Ident) -> Expr Value ns -> Context ns -> Context (ns :< n)
-eagerDefine n rhs (MkContext con defs stages size) =
-  MkContext (con :< rhs.ty) (defs . Drop Id :< wk rhs.tm) (stages :< rhs.stage) (SS size)
+-- Add a potentially self-referencing definition to the context.
+addToContext : (n : Ident) -> Stage -> ValTy ns -> Val (ns :< n) -> Context ns -> Context (ns :< n)
+addToContext n stage ty tm (MkContext (Val idents) con defs stages size) =
+  MkContext (Val (idents :< n)) (con :<  ty) (defs . Drop Id :< tm) (stages :< stage) (SS size)
 
 -- Add a definition to the context that lazily evaluates to its value.
-lazyDefine : (n : Ident) -> Expr Value ns -> Context ns -> Context (ns :< n)
-lazyDefine n rhs (MkContext con defs stages size) =
-  MkContext (con :< rhs.ty)
-    (defs . Drop Id :< Glued (LazyApps (ValDef (Level (lastLvl size)) $$ []) (wk rhs.tm)))
-    (stages :< rhs.stage)
-    (SS size)
+define : (n : Ident) -> Expr Value ns -> Context ns -> Context (ns :< n)
+define n rhs ctx =
+  addToContext n rhs.stage rhs.ty (Glued (LazyApps (ValDef (Level (lastLvl ctx.size)) $$ []) (wk rhs.tm))) ctx
 
 -- Add a binding with no value to the context.
 bind : (n : Ident) -> Annot ns -> Context ns -> Context (ns :< n)
-bind n annot (MkContext con defs stages size) =
-  MkContext (con :< annot.ty) (defs . Drop Id :< varLvl (lastLvl size)) (stages :< annot.stage) (SS size)
+bind n annot ctx = addToContext n annot.stage annot.ty (varLvl (lastLvl ctx.size)) ctx
 
 -- Typechecking has access to metas
 interface (Monad m) => HasTc m where
   -- Explicit instance of metas so that the resolution doesn't die..
   metas : HasMetas (const m)
 
+  -- Throw a typechecking error
+  tcError : Context ns -> TcErrorAt ns -> m a
+
+  -- Set the current typechecking location in the source file
+  enterLoc : Loc -> m a -> m a
 
 -- This is the type over which we build the typechecking combinators.
 --
@@ -82,16 +115,24 @@ interface (Monad m) => HasTc m where
 -- It can be executed to produce an elaborated expression, depending on what `md` is.
 0 TcOp : (md : TcMode) -> (0 m : Type -> Type) -> Ctx -> Type
 TcOp Check m ms = Annot ms -> m (Tm ms)
-TcOp Infer m ms = m (Expr Syntax ms)
-TcOp InferAt m ms = (s : Stage) -> m (ExprAt s Syntax ms)
+TcOp Infer m ms = (s : Maybe Stage) -> m (ExprAtMaybe s Syntax ms)
 
 -- Typechecking in a specific context
 0 TcAt : (md : TcMode) -> (0 m : Type -> Type) -> Ctx -> Type
 TcAt md m ns = Context ns -> TcOp md m ns
 
 -- Typechecking in any context
+--
+-- This is what is mostly used to work with, since a lot of the time we don't know which
+-- context we will check in ahead of time (due to things like inserted lambdas).
 0 Tc : (md : TcMode) -> (0 m : Type -> Type) -> Type
 Tc md m = forall ns . TcAt md m ns
+
+-- Map a parametric monadic operation over Tc.
+public export
+intercept : HasTc m => (forall a . m a -> m a) -> {md : TcMode} -> Tc md m -> Tc md m
+intercept f {md = Check} x = \ctx, as => f (x ctx as)
+intercept f {md = Infer} x = \ctx, s => f (x ctx s)
 
 -- Some useful shorthands
 
@@ -101,9 +142,11 @@ resolve x = resolveGlueAndMetas {sm = SolvingAllowed} @{metas} x
 evaluate : Context ns -> Tm ns -> Val ns
 evaluate ctx t = eval ctx.defs t
 
-freshMetaVal : HasTc m => Context ns -> m (Val ns)
+-- Create a fresh metavariable and evaluate it
+freshMetaVal : HasTc m => Context ns -> Stage -> m (Val ns)
 
-freshMeta : HasTc m => Context ns -> m (Tm ns)
+-- Create a fresh metavariable
+freshMeta : HasTc m => Context ns -> Stage -> m (Tm ns)
 
 -- Insert all lambdas implicit lambdas in a type-directed manner, without regard
 -- for what the expression is.
@@ -130,126 +173,165 @@ coerce : (HasTc m) => Expr Syntax ns -> Annot ns -> m (Tm ns)
 
 -- Force a typechecking operation to be in checking mode. This might involve unifying with an
 -- inferred type.
-check : HasTc m => {md : TcMode} -> TcAt md m ns -> TcAt Check m ns
-check {md = InferAt} f = \ctx, annot => (.tm) <$> (insertAt ctx annot.stage $ f ctx annot.stage)
-check {md = Infer} f = \ctx, annot => (.tm) <$> (insert ctx $ f ctx)
-check {md = Check} f = f
+check : HasTc m => Tc Infer m -> Tc Check m
+check f = \ctx, annot => (.tm) <$> (insertAt ctx annot.stage $ f ctx (Just annot.stage))
 
--- 0 Run : HasTc m => {md : TcMode} -> Tc m Check ns -> Type
--- Run {md = Check} c =
+-- `Type b` for some *compile-time* byte size `b`, object-level type of types.
+sizedObjType : (b : Val ns) -> ValTy ns
+sizedObjType b = SimpPrimNormal (SimpApplied PrimUnsized
+    [(SimpPrimNormal (SimpApplied PrimEmbedBYTES [b]))])
 
-identsMatch : Ident -> Ident -> Bool
-identsMatch (Implicit, n) (Implicit, m) = n == m
-identsMatch (Explicit, _) (Explicit, _) = True
-identsMatch _ _ = False
-
-sizedObjType : (size : Val ns) -> ValTy ns
-sizedObjType size = SimpPrimNormal (SimpApplied PrimUnsized
-    [(SimpPrimNormal (SimpApplied PrimEmbedBYTES [size]))])
-
+-- The `0` bytes value.
 zeroBytes : Val ns
 zeroBytes = SimpPrimNormal (SimpApplied PrimZeroBYTES [])
 
+-- `TYPE`, meta-level type of types.
 mtaType : ValTy ns
 mtaType = SimpPrimNormal (SimpApplied PrimTYPE [])
 
+-- Get either `Type 0` or `TYPE` depending on the stage.
 sizedTypeOfTypes : Stage -> Annot ns
 sizedTypeOfTypes Mta = MkAnnot mtaType Mta
 sizedTypeOfTypes Obj = MkAnnot (sizedObjType zeroBytes) Obj
 
+-- Unify two values in the given context.
+--
+-- Succeeds if the unification says `AreSame`.
 unify : HasTc m => Context ns -> Val ns -> Val ns -> m ()
+unify ctx a b = unify {sm = SolvingAllowed} @{unifyValues @{metas}} ctx.size a b >>= \case
+  AreSame => pure ()
+  failure => tcError ctx $ WhenUnifying a b failure
 
 -- Evaluate a closure with a extended environment
 evalClosure : Context ns -> Body Value n ns -> Term Value (ns :< n')
 evalClosure ctx (Closure env body) = eval (lift ctx.size env) body
 
-sLam : Stage -> (n : Ident) -> Term Syntax (ns :< n) -> Term Syntax ns
-sLam s n t = SynApps (SynBinding s Callable (Bound s (BindLam n) (Delayed t)) $$ [])
+-- Close a syntactic term into a closure.
+public export
+close : Context ns -> Tm (ns :< n) -> Body Value n ns
+close ctx ty = Closure (id ctx.size) ty
 
-vPi : Stage -> (n : Ident) -> ValTy ns -> Body Value n ns -> Term Value ns
-vPi s n ty body = RigidBinding s (Bound s (BindPi n ty) body)
-
--- lamInfer : HasTc m
---   => (n : Ident)
---   -> {md : TcMode}
---   -> (bindTy : Maybe (Tc md m ns))
---   -> (body : Tc md m (ns :< n))
---   -> Tc Infer m ns
-
+-- Insert (some kind of an implicit) lambda from the given information.
+--
+-- This adds the binder to the subject and `recurses`, yielding a lambda with the
+-- given Pi type.
 insertLam : HasTc m => Context ns
   -> (piStage : Stage)
   -> (piIdent : Ident)
   -> (bindTy : ValTy ns)
   -> (body : Body Value piIdent ns)
-  -> {md : TcMode} -> (subject : Tc md m)
+  -> (subject : Tc Check m)
   -> m (ExprAt piStage Syntax ns)
 insertLam ctx piStage piIdent bindTy body subject = do
   let b = evalClosure ctx body
-  s <- check subject (bind piIdent (MkAnnot bindTy piStage) ctx) (MkAnnot b piStage)
+  s <- subject (bind piIdent (MkAnnot bindTy piStage) ctx) (MkAnnot b piStage)
   pure $ MkExprAt (sLam piStage piIdent s) (vPi piStage piIdent bindTy body)
 
-closeHere : Context ns -> Ty (ns :< n) -> Body Value n ns
-closeHere ctx ty = Closure (id ctx.size) ty
+-- The type of the callback that `ifForcePi` calls when it finds a matching
+-- type.
+0 ForcePiCallback : (r : Type) -> Ctx -> Type
+ForcePiCallback r ns = (resolvedPi : ValTy ns)
+  -> (piStage : Stage)
+  -> (piIdent : Ident)
+  -> (a : ValTy ns)
+  -> (b : Body Value piIdent ns)
+  -> r
 
+-- Given a `potentialPi`, try to match it given that we expect something in
+-- `mode` and `stage`.
+--
+-- If it matches, call `ifMatching` with the appropriate information, otherwise
+-- call `ifMismatching` with the appropriate information.
 ifForcePi : (HasTc m) => Context ns
   -> (mode : PiMode)
+  -> (stage : Stage)
   -> (potentialPi : ValTy ns)
-  -> (ifMatching : (piStage : Stage) -> (piIdent : Ident) -> (a : ValTy ns) -> (b : Body Value piIdent ns) -> m r)
-  -> (ifMismatching : (piStage : Stage) -> (piIdent : Ident) -> (a : ValTy ns) -> (b : Body Value piIdent ns) -> m r)
+  -> (ifMatching : ForcePiCallback (m r) ns)
+  -> (ifMismatching : ForcePiCallback (m r) ns)
   -> m r
-ifForcePi ctx mode potentialPi ifMatching ifMismatching
+ifForcePi ctx mode stage potentialPi ifMatching ifMismatching
   = resolve potentialPi >>= \case
-    RigidBinding piStage (Bound piStage (BindPi piIdent a) b) =>
-      if fst piIdent == mode
-        then ifMatching piStage piIdent a b
-        else ifMismatching piStage piIdent a b
-    _ => do
-      a <- freshMetaVal ctx
+    resolvedPi@(RigidBinding piStage (Bound piStage (BindPi piIdent a) b)) =>
+      -- We got a pi
+      if fst piIdent == mode && piStage == stage
+        then ifMatching resolvedPi piStage piIdent a b
+        else ifMismatching resolvedPi piStage piIdent a b
+    resolvedPi => do
+      -- Did not get a pi, try to construct a pi based on the info we have and
+      -- unify it with the potential pi.
+      a <- freshMetaVal ctx stage
       let piIdent = (mode, "_")
-      let piStage = Mta
-      b <- closeHere ctx <$> freshMeta (bind piIdent (MkAnnot a piStage) ctx)
-      unify ctx potentialPi (vPi piStage piIdent a b)
-      ifMatching piStage piIdent a b
+      b <- close ctx <$> freshMeta (bind piIdent (MkAnnot a stage) ctx) stage
+      let createdPi = vPi stage piIdent a b
+      unify ctx resolvedPi createdPi
+      ifMatching createdPi stage piIdent a b
 
+-- Infer the given job as a type, also inferring its stage in the process.
+inferAnnot : HasTc m => Context ns -> Tc Infer m -> m (Annot ns)
+inferAnnot ctx ty = do
+  MkExpr ty univ stage <- ty ctx Nothing
+  unify ctx univ (sizedTypeOfTypes stage).ty
+  let vty = evaluate ctx ty
+  pure $ MkAnnot vty stage
+
+-- Infer a lambda at the given stage, with the given binder name and type.
+inferLam : HasTc m => Context ns
+  -> (stage : Stage)
+  -> (n : Ident)
+  -> (a : ValTy ns)
+  -> Tc Infer m -> m (ExprAt stage Syntax ns)
+inferLam ctx stage lamIdent a body = do
+  MkExprAt body' bTy <- body (bind lamIdent (MkAnnot a stage) ctx) (Just stage)
+  let b = close ctx (quote (SS ctx.size) bTy)
+  pure $ MkExprAt (sLam stage lamIdent body') (vPi stage lamIdent a b)
+
+-- Typechecking combinator for lambdas.
 tcLam : HasTc m => (md : TcMode)
   -> (n : Ident)
-  -> {md' : TcMode}
-  -> (bindTy : Maybe (Tc md' m))
-  -> (body : Tc md' m)
+  -> (bindTy : Maybe (Tc Infer m))
+  -> (body : Tc md m)
   -> Tc md m
-tcLam @{tc} Check lamIdent bindTy body = \ctx, annot@(MkAnnot ty resultStage) => do
-  ifForcePi ctx (fst lamIdent) ty
-    (\piStage, piIdent, a, b => do
-      annotTy : Annot ns <- case bindTy of
+tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnot ty stage) => do
+  -- We must check that the type we have is a pi
+  ifForcePi ctx (fst lamIdent) stage ty
+    (\_, piStage, piIdent, a, b => do
+      -- Great, it is a pi. Now first reconcile this with the annotation type
+      -- of the lambda.
+      a : Annot ns <- case bindTy of
         Nothing => pure $ MkAnnot a piStage
         Just bindTy => do
           bindTy' <- evaluate ctx <$> check bindTy ctx (sizedTypeOfTypes piStage)
           unify ctx a bindTy'
           pure $ MkAnnot bindTy' piStage
-      bodyExpr <- check body (bind lamIdent annotTy ?ctx) (MkAnnot (evalClosure ctx b) piStage)
-      pure $ sLam piStage lamIdent bodyExpr
+      -- Then check the body with the computed annotation type.
+      body' <- body (bind lamIdent a ctx) (MkAnnot (evalClosure ctx b) piStage)
+      pure $ sLam piStage lamIdent body'
     )
-    (\piStage, piIdent, a, b => case fst piIdent of
-      Implicit => (.tm) <$> insertLam {md = Infer} ctx piStage piIdent a b (tcLam Infer lamIdent bindTy body)
-      _ => ?error
+    (\resolvedPi, piStage, piIdent, a, b => case fst piIdent of
+      -- It wasn't the right kind of pi; if it was implicit, insert a lambda
+      Implicit => (.tm) <$> insertLam ctx piStage piIdent a b (tcLam Check lamIdent bindTy body)
+      -- Otherwise, we have the wrong kind of pi.
+      _ => tcError ctx (WrongPiMode (fst piIdent) resolvedPi)
     )
-    -- RigidBinding piStage (Bound piStage (BindPi piIdent@(piMode, _) a) b) =>
-    --   if identsMatch lamIdent piIdent then do
-    --     annotTy : Annot ns <- case bindTy of
-    --       Nothing => pure $ MkAnnot a piStage
-    --       Just bindTy => do
-    --         bindTy' <- evaluate ctx <$> check bindTy ctx (sizedTypeOfTypes piStage)
-    --         unify ctx a bindTy'
-    --         pure $ MkAnnot bindTy' piStage
-    --     bodyExpr <- check body (bind lamIdent annotTy ctx) (MkAnnot (evalClosure ctx b) piStage)
-    --     pure $ sLam piStage lamIdent bodyExpr
-    --   else if piMode == Implicit then
-    --     ?fjsdlkfjl
-    --     -- pure $ lam piStage piIdent bodyExpr
-    --   else ?fafafa
-    -- _ => check {md = Infer} (tcLam Infer lamIdent bindTy body) ctx annot
-tcLam Infer lamIdent bindTy body = ?fab
-tcLam InferAt lamIdent bindTy body = ?fac
-
--- tcLam : HasTc m => (s : Stage) -> (n : Ident) -> Tc m md (ns :< n) -> Tc m Check ns
--- tcLam st n body = InCheck $ \ctx, ty => ?fa
+tcLam Infer lamIdent bindTy body = \ctx, stage => do
+  -- We are not given a type to check against...
+  case stage of
+    Nothing => case bindTy of
+      -- We are not even given a stage, and we aren't gonna guess because that
+      -- might be wrong.
+      Nothing => tcError ctx CannotInferStage
+      -- We have at least a type, so we can deduce the stage from that.
+      Just bindTy => do
+        MkAnnot a stage <- inferAnnot ctx bindTy
+        packStage <$> inferLam ctx stage lamIdent a body
+    Just stage => case bindTy of
+      -- We have a stage, but no type, so just instantiate a meta..
+      Nothing => do
+        a <- freshMetaVal ctx stage
+        inferLam ctx stage lamIdent a body
+      Just bindTy => do
+        -- We have a stage and a type. For this, we infer with the type, and
+        -- then adjust for the stage later. We shouldn't call inferLam directly
+        -- because we don't know that the stage is valid for the given type yet.
+        res <- tcLam Infer lamIdent (Just bindTy) body ctx Nothing
+        adjustStage ctx res stage

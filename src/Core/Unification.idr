@@ -212,8 +212,8 @@ HasMetas m => Unify m SolvingNotAllowed LazyValue LazyValue where
   unify _ _ _ = pure DontKnow
 
 -- Finally, term unification
-
-HasMetas m => Unify m sm (Term Value) (Term Value) where
+export
+[unifyValues] (HasMetas m) => Unify m sm (Term Value) (Term Value) where
   unify s (MtaCallable m) (MtaCallable m') = unify s m m'
   unify s (SimpPrimNormal p) (SimpPrimNormal p') = unify s p p'
   unify s (SimpObjCallable o) (SimpObjCallable o') = unify s o o'

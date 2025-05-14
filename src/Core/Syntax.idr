@@ -5,6 +5,7 @@ import Utils
 import Core.Base
 import Data.Singleton
 import Decidable.Equality
+import Decidable.Decidable
 import Control.Monad.Identity
 
 %default total
@@ -32,6 +33,10 @@ DecEq Stage where
   decEq Mta Mta = Yes Refl
   decEq Obj Mta = No (\Refl impossible)
   decEq Mta Obj = No (\Refl impossible)
+
+public export
+Eq Stage where
+  a == b = isYes (decEq a b)
 
 -- Whether an expression head is reducible
 public export
@@ -274,7 +279,7 @@ public export
 0 Env : Ctx -> Ctx -> Type
 Env ms ns = Sub ms Val ns
 
--- Helpers to create (internal) lambdas
+-- Helpers to create syntax
 
 public export
 internalLam : (0 n : Ident) -> Term Syntax (ns :< n) -> Term Syntax ns
@@ -288,6 +293,14 @@ closeWithLams (SS s) t = closeWithLams s (internalLam _ t)
 public export
 varLvl : Lvl ns -> Val ns
 varLvl l = SimpApps (ValVar (Level l) $$ [])
+
+public export
+sLam : Stage -> (n : Ident) -> Term Syntax (ns :< n) -> Term Syntax ns
+sLam s n t = SynApps (SynBinding s Callable (Bound s (BindLam n) (Delayed t)) $$ [])
+
+public export
+vPi : Stage -> (n : Ident) -> ValTy ns -> Body Value n ns -> Term Value ns
+vPi s n ty body = RigidBinding s (Bound s (BindPi n ty) body)
 
 -- We can extend the variable search machinery to the syntax:
 
