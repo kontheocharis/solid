@@ -1,0 +1,75 @@
+Symbol : TYPE
+`foo` : Symbol
+
+--
+
+SORT : TYPE
+SORT = (U : TYPE, EL : U -> TYPE)
+
+sort-meta : SORT
+sort-meta = (TYPE, \T => T)
+
+sort-obj-sized : Bytes -> SORT
+sort-obj-sized = ((b ** Type b), \(_, T) => Code T)
+
+sort-obj-boxed : Bytes -> SORT
+sort-obj-boxed = ((b ** Unsized b), \(_, T) => Code (Box T))
+
+sort-obj-ps : Bytes -> SORT
+sort-obj-ps = ((b ** Data b), \(_, T) => PS T)
+
+Tel : SORT -> TYPE
+empty-tel : Tel s
+extend-tel : (a : s.U) -> (s.EL a -> Tel s) -> Tel s
+elim-tel : (P : {s} -> Tel s -> TYPE)
+    -> (empty-telM : P empty-tel)
+    -> (extend-telM : (a : s.U) -> (t : s.EL a -> Tel s) -> (fM : (x : s.EL a) -> P (t x)) -> P (extend-tel a t))
+    -> (t : Tel s) -> P t
+
+Spine : Tel s -> TYPE
+empty-spine : Spine {s} empty-tel
+extend-spine : (x : s.EL a) -> (xs : Spine (t x)) -> Spine (extend-tel a t)
+
+TEL : TYPE
+TEL = Tel sort-meta
+
+
+
+-- signatures can be more sophisticated than this
+Sig : SORT -> TEL -> TYPE
+Op : SORT -> TEL -> TYPE
+
+empty-sig : Sig s t
+extend-sig : Symbol -> Op s t -> Sig s t -> Sig s t
+
+ret : Spine t -> Op s t
+ext : (a : s.U) -> (s.EL a -> Op s t) -> Op s t
+int : (a : s.U) -> (s.EL a -> Spine t) -> Op s t -> Op s t
+
+
+
+alg : Sig s t -> (X : Spine t -> s.U) -> TEL
+
+
+-- syntax:
+
+-- - telescope syntax for signatures and actual telescopes
+
+
+----------
+
+
+
+Nat : TYPE
+Nat = data (zero : Nat, succ : Nat -> Nat) as (N, z, s, elim-N)
+
+-- same as
+
+NatSig : Sig sort-meta empty-tel
+NatSig = (`zero` => ret (), `succ` => int () (\() => ret ())))
+
+nat-repr : Spine (ind-alg NatSig)
+nat-repr =
+
+Nat : TYPE
+Nat = data NatSig as ${nat-repr}

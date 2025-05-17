@@ -40,7 +40,7 @@ record Context (ns : Ctx) where
   -- definitions are mapped to their value.
   defs : Sub ns Val ns
   -- The stages of the definitions in the context
-  stages : SnocList Stage
+  stages : Con (const Stage) ns
   -- The size of the context, for quick access
   size : Size ns
 

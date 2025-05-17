@@ -82,13 +82,7 @@ mx /\ my = do
     Error e => pure $ Error e
     AreDifferent => pure AreDifferent
     AreSame => my
-    DontKnow => do
-      y <- my
-      case y of
-        Error e => pure $ Error e
-        AreSame => pure DontKnow
-        AreDifferent => pure AreDifferent
-        DontKnow => pure DontKnow
+    DontKnow => pure $ DontKnow
 
 -- Disjunction of unification outcomes (fully monadic version)
 public export
@@ -101,13 +95,7 @@ mx \/ my = do
     Error e => pure $ Error e
     AreSame => pure AreSame
     AreDifferent => my
-    DontKnow => do
-      y <- my
-      case y of
-        Error e => pure $ Error e
-        AreSame => pure AreSame
-        AreDifferent => pure DontKnow
-        DontKnow => pure DontKnow
+    DontKnow => my
 
 -- Solve a unification problem if possible, and return an appropriate outcome
 solve : HasMetas m => Size ns
