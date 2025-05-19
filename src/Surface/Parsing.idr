@@ -23,6 +23,7 @@ data ParseError : Type where
   EndOfInput : ParseError
   UnexpectedChar : Char -> ParseError
   ReservedWord : String -> ParseError
+  CannotUseLetFlags : LetFlags -> ParseError
 
 public export
 Show ParseError where
@@ -31,6 +32,7 @@ Show ParseError where
   show EndOfInput = "Unexpected end of input"
   show (UnexpectedChar c) = "Unexpected character: " ++ show c
   show (ReservedWord s) = "Reserved word: " ++ s
+  show (CannotUseLetFlags f) = "Cannot use let flags here"
 
 public export
 record ParserState where
@@ -126,38 +128,76 @@ sepBy sep p = do
     p
   pure (a :: as)
 
+sepByOptEnd : Parser a -> Parser b -> Parser (List b)
+sepByOptEnd sep p = do
+  xs <- sepBy sep p
+  _ <- optional $ sep
+  pure xs
+
+sepByReqEnd : Parser a -> Parser b -> Parser (List b)
+sepByReqEnd sep p = do
+  xs <- sepBy sep p
+  _ <- sep
+  pure xs
+
 string : String -> Parser ()
 string s = traverse_ char (unpack s)
 
-whitespace : Parser ()
-whitespace =  do
-  _ <- many (satisfy isSpace)
+-- @@TODO: Deal with \r
+
+public export
+indentation : Parser ()
+indentation = (char ' ' <|> char '\t')
+
+public export
+space : Parser ()
+space = indentation <|> (char '\n' <* many1 indentation)
+
+public export
+anySpace : Parser ()
+anySpace = indentation <|> char '\n'
+
+whitespace : Parser () -> Parser ()
+whitespace sp = do
+  _ <- many sp
   (( do
       p <- string "--"
       _ <- many (satisfy (\c => c /= '\n' && c /= '\r'))
-      whitespace
+      whitespace sp
     ) <|> (pure ()))
   pure ()
 
 atom : Parser a -> Parser a
-atom p = p <* whitespace
+atom p = p <* whitespace space
 
 symbol : String -> Parser ()
 symbol s = atom $ string s
 
+betweenGrouping : Parser a -> Parser b -> Parser c -> Parser c
+betweenGrouping l r p = between (l <* whitespace anySpace) (whitespace anySpace >> r) p
+
 parens : Parser a -> Parser a
-parens p = between (symbol "(") (symbol ")") p
+parens p = betweenGrouping (symbol "(") (symbol ")") p
 
 curlies : Parser a -> Parser a
-curlies p = between (symbol "{") (symbol "}") p
+curlies p = betweenGrouping (symbol "{") (symbol "}") p
 
 brackets : Parser a -> Parser a
-brackets p = between (symbol "[") (symbol "]") p
+brackets p = betweenGrouping (symbol "[") (symbol "]") p
 
 located : (Loc -> a -> b) -> Parser a -> Parser b
 located f p = MkParser $ \ts => case runParser p ts of
   Left s => Left s
   Right (a, ts') => Right (f (MkLoc ts.stream ts.pos) a, ts')
+
+
+public export
+parse : Parser a -> String -> Either ParseError a
+parse p s = case unpack s of
+  [] => Left EndOfInput
+  (c :: cs) => case runParser (whitespace anySpace >> p <* whitespace anySpace) (MkParserState (c :: cs) FZ) of
+    Left s => Left s
+    Right (a, MkParserState (c :: cs') l) => if l == last then Right a else Left TrailingChars
 
 -- Actual language:
 
@@ -192,23 +232,32 @@ fnParam = atom . located (|>) $
     pure $ \l => MkPParam l (Explicit, "_") (Just t)
   ) $ do
     n <- identifier
-    ty <- peek >>= \case
-      Just ':' => do
+    ty <- (symbol ":" >> do
         symbol ":"
         t <- tm
-        pure $ Just t
-      _ => pure Nothing
+        pure $ Just t) <|> pure Nothing
+    pure $ \m, l => MkPParam l (m, n) ty)
+
+lamParam : Parser (PParam Functions)
+lamParam = atom . located (|>) $
+  (paramLike (|>) (do
+    n <- identifier
+    pure $ \l => MkPParam l (Explicit, n) Nothing
+  ) $ do
+    n <- identifier
+    ty <- (symbol ":" >> do
+        symbol ":"
+        t <- tm
+        pure $ Just t) <|> pure Nothing
     pure $ \m, l => MkPParam l (m, n) ty)
 
 pairParam : Parser (PParam Pairs)
 pairParam = atom . located (|>) $ do
   (m, n) <- paramLike (,) ((Explicit,) <$> identifier) $ identifier
-  ty <- peek >>= \case
-    Just ':' => do
+  ty <- (symbol ":" >> do
       symbol ":"
       t <- tm
-      pure $ Just t
-    _ => pure Nothing
+      pure $ Just t) <|> pure Nothing
   pure $ \l => MkPParam l (m, n) ty
 
 fnArg : Parser (PArg Functions)
@@ -231,11 +280,103 @@ pairArg = atom . located (|>) $ do
 fnTel : Parser (PTel Functions)
 fnTel = MkPTel . fst <$> many1 fnParam
 
+lamTel : Parser (PTel Functions)
+lamTel = MkPTel . fst <$> many1 lamParam
+
 pairTel : Parser (PTel Pairs)
-pairTel = MkPTel . fst <$> many1 pairParam
+pairTel = MkPTel <$> sepBy (symbol ",") pairParam
 
 fnSpine : Parser (PSpine Functions)
 fnSpine = MkPSpine . fst <$> many1 fnArg
 
 pairSpine : Parser (PSpine Pairs)
-pairSpine = MkPSpine . fst <$> many1 pairArg
+pairSpine = MkPSpine <$> sepBy (symbol ",") pairArg
+
+
+-- letFlags : Parser LetFlags
+-- letFlags = many
+
+stage : Parser Stage
+stage = (symbol "obj" >> pure Obj) <|> (symbol "mta" >> pure Mta)
+
+irr : Parser Bool
+irr = (symbol "irr" >> pure True) <|> pure False
+
+decl : Parser (String, Maybe PTy)
+decl = do
+  n <- identifier
+  ty <- optional (symbol ":" >> tm)
+  pure (n, ty)
+
+endStatement : Parser ()
+endStatement = (symbol ";" <|> symbol "\n") <* whitespace anySpace
+
+blockStatement : Parser PBlockStatement
+blockStatement = atom . located (|>) $ do
+  s <- optional stage
+  irr <- irr
+  let flags = MkLetFlags s irr
+  d <- decl
+  case d of
+    (n, Just ty) => -- can be a bind or let with type, or a let rec
+      -- let with type
+      (symbol "=" >> do
+        v <- tm
+        pure $ \l => PLet l flags n (Just ty) v)
+      -- bind with type
+      <|> (symbol "<-" >> do
+        when (not $ letFlagsAreDefault flags) (fail $ CannotUseLetFlags flags)
+        v <- tm
+        pure $ \l => PBind l n (Just ty) v)
+      -- let rec
+      <|> (endStatement >> symbol n >> do
+        tel <- optional lamTel
+        symbol "="
+        v <- tm
+        let v' = case tel of
+              Nothing => v
+              Just tel => PLam tel v
+        pure $ \l => PLetRec l flags n ty v')
+    (n, Nothing) => -- can only be a bind or let without type
+      -- let without type
+      (symbol ":=" >> do
+        v <- tm
+        pure $ \l => PLet l flags n Nothing v)
+      -- bind without type
+      <|> (symbol "<-" >> do
+        when (not $ letFlagsAreDefault flags) (fail $ CannotUseLetFlags flags)
+        v <- tm
+        pure $ \l => PBind l n Nothing v)
+
+topLevelBlock : Parser PTm
+topLevelBlock = located PLoc $ do
+  statements <- sepByReqEnd endStatement blockStatement
+  endStatement
+  expr <- tm
+  pure $ PBlock True statements expr
+
+block : Parser PTm
+block = located PLoc . curlies $ do
+  statements <- sepByReqEnd endStatement blockStatement
+  endStatement
+  expr <- tm
+  pure $ PBlock False statements expr
+
+name : Parser PTm
+name = located PLoc $ PName <$> identifier
+
+lam : Parser PTm
+lam = located PLoc $ do
+  tel <- lamTel
+  symbol "=>"
+  body <- tm
+  pure $ PLam tel body
+
+app : Parser PTm
+app = located PLoc $ do
+  f <- singleTm
+  sp <- fnSpine
+  pure $ PApp f sp
+
+binOp : Parser PTm
+binOp = located PLoc $ ?todo

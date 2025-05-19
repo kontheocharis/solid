@@ -58,6 +58,7 @@ record PSpine (t : Target) where
   actual : List (PArg t)
 
 -- Varius flags for let statements
+public export
 record LetFlags where
   constructor MkLetFlags
   -- Which stage to bind the let in
@@ -65,8 +66,11 @@ record LetFlags where
   -- Whether the RHS is irrelevant, and if so we can extract its value as long
   -- as the rest of the block is zero-sized.
   irr : Bool
-  -- Whether this let is recursive
-  rec : Bool
+
+public export
+letFlagsAreDefault : LetFlags -> Bool
+letFlagsAreDefault (MkLetFlags Nothing False) = True
+letFlagsAreDefault _ = False
 
 -- Binary operators
 public export
@@ -75,19 +79,24 @@ data BinOp = Times | Plus
 -- A block is a sequence of assignment-like things. It is written like
 -- { x1 := a1; ... ; xn := an; y }, similar to Rust.
 public export
-data PBlockStart : Type where
+data PBlockStatement : Type where
+  -- Recursive let statement
+  --
+  -- x : A
+  -- x = a
+  PLetRec : Loc -> LetFlags -> (name : String) -> PTy -> PTm -> PBlockStatement
   -- Let statement
   --
   -- x : A = a
   -- or
   -- x := a
-  PLet : LetFlags -> (name : String) -> Maybe PTy -> PTm -> PBlockStart
+  PLet : Loc -> LetFlags -> (name : String) -> Maybe PTy -> PTm -> PBlockStatement
   -- Monadic bind statement
   --
   -- x : A <- a
   -- or
   -- x <- a
-  PBind : (name : String) -> Maybe PTy -> PTm -> PBlockStart
+  PBind : Loc -> (name : String) -> Maybe PTy -> PTm -> PBlockStatement
 
 -- Main syntax tree, pretty self explanatory
 --
@@ -107,7 +116,7 @@ data PTm : Type where
   PSigmas : PTel Pairs -> PTy
   PPairs : PSpine Pairs -> PTm
   PHole : (name : Maybe String) -> PTy
-  PBlock : (topLevel : Bool) -> List PBlockStart -> PTm -> PTm
+  PBlock : (topLevel : Bool) -> List PBlockStatement -> PTm -> PTm
   -- Projection e.g. x.n : A where x : (.., n : A, ...)
   PProj : PTm -> (field : String) -> PTm
   PLoc : Loc -> PTm -> PTm
@@ -187,8 +196,8 @@ Show (PSpine Pairs) where
 -- Calculate prefix flags to let statements
 public export total
 showLetFlags : LetFlags -> String
-showLetFlags (MkLetFlags s r i) =
-  let result = catMaybes [stage s, rec r, irr i] |> joinBy " " in
+showLetFlags (MkLetFlags s i) =
+  let result = catMaybes [stage s, irr i] |> joinBy " " in
   if result == "" then "" else result ++ " "
 where
   stage : Maybe Stage -> Maybe String
@@ -196,20 +205,17 @@ where
   stage (Just Obj) = Just "obj"
   stage (Just Mta) = Just "mta"
 
-  rec : Bool -> Maybe String
-  rec False = Nothing
-  rec True = Just "rec"
-
   irr : Bool -> Maybe String
   irr False = Nothing
   irr True = Just "irr"
 
 public export covering
-Show PBlockStart where
-  show (PLet f n Nothing v) = showLetFlags f ++ show n ++ " := " ++ show v
-  show (PLet f n (Just ty) v) = showLetFlags f ++ show n ++ " : " ++ show ty ++ " = " ++ show v
-  show (PBind n (Just ty) v) = show n ++ " : " ++ show ty ++ " <- " ++ show v
-  show (PBind n Nothing v) = show n ++ " <- " ++ show v
+Show PBlockStatement where
+  show (PLetRec _ f n ty v) = showLetFlags f ++ show n ++ " : " ++ show v ++ "\n" ++ show n ++ " = " ++ show v
+  show (PLet _ f n Nothing v) = showLetFlags f ++ show n ++ " := " ++ show v
+  show (PLet _ f n (Just ty) v) = showLetFlags f ++ show n ++ " : " ++ show ty ++ " = " ++ show v
+  show (PBind _ n (Just ty) v) = show n ++ " : " ++ show ty ++ " <- " ++ show v
+  show (PBind _ n Nothing v) = show n ++ " <- " ++ show v
 
 public export total
 Show BinOp where
