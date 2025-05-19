@@ -1,5 +1,6 @@
 module Surface.Presyntax
 
+import Utils
 import Core.Syntax
 import Surface.Text
 import Core.Base
@@ -18,98 +19,133 @@ public export
 0 PPat : Type
 PPat = PTm
 
+data Target : Type where
+  Functions : Target
+  Pairs : Target
 
 public export
-record PParam where
+record PParam (t : Target) where
   constructor MkPParam
   loc : Loc
   name : Ident
   ty : Maybe PTy
 
 public export
-record PTel where
+record PArg (t : Target) where
+  constructor MkPArg
+  loc : Loc
+  name : Maybe Ident
+  value : PTm
+
+public export
+record PTel (t : Target) where
   constructor MkPTel
-  actual : List PParam
+  actual : List (PParam t)
+
+public export
+record PSpine (t : Target) where
+  constructor MkPSpine
+  actual : List (PArg t)
 
 namespace PTel
   public export
-  (.arity) : PTel -> Arity
+  (.arity) : PTel t -> Arity
   (.arity) (MkPTel p) = map (.name) p
 
 record LetFlags where
   constructor MkLetFlags
   stage : Maybe Stage
-  rec : Bool
   irr : Bool
+  rec : Bool
 
-data BinOp : Type where
-  Times : BinOp
-  Plus : BinOp
+data BinOp = Times | Plus
 
+data PBlockStart : Type where
+  PLet : LetFlags -> (name : String) -> Maybe PTy -> PTm -> PBlockStart
+  PBind : (name : String) -> Maybe PTy -> PTm -> PBlockStart
 
 public export
 data PTm : Type where
-  PIdent : String -> PTm
-  PLam : Ident -> Maybe PTy -> PTm -> PTm
-  PApp : PTm -> PTm -> PTm
-  PPi : PParam -> PTy -> PTy
-  PSigma : PParam -> PTy -> PTy
+  PName : String -> PTm
+  PLam : PTel Functions -> PTm -> PTm
+  PApp : PTm -> PSpine Functions -> PTm
+  PPi : PTel Functions -> PTy -> PTy
+  PUnit : PTy
+  PSigmas : PTel Pairs -> PTy
+  PPairs : PSpine Pairs -> PTm
+  PHole : (name : Maybe String) -> PTy
+  PBlock : (topLevel : Bool) -> List PBlockStart -> PTm -> PTm
+  PProj : PTm -> (field : String) -> PTm
   PLoc : Loc -> PTm -> PTm
-  PLet : LetFlags -> (name : String) -> Maybe PTy -> PTm -> PTm -> PTm
-  -- PLetIrr?
-
-public export
-pApps : PTm -> SnocList PTm -> PTm
-pApps f [<] = f
-pApps f (xs :< x) = PApp (pApps f xs) x
-
-public export
-pGatherApps : PTm -> (PTm, SnocList PTm)
-pGatherApps (PApp f x) = let (f', xs) = pGatherApps f in (f', xs :< x)
-pGatherApps (PLoc _ t) = pGatherApps t
-pGatherApps f = (f, [<])
-
-public export
-pGatherPis : PTy -> (PTel, PTy)
-pGatherPis (PPi p b) = let (MkPTel ps, ret) = pGatherPis b in (MkPTel (p :: ps), ret)
-pGatherPis t = (MkPTel [], t)
-
-public export
-pGatherLams : PTm -> (List (Ident, Maybe PTy), PTm)
-pGatherLams (PLam n ty t) = let (ns, t') = pGatherLams t in ((n, ty) :: ns, t')
-pGatherLams (PLoc _ t) = pGatherLams t
-pGatherLams t = ([], t)
-
-public export
-pPis : PTel -> PTy -> PTy
-pPis (MkPTel cs) b = foldr PPi b cs
 
 public export
 Show PTm
 
-public export covering
-Show PParam where
-  show (MkPParam l (Explicit, n) (Just t)) = "(" ++ show n ++ " : " ++ show t ++ ")"
-  show (MkPParam l (Explicit, "_") (Just t)) = show t
-  show (MkPParam l (Implicit, n) (Just t)) = "{" ++ show n ++ " : " ++ show t ++ "}"
-  show (MkPParam l (Explicit, n) Nothing) = "(" ++ show n ++ " : _)"
-  show (MkPParam l (Implicit, n) Nothing) = "{" ++ show n ++ "}"
-
-public export covering
-Show PTel where
-  show (MkPTel []) = ""
-  show (MkPTel ts) = " " ++ (map show ts |> cast |> joinBy " ")
-
 isAtomic : PTm -> Bool
-isAtomic (PIdent _) = True
+isAtomic (PName _) = True
+isAtomic (PSigmas _) = True
+isAtomic PUnit = True
+isAtomic (PHole _) = True
+isAtomic (PPairs _) = True
+isAtomic (PBlock False _ _) = True
+isAtomic (PProj _ _) = True
 isAtomic (PLoc _ t) = isAtomic t
 isAtomic _ = False
 
 covering
 showAtomic : PTm -> String
+showAtomic t = if isAtomic t then show t else "(" ++ show t ++ ")"
+
+public export covering
+Show (PParam Functions) where
+  show (MkPParam l (Explicit, n) (Just t)) = "(" ++ show n ++ " : " ++ show t ++ ")"
+  show (MkPParam l (Explicit, "_") (Just t)) = showAtomic t
+  show (MkPParam l (Implicit, n) (Just t)) = "[" ++ show n ++ " : " ++ show t ++ "]"
+  show (MkPParam l (Explicit, n) Nothing) = "(" ++ show n ++ " : _)"
+  show (MkPParam l (Implicit, n) Nothing) = "[" ++ show n ++ "]"
+
+public export covering
+Show (PParam Pairs) where
+  show (MkPParam l (Explicit, n) (Just t)) = show n ++ " : " ++ show t
+  show (MkPParam l (Explicit, "_") (Just t)) = show t
+  show (MkPParam l (Implicit, n) (Just t)) = "[" ++ show n ++ "] : " ++ show t
+  show (MkPParam l (Explicit, n) Nothing) = show n ++ " : _"
+  show (MkPParam l (Implicit, n) Nothing) = "[" ++ show n ++ "]"
+
+public export covering
+Show (PArg Functions) where
+  show (MkPArg l (Just (Explicit, n)) t) = "(" ++ show n ++ " = " ++ show t ++ ")"
+  show (MkPArg l (Just (Implicit, n)) t) = "[" ++ show n ++ " = " ++ show t ++ "]"
+  show (MkPArg l Nothing t) = showAtomic t
+
+public export covering
+Show (PArg Pairs) where
+  show (MkPArg l (Just (Explicit, n)) t) = show n ++ " = " ++ show t
+  show (MkPArg l (Just (Implicit, n)) t) = "[" ++ show n ++ "] = " ++ show t
+  show (MkPArg l Nothing t) = show t
+
+public export covering
+Show (PTel Functions) where
+  show (MkPTel []) = ""
+  show (MkPTel ts) = (map show ts |> cast |> joinBy " ")
+
+public export covering
+Show (PTel Pairs) where
+  show (MkPTel ts) = "(" ++ (map show ts |> cast |> joinBy ", ") ++ ")"
+
+public export covering
+Show (PSpine Pairs) where
+  show (MkPSpine ts) = "(" ++ (map show ts |> cast |> joinBy ", ") ++ ")"
+
+public export covering
+Show (PSpine Functions) where
+  show (MkPSpine []) = ""
+  show (MkPSpine ts) = (map show ts |> cast |> joinBy " ")
 
 showLetFlags : LetFlags -> String
-showLetFlags (MkLetFlags s r i) = catMaybes [stage s, rec r, irr i] |> joinBy " "
+showLetFlags (MkLetFlags s r i) =
+  let result = catMaybes [stage s, rec r, irr i] |> joinBy " " in
+  if result == "" then "" else result ++ " "
 where
   stage : Maybe Stage -> Maybe String
   stage Nothing = Nothing
@@ -125,16 +161,24 @@ where
   irr True = Just "irr"
 
 public export covering
-Show PTm where
-  show (PIdent n) = show n
-  show t@(PLam _ _ _) = let (args, ret) = pGatherLams t in "\\" ++ joinBy " " (map (\((md, n), ty) =>
-        show (MkPParam dummyLoc (md, n) ty)
-      ) args) ++ " => " ++ show ret
-  show t@(PApp _ _) = let (s, sp) = pGatherApps t in showAtomic s ++ " " ++ joinBy " " (cast $ map showAtomic sp)
-  show (PPi p b) = show p ++ " -> " ++ show b
-  show (PSigma p b) = show p ++ " ** " ++ show b
-  show (PLet f n Nothing v t) = showLetFlags f ++ " " ++ show n ++ " := " ++ show v ++ "; " ++ show t
-  show (PLet f n (Just ty) v t) = showLetFlags f ++ " " ++ show n ++ " : " ++ show ty ++ " = " ++ show v ++ "; " ++ show t
-  show (PLoc _ t) = show t
+Show PBlockStart where
+  show (PLet f n Nothing v) = showLetFlags f ++ show n ++ " := " ++ show v
+  show (PLet f n (Just ty) v) = showLetFlags f ++ show n ++ " : " ++ show ty ++ " = " ++ show v
+  show (PBind n (Just ty) v) = show n ++ " : " ++ show ty ++ " <- " ++ show v
+  show (PBind n Nothing v) = show n ++ " <- " ++ show v
 
-showAtomic t = if isAtomic t then show t else "(" ++ show t ++ ")"
+public export covering
+Show PTm where
+  show (PName n) = show n
+  show (PLam args ret) = "\\" ++ show args ++ " => " ++ show ret
+  show (PApp s sp) = showAtomic s ++ show sp
+  show (PPi p b) = show p ++ " -> " ++ show b
+  show (PSigmas t) = show t
+  show (PPairs sp) = show sp
+  show (PUnit) = "()"
+  show (PBlock True h t) = (map show h |> joinBy ";\n") ++ show t
+  show (PBlock False h t) = "{\n" ++ indented ((map show h |> joinBy ";\n") ++ show t) ++ "\n}"
+  show (PHole (Just n)) = "?" ++ n
+  show (PHole Nothing) = "?"
+  show (PProj t n) = showAtomic t ++ "." ++ n
+  show (PLoc _ t) = show t
