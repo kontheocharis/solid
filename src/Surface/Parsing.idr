@@ -151,6 +151,9 @@ parens p = between (symbol "(") (symbol ")") p
 curlies : Parser a -> Parser a
 curlies p = between (symbol "{") (symbol "}") p
 
+brackets : Parser a -> Parser a
+brackets p = between (symbol "[") (symbol "]") p
+
 located : (Loc -> a -> b) -> Parser a -> Parser b
 located f p = MkParser $ \ts => case runParser p ts of
   Left s => Left s
