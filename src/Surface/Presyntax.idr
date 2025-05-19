@@ -2,9 +2,8 @@
 module Surface.Presyntax
 
 import Utils
-import Core.Syntax
+import Common
 import Surface.Text
-import Core.Base
 import Data.String
 import Data.SnocList
 import Data.DPair
@@ -25,6 +24,7 @@ PPat = PTm
 --
 -- In order to distinguish the two for formatting purposes, we discriminate
 -- with this enum.
+public export
 data Target = Functions | Pairs
 
 -- A parameter like x : A
@@ -57,11 +57,6 @@ record PSpine (t : Target) where
   constructor MkPSpine
   actual : List (PArg t)
 
-namespace PTel
-  public export
-  (.arity) : PTel t -> Arity
-  (.arity) (MkPTel p) = map (.name) p
-
 -- Varius flags for let statements
 record LetFlags where
   constructor MkLetFlags
@@ -74,10 +69,12 @@ record LetFlags where
   rec : Bool
 
 -- Binary operators
+public export
 data BinOp = Times | Plus
 
 -- A block is a sequence of assignment-like things. It is written like
 -- { x1 := a1; ... ; xn := an; y }, similar to Rust.
+public export
 data PBlockStart : Type where
   -- Let statement
   --
@@ -100,6 +97,7 @@ data PTm : Type where
   PName : String -> PTm
   PLam : PTel Functions -> PTm -> PTm
   PApp : PTm -> PSpine Functions -> PTm
+  PBinOp : PTm -> BinOp -> PTm -> PTm
   PPi : PTel Functions -> PTy -> PTy
   -- This stands for both types and terms
   PUnit : PTm
@@ -118,6 +116,7 @@ public export
 Show PTm
 
 -- Whether the term can always be unambiguously printed without parentheses
+public export total
 isAtomic : PTm -> Bool
 isAtomic (PName _) = True
 isAtomic (PSigmas _) = True
@@ -129,7 +128,7 @@ isAtomic (PProj _ _) = True
 isAtomic (PLoc _ t) = isAtomic t
 isAtomic _ = False
 
-covering
+public export covering
 showAtomic : PTm -> String
 showAtomic t = if isAtomic t then show t else "(" ++ show t ++ ")"
 
@@ -186,6 +185,7 @@ Show (PSpine Pairs) where
   show (MkPSpine ts) = "(" ++ (map show ts |> cast |> joinBy ", ") ++ ")"
 
 -- Calculate prefix flags to let statements
+public export total
 showLetFlags : LetFlags -> String
 showLetFlags (MkLetFlags s r i) =
   let result = catMaybes [stage s, rec r, irr i] |> joinBy " " in
@@ -211,12 +211,18 @@ Show PBlockStart where
   show (PBind n (Just ty) v) = show n ++ " : " ++ show ty ++ " <- " ++ show v
   show (PBind n Nothing v) = show n ++ " <- " ++ show v
 
+public export total
+Show BinOp where
+  show Times = "*"
+  show Plus = "+"
+
 public export covering
 Show PTm where
   show (PName n) = show n
   show (PLam args ret) = "\\" ++ show args ++ " => " ++ show ret
   show (PApp s sp) = showAtomic s ++ show sp
   show (PPi p b) = show p ++ " -> " ++ show b
+  show (PBinOp l o r) = showAtomic l ++ " " ++ show o ++ " " ++ showAtomic r
   show (PSigmas t) = show t
   show (PPairs sp) = show sp
   show (PUnit) = "()"

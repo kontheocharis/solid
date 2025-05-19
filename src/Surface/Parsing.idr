@@ -4,6 +4,7 @@ import Data.List
 
 import Surface.Presyntax
 import Utils
+import Common
 
 import Control.Monad.Trans
 import Data.List
@@ -86,7 +87,6 @@ peek : Parser (Maybe Char)
 peek = MkParser $ \ts => case indexNext ts of
   Nothing => Right (Nothing, ts)
   Just (c, _) => Right (Just c, ts)
-
 
 satisfy : (Char -> Bool) -> Parser Char
 satisfy p = MkParser $ \ts => case indexNext ts of
@@ -177,3 +177,65 @@ public export
 tm : Parser PTm
 
 singleTm : Parser PTm
+
+paramLike : (PiMode -> a -> b) -> Parser b -> Parser a -> Parser b
+paramLike f orElse p = peek >>= \case
+  Nothing => fail Empty
+  Just '(' => (parens (f Explicit <$> p))
+  Just '[' => (brackets (f Implicit <$> p))
+  Just c' => orElse
+
+fnParam : Parser (PParam Functions)
+fnParam = atom . located (|>) $
+  (paramLike (|>) (do
+    t <- tm
+    pure $ \l => MkPParam l (Explicit, "_") (Just t)
+  ) $ do
+    n <- identifier
+    ty <- peek >>= \case
+      Just ':' => do
+        symbol ":"
+        t <- tm
+        pure $ Just t
+      _ => pure Nothing
+    pure $ \m, l => MkPParam l (m, n) ty)
+
+pairParam : Parser (PParam Pairs)
+pairParam = atom . located (|>) $ do
+  (m, n) <- paramLike (,) ((Explicit,) <$> identifier) $ identifier
+  ty <- peek >>= \case
+    Just ':' => do
+      symbol ":"
+      t <- tm
+      pure $ Just t
+    _ => pure Nothing
+  pure $ \l => MkPParam l (m, n) ty
+
+fnArg : Parser (PArg Functions)
+fnArg = atom . located (|>) $
+  (paramLike (|>) (do
+    t <- tm
+    pure $ \l => MkPArg l Nothing t
+  ) $ do
+    n <- identifier
+    symbol "="
+    t <- tm
+    pure $ \m, l => MkPArg l (Just $ (m, n)) t)
+
+pairArg : Parser (PArg Pairs)
+pairArg = atom . located (|>) $ do
+  n <- optional $ (paramLike (,) ((Explicit,) <$> identifier) identifier) <* symbol "="
+  t <- tm
+  pure $ \l => MkPArg l n t
+
+fnTel : Parser (PTel Functions)
+fnTel = MkPTel . fst <$> many1 fnParam
+
+pairTel : Parser (PTel Pairs)
+pairTel = MkPTel . fst <$> many1 pairParam
+
+fnSpine : Parser (PSpine Functions)
+fnSpine = MkPSpine . fst <$> many1 fnArg
+
+pairSpine : Parser (PSpine Pairs)
+pairSpine = MkPSpine . fst <$> many1 pairArg
