@@ -11,22 +11,41 @@ import Data.List
 import Data.String
 import Data.DPair
 import Data.Fin
+import Debug.Trace
 
 %default covering
 
 -- Setup:
 
 public export
-data ParseError : Type where
-  TrailingChars : ParseError
-  Empty : ParseError
-  EndOfInput : ParseError
-  UnexpectedChar : Char -> ParseError
-  ReservedWord : String -> ParseError
-  CannotUseLetFlags : LetFlags -> ParseError
+data ParseErrorKind : Type where
+  TrailingChars : ParseErrorKind
+  Empty : ParseErrorKind
+  EndOfInput : ParseErrorKind
+  UnexpectedChar : Char -> ParseErrorKind
+  ReservedWord : String -> ParseErrorKind
+  CannotUseLetFlags : LetFlags -> ParseErrorKind
 
 public export
-Show ParseError where
+record ParserState where
+  constructor MkParserState
+  stream : List Char
+  pos : Fin (length stream)
+
+emptyState : ParserState
+emptyState = MkParserState [' '] FZ
+
+stateLoc : ParserState -> Loc
+stateLoc (MkParserState cs pos) = MkLoc cs pos
+
+public export
+record ParseError where
+  constructor MkParseError
+  kind : ParseErrorKind
+  state : ParserState
+
+public export
+Show ParseErrorKind where
   show TrailingChars = "Trailing characters"
   show Empty = "Empty input"
   show EndOfInput = "Unexpected end of input"
@@ -35,10 +54,8 @@ Show ParseError where
   show (CannotUseLetFlags f) = "Cannot use let flags here"
 
 public export
-record ParserState where
-  constructor MkParserState
-  stream : List Char
-  pos : Fin (length stream)
+Show ParseError where
+  show (MkParseError k ts) = show k ++ " at " ++ show (stateLoc ts)
 
 public export
 record Parser (a : Type) where
@@ -64,13 +81,13 @@ Monad Parser where
     Right (a, ts') => runParser (p a) ts'
 
 Alternative Parser where
-  empty = MkParser $ \ts => Left Empty
+  empty = MkParser $ \ts => Left $ MkParseError Empty ts
   (<|>) p q = MkParser $ \ts => case runParser p ts of
     Left _ => runParser q ts
     Right (a, ts') => Right (a, ts')
 
-fail : ParseError -> Parser a
-fail s = MkParser $ \ts => Left s
+fail : ParseErrorKind -> Parser a
+fail s = MkParser $ \ts => Left $ MkParseError s ts
 
 optional : Parser a -> Parser (Maybe a)
 optional p = MkParser $ \ts => case runParser p ts of
@@ -92,10 +109,10 @@ peek = MkParser $ \ts => case indexNext ts of
 
 satisfy : (Char -> Bool) -> Parser Char
 satisfy p = MkParser $ \ts => case indexNext ts of
-  Nothing => Left EndOfInput
+  Nothing => Left $ MkParseError EndOfInput ts
   Just (c, p') => if p c
     then Right (c, p')
-    else Left $ UnexpectedChar c
+    else Left $ MkParseError (UnexpectedChar c) ts
 
 char : Char -> Parser ()
 char c = satisfy (== c) *> pure ()
@@ -155,7 +172,9 @@ space = indentation <|> (char '\n' <* many1 indentation)
 
 public export
 anySpace : Parser ()
-anySpace = indentation <|> char '\n'
+anySpace = do
+  _ <- satisfy isSpace
+  pure ()
 
 whitespace : Parser () -> Parser ()
 whitespace sp = do
@@ -194,10 +213,10 @@ located f p = MkParser $ \ts => case runParser p ts of
 public export
 parse : Parser a -> String -> Either ParseError a
 parse p s = case unpack s of
-  [] => Left EndOfInput
+  [] => Left $ MkParseError EndOfInput emptyState
   (c :: cs) => case runParser (whitespace anySpace >> p <* whitespace anySpace) (MkParserState (c :: cs) FZ) of
     Left s => Left s
-    Right (a, MkParserState (c :: cs') l) => if l == last then Right a else Left TrailingChars
+    Right (a, ts@(MkParserState (c :: cs') l)) => if l == last then Right a else Left $ MkParseError TrailingChars ts
 
 -- Actual language:
 
@@ -205,7 +224,7 @@ reserved : List String
 reserved = []
 
 identifier : Parser String
-identifier = do
+identifier = atom $ do
   c <- satisfy isAlpha
   cs <- many $ satisfy (\c => isAlphaNum c || c == '-' || c == '_')
   let n = pack (c :: cs)
@@ -225,8 +244,8 @@ paramLike f orElse p = peek >>= \case
   Just '[' => (brackets (f Implicit <$> p))
   Just c' => orElse
 
-fnParam : Parser (PParam Functions)
-fnParam = atom . located (|>) $
+piParam : Parser (PParam Functions)
+piParam = atom . located (|>) $
   (paramLike (|>) (do
     t <- tm
     pure $ \l => MkPParam l (Explicit, "_") (Just t)
@@ -260,10 +279,10 @@ pairParam = atom . located (|>) $ do
       pure $ Just t) <|> pure Nothing
   pure $ \l => MkPParam l (m, n) ty
 
-fnArg : Parser (PArg Functions)
-fnArg = atom . located (|>) $
+piArg : Parser (PArg Functions)
+piArg = atom . located (|>) $
   (paramLike (|>) (do
-    t <- tm
+    t <- singleTm
     pure $ \l => MkPArg l Nothing t
   ) $ do
     n <- identifier
@@ -277,20 +296,20 @@ pairArg = atom . located (|>) $ do
   t <- tm
   pure $ \l => MkPArg l n t
 
-fnTel : Parser (PTel Functions)
-fnTel = MkPTel . fst <$> many1 fnParam
+piTel : Parser (PTel Functions)
+piTel = MkPTel . fst <$> many1 piParam
 
 lamTel : Parser (PTel Functions)
 lamTel = MkPTel . fst <$> many1 lamParam
 
 pairTel : Parser (PTel Pairs)
-pairTel = MkPTel <$> sepBy (symbol ",") pairParam
+pairTel = MkPTel <$> parens (sepBy (symbol ",") pairParam)
 
-fnSpine : Parser (PSpine Functions)
-fnSpine = MkPSpine . fst <$> many1 fnArg
+piSpine : Parser (PSpine Functions)
+piSpine = MkPSpine <$> many piArg
 
 pairSpine : Parser (PSpine Pairs)
-pairSpine = MkPSpine <$> sepBy (symbol ",") pairArg
+pairSpine = MkPSpine <$> parens (sepBy (symbol ",") pairArg)
 
 
 -- letFlags : Parser LetFlags
@@ -336,7 +355,7 @@ blockStatement = atom . located (|>) $ do
         let v' = case tel of
               Nothing => v
               Just tel => PLam tel v
-        pure $ \l => PLetRec l flags n ty v')
+        pure $ \l => traceVal (PLetRec l flags n ty v'))
     (n, Nothing) => -- can only be a bind or let without type
       -- let without type
       (symbol ":=" >> do
@@ -347,13 +366,6 @@ blockStatement = atom . located (|>) $ do
         when (not $ letFlagsAreDefault flags) (fail $ CannotUseLetFlags flags)
         v <- tm
         pure $ \l => PBind l n Nothing v)
-
-topLevelBlock : Parser PTm
-topLevelBlock = located PLoc $ do
-  statements <- sepByReqEnd endStatement blockStatement
-  endStatement
-  expr <- tm
-  pure $ PBlock True statements expr
 
 block : Parser PTm
 block = located PLoc . curlies $ do
@@ -367,6 +379,7 @@ name = located PLoc $ PName <$> identifier
 
 lam : Parser PTm
 lam = located PLoc $ do
+  symbol "\\"
   tel <- lamTel
   symbol "=>"
   body <- tm
@@ -375,8 +388,47 @@ lam = located PLoc $ do
 app : Parser PTm
 app = located PLoc $ do
   f <- singleTm
-  sp <- fnSpine
+  sp <- piSpine
   pure $ PApp f sp
 
-binOp : Parser PTm
-binOp = located PLoc $ ?todo
+pi : Parser PTm
+pi = located PLoc $ do
+  tel <- piTel
+  symbol "->"
+  ty <- tm
+  pure $ PPi tel ty
+
+unit : Parser PTm
+unit = located PLoc $ symbol "()" >> pure PUnit
+
+sigma : Parser PTm
+sigma = located PLoc $ do
+  t <- pairTel
+  pure $ PSigmas t
+
+pairs : Parser PTm
+pairs = located PLoc $ do
+  sp <- pairSpine
+  pure $ PPairs sp
+
+hole : Parser PTm
+hole = located PLoc $
+  (string "?" >> PHole . Just <$> identifier) <|> (symbol "?" >> pure (PHole Nothing))
+
+singleTm = do
+  hd <- atom $ choice [block, parens tm, name, unit, sigma, pairs, hole]
+  n <- optional (string ".")
+  case n of
+    Nothing => pure hd
+    Just _ => identifier >>= \n => pure $ PProj hd n
+
+tm = atom $ choice [lam, app, pi]
+
+public export
+topLevelBlock : Parser PTm
+topLevelBlock = located PLoc $ do
+  whitespace anySpace
+  statements <- sepByReqEnd endStatement blockStatement
+  expr <- tm
+  whitespace anySpace
+  pure $ PBlock True statements expr

@@ -2,6 +2,7 @@
 module Core.Typechecking
 
 import Utils
+import Common
 import Data.Singleton
 import Core.Syntax
 import Core.Base

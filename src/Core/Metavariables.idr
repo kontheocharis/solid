@@ -2,6 +2,7 @@
 module Core.Metavariables
 
 import Utils
+import Common
 import Decidable.Equality
 import Data.Maybe
 import Data.Singleton

@@ -2,6 +2,7 @@
 module Core.Unification
 
 import Utils
+import Common
 import Decidable.Equality
 import Data.Singleton
 import Core.Base

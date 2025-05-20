@@ -73,6 +73,8 @@ letFlagsAreDefault (MkLetFlags Nothing False) = True
 letFlagsAreDefault _ = False
 
 -- Binary operators
+--
+-- @@Todo: Actually use this
 public export
 data BinOp = Times | Plus
 
@@ -106,7 +108,6 @@ data PTm : Type where
   PName : String -> PTm
   PLam : PTel Functions -> PTm -> PTm
   PApp : PTm -> PSpine Functions -> PTm
-  PBinOp : PTm -> BinOp -> PTm -> PTm
   PPi : PTel Functions -> PTy -> PTy
   -- This stands for both types and terms
   PUnit : PTm
@@ -211,11 +212,11 @@ where
 
 public export covering
 Show PBlockStatement where
-  show (PLetRec _ f n ty v) = showLetFlags f ++ show n ++ " : " ++ show v ++ "\n" ++ show n ++ " = " ++ show v
-  show (PLet _ f n Nothing v) = showLetFlags f ++ show n ++ " := " ++ show v
-  show (PLet _ f n (Just ty) v) = showLetFlags f ++ show n ++ " : " ++ show ty ++ " = " ++ show v
-  show (PBind _ n (Just ty) v) = show n ++ " : " ++ show ty ++ " <- " ++ show v
-  show (PBind _ n Nothing v) = show n ++ " <- " ++ show v
+  show (PLetRec _ f n ty v) = showLetFlags f ++ n ++ " : " ++ show v ++ "\n" ++ n ++ " = " ++ show v
+  show (PLet _ f n Nothing v) = showLetFlags f ++ n ++ " := " ++ show v
+  show (PLet _ f n (Just ty) v) = showLetFlags f ++ n ++ " : " ++ show ty ++ " = " ++ show v
+  show (PBind _ n (Just ty) v) = n ++ " : " ++ show ty ++ " <- " ++ show v
+  show (PBind _ n Nothing v) = n ++ " <- " ++ show v
 
 public export total
 Show BinOp where
@@ -224,16 +225,15 @@ Show BinOp where
 
 public export covering
 Show PTm where
-  show (PName n) = show n
+  show (PName n) = n
   show (PLam args ret) = "\\" ++ show args ++ " => " ++ show ret
   show (PApp s sp) = showAtomic s ++ show sp
   show (PPi p b) = show p ++ " -> " ++ show b
-  show (PBinOp l o r) = showAtomic l ++ " " ++ show o ++ " " ++ showAtomic r
   show (PSigmas t) = show t
   show (PPairs sp) = show sp
   show (PUnit) = "()"
-  show (PBlock True h t) = (map show h |> joinBy ";\n") ++ show t
-  show (PBlock False h t) = "{\n" ++ indented ((map show h |> joinBy ";\n") ++ show t) ++ "\n}"
+  show (PBlock True h t) = (map show h |> joinBy ";\n") ++ ";\n" ++ show t
+  show (PBlock False h t) = "{\n" ++ indented ((map show h |> joinBy ";\n") ++ ";\n" ++ show t) ++ "\n}"
   show (PHole (Just n)) = "?" ++ n
   show (PHole Nothing) = "?"
   show (PProj t n) = showAtomic t ++ "." ++ n
