@@ -146,30 +146,30 @@ showAtomic t = if isAtomic t then show t else "(" ++ show t ++ ")"
 
 public export covering
 Show (PParam Functions) where
-  show (MkPParam l (Explicit, n) (Just t)) = "(" ++ show n ++ " : " ++ show t ++ ")"
+  show (MkPParam l (Explicit, n) (Just t)) = "(" ++ n ++ " : " ++ show t ++ ")"
   show (MkPParam l (Explicit, "_") (Just t)) = showAtomic t
-  show (MkPParam l (Implicit, n) (Just t)) = "[" ++ show n ++ " : " ++ show t ++ "]"
-  show (MkPParam l (Explicit, n) Nothing) = "(" ++ show n ++ " : _)"
-  show (MkPParam l (Implicit, n) Nothing) = "[" ++ show n ++ "]"
+  show (MkPParam l (Implicit, n) (Just t)) = "[" ++ n ++ " : " ++ show t ++ "]"
+  show (MkPParam l (Explicit, n) Nothing) = "(" ++ n ++ " : _)"
+  show (MkPParam l (Implicit, n) Nothing) = "[" ++ n ++ "]"
 
 public export covering
 Show (PParam Pairs) where
-  show (MkPParam l (Explicit, n) (Just t)) = show n ++ " : " ++ show t
+  show (MkPParam l (Explicit, n) (Just t)) = n ++ " : " ++ show t
   show (MkPParam l (Explicit, "_") (Just t)) = show t
-  show (MkPParam l (Implicit, n) (Just t)) = "[" ++ show n ++ "] : " ++ show t
-  show (MkPParam l (Explicit, n) Nothing) = show n ++ " : _"
-  show (MkPParam l (Implicit, n) Nothing) = "[" ++ show n ++ "]"
+  show (MkPParam l (Implicit, n) (Just t)) = "[" ++ n ++ "] : " ++ show t
+  show (MkPParam l (Explicit, n) Nothing) = n ++ " : _"
+  show (MkPParam l (Implicit, n) Nothing) = "[" ++ n ++ "]"
 
 public export covering
 Show (PArg Functions) where
-  show (MkPArg l (Just (Explicit, n)) t) = "(" ++ show n ++ " = " ++ show t ++ ")"
-  show (MkPArg l (Just (Implicit, n)) t) = "[" ++ show n ++ " = " ++ show t ++ "]"
+  show (MkPArg l (Just (Explicit, n)) t) = "(" ++ n ++ " = " ++ show t ++ ")"
+  show (MkPArg l (Just (Implicit, n)) t) = "[" ++ n ++ " = " ++ show t ++ "]"
   show (MkPArg l Nothing t) = showAtomic t
 
 public export covering
 Show (PArg Pairs) where
-  show (MkPArg l (Just (Explicit, n)) t) = show n ++ " = " ++ show t
-  show (MkPArg l (Just (Implicit, n)) t) = "[" ++ show n ++ "] = " ++ show t
+  show (MkPArg l (Just (Explicit, n)) t) = n ++ " = " ++ show t
+  show (MkPArg l (Just (Implicit, n)) t) = "[" ++ n ++ "] = " ++ show t
   show (MkPArg l Nothing t) = show t
 
 -- [A] (x : A) [z : B]
@@ -212,7 +212,7 @@ where
 
 public export covering
 Show PBlockStatement where
-  show (PLetRec _ f n ty v) = showLetFlags f ++ n ++ " : " ++ show v ++ "\n" ++ n ++ " = " ++ show v
+  show (PLetRec _ f n ty v) = showLetFlags f ++ n ++ " : " ++ show ty ++ "\n" ++ n ++ " = " ++ show v
   show (PLet _ f n Nothing v) = showLetFlags f ++ n ++ " := " ++ show v
   show (PLet _ f n (Just ty) v) = showLetFlags f ++ n ++ " : " ++ show ty ++ " = " ++ show v
   show (PBind _ n (Just ty) v) = n ++ " : " ++ show ty ++ " <- " ++ show v
@@ -227,13 +227,14 @@ public export covering
 Show PTm where
   show (PName n) = n
   show (PLam args ret) = "\\" ++ show args ++ " => " ++ show ret
-  show (PApp s sp) = showAtomic s ++ show sp
+  show (PApp s (MkPSpine [])) = show s
+  show (PApp s sp) = showAtomic s ++ " " ++ show sp
   show (PPi p b) = show p ++ " -> " ++ show b
   show (PSigmas t) = show t
   show (PPairs sp) = show sp
   show (PUnit) = "()"
-  show (PBlock True h t) = (map show h |> joinBy ";\n") ++ ";\n" ++ show t
-  show (PBlock False h t) = "{\n" ++ indented ((map show h |> joinBy ";\n") ++ ";\n" ++ show t) ++ "\n}"
+  show (PBlock True h t) = (map show h |> joinBy "\n\n") ++ "\n\n" ++ show t
+  show (PBlock False h t) = "{" ++ indented ((map show h |> joinBy ";\n") ++ ";\n" ++ show t) ++ "}"
   show (PHole (Just n)) = "?" ++ n
   show (PHole Nothing) = "?"
   show (PProj t n) = showAtomic t ++ "." ++ n

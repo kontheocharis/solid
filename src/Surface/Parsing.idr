@@ -240,19 +240,18 @@ singleTm : Parser PTm
 paramLike : (PiMode -> a -> b) -> Parser b -> Parser a -> Parser b
 paramLike f orElse p = peek >>= \case
   Nothing => fail Empty
-  Just '(' => (parens (f Explicit <$> p))
+  Just '(' => (parens (f Explicit <$> p)) <|> orElse
   Just '[' => (brackets (f Implicit <$> p))
   Just c' => orElse
 
 piParam : Parser (PParam Functions)
 piParam = atom . located (|>) $
   (paramLike (|>) (do
-    t <- tm
+    t <- singleTm
     pure $ \l => MkPParam l (Explicit, "_") (Just t)
   ) $ do
     n <- identifier
     ty <- (symbol ":" >> do
-        symbol ":"
         t <- tm
         pure $ Just t) <|> pure Nothing
     pure $ \m, l => MkPParam l (m, n) ty)
@@ -355,7 +354,7 @@ blockStatement = atom . located (|>) $ do
         let v' = case tel of
               Nothing => v
               Just tel => PLam tel v
-        pure $ \l => traceVal (PLetRec l flags n ty v'))
+        pure $ \l => PLetRec l flags n ty v')
     (n, Nothing) => -- can only be a bind or let without type
       -- let without type
       (symbol ":=" >> do
@@ -370,7 +369,6 @@ blockStatement = atom . located (|>) $ do
 block : Parser PTm
 block = located PLoc . curlies $ do
   statements <- sepByReqEnd endStatement blockStatement
-  endStatement
   expr <- tm
   pure $ PBlock False statements expr
 
@@ -422,7 +420,7 @@ singleTm = do
     Nothing => pure hd
     Just _ => identifier >>= \n => pure $ PProj hd n
 
-tm = atom $ choice [lam, app, pi]
+tm = atom $ choice [lam, pi, app]
 
 public export
 topLevelBlock : Parser PTm

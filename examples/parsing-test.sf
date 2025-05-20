@@ -1,3 +1,39 @@
 
-a : b
-a = 3
+Nat : U
+Nat = (A : U) -> A -> (A -> A) -> A
+
+zero : Nat
+zero A z s = z
+
+succ : Nat -> Nat
+  = \n A z s => s (n A z s)
+
+elim : (A : U) -> A -> (A -> A) -> Nat -> A
+  = \A z s n => n A z s
+
+add : Nat -> Nat -> Nat
+  = \a b => elim Nat b succ a
+
+mul : Nat -> Nat -> Nat
+  = \a b => elim Nat zero (add a) b
+
+exp : Nat -> Nat -> Nat
+  = \a b => elim Nat (succ zero) (mul a) b
+
+two := succ (succ zero)
+
+four := add two two
+
+eight := mul two four
+
+ten := add eight two
+
+twenty := mul two ten
+
+main : IO ()
+main = {
+  x <- input;
+  putStrLn (join a x)
+}
+
+twenty
