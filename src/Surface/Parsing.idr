@@ -1,3 +1,4 @@
+-- Parsing for the surface language
 module Surface.Parsing
 
 import Data.List
@@ -15,7 +16,10 @@ import Debug.Trace
 
 %default covering
 
--- Setup:
+-- Setup the basics for parsing
+
+-- @@Todo: currently this parser does wayy too much backtracking, which probably
+-- makes it ridiculously slow for certain inputs. This should be fixed.
 
 public export
 data ParseErrorKind : Type where
@@ -306,10 +310,6 @@ piSpine = MkPSpine <$> many piArg
 pairSpine : Parser (PSpine Pairs)
 pairSpine = MkPSpine <$> parens (sepByOptEnd (symbol ",") pairArg)
 
-
--- letFlags : Parser LetFlags
--- letFlags = many
-
 stage : Parser Stage
 stage = (symbol "obj" >> pure Obj) <|> (symbol "mta" >> pure Mta)
 
@@ -449,6 +449,7 @@ singleTm = do
 
 tm = atom $ choice [lam, pi, app]
 
+-- This is what should be parsed at the top level
 public export
 topLevelBlock : Parser PTm
 topLevelBlock = located PLoc $ do

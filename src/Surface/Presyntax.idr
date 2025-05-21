@@ -100,6 +100,8 @@ data PBlockStatement : Type where
   -- x <- a
   PBind : Loc -> (name : String) -> Maybe PTy -> PTm -> PBlockStatement
   -- Just a term statement; monadic or returning a value
+  --
+  -- a
   PBlockTm : Loc -> PTm -> PBlockStatement
 
 -- Main syntax tree, pretty self explanatory
