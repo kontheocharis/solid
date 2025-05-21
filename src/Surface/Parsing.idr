@@ -237,17 +237,19 @@ tm : Parser PTm
 
 singleTm : Parser PTm
 
-paramLike : (PiMode -> a -> b) -> Parser b -> Parser a -> Parser b
+app : Parser PTm
+
+paramLike : (PiMode -> a -> b) -> (Char -> Parser b) -> Parser a -> Parser b
 paramLike f orElse p = peek >>= \case
   Nothing => fail Empty
-  Just '(' => (parens (f Explicit <$> p)) <|> orElse
+  Just '(' => (parens (f Explicit <$> p)) <|> orElse '(' -- might be a parenthesised expression
   Just '[' => (brackets (f Implicit <$> p))
-  Just c' => orElse
+  Just c' => orElse c'
 
 piParam : Parser (PParam Functions)
 piParam = atom . located (|>) $
-  (paramLike (|>) (do
-    t <- singleTm
+  (paramLike (|>) (\_ => do
+    t <- app
     pure $ \l => MkPParam l (Explicit, "_") (Just t)
   ) $ do
     n <- identifier
@@ -258,29 +260,27 @@ piParam = atom . located (|>) $
 
 lamParam : Parser (PParam Functions)
 lamParam = atom . located (|>) $
-  (paramLike (|>) (do
+  (paramLike (|>) (\_ => do
     n <- identifier
     pure $ \l => MkPParam l (Explicit, n) Nothing
   ) $ do
     n <- identifier
     ty <- (symbol ":" >> do
-        symbol ":"
         t <- tm
         pure $ Just t) <|> pure Nothing
     pure $ \m, l => MkPParam l (m, n) ty)
 
 pairParam : Parser (PParam Pairs)
 pairParam = atom . located (|>) $ do
-  (m, n) <- paramLike (,) ((Explicit,) <$> identifier) $ identifier
+  (m, n) <- paramLike (,) (\_ => (Explicit,) <$> identifier) $ identifier
   ty <- (symbol ":" >> do
-      symbol ":"
       t <- tm
       pure $ Just t) <|> pure Nothing
   pure $ \l => MkPParam l (m, n) ty
 
 piArg : Parser (PArg Functions)
 piArg = atom . located (|>) $
-  (paramLike (|>) (do
+  (paramLike (|>) (\_ => do
     t <- singleTm
     pure $ \l => MkPArg l Nothing t
   ) $ do
@@ -291,7 +291,7 @@ piArg = atom . located (|>) $
 
 pairArg : Parser (PArg Pairs)
 pairArg = atom . located (|>) $ do
-  n <- optional $ (paramLike (,) ((Explicit,) <$> identifier) identifier) <* symbol "="
+  n <- optional $ (paramLike (,) (\_ => (Explicit,) <$> identifier) identifier) <* symbol "="
   t <- tm
   pure $ \l => MkPArg l n t
 
@@ -302,13 +302,13 @@ lamTel : Parser (PTel Functions)
 lamTel = MkPTel . fst <$> many1 lamParam
 
 pairTel : Parser (PTel Pairs)
-pairTel = MkPTel <$> parens (sepBy (symbol ",") pairParam)
+pairTel = MkPTel <$> parens (sepByOptEnd (symbol ",") pairParam)
 
 piSpine : Parser (PSpine Functions)
 piSpine = MkPSpine <$> many piArg
 
 pairSpine : Parser (PSpine Pairs)
-pairSpine = MkPSpine <$> parens (sepBy (symbol ",") pairArg)
+pairSpine = MkPSpine <$> parens (sepByOptEnd (symbol ",") pairArg)
 
 
 -- letFlags : Parser LetFlags
@@ -383,7 +383,6 @@ lam = located PLoc $ do
   body <- tm
   pure $ PLam tel body
 
-app : Parser PTm
 app = located PLoc $ do
   f <- singleTm
   sp <- piSpine
@@ -425,8 +424,6 @@ tm = atom $ choice [lam, pi, app]
 public export
 topLevelBlock : Parser PTm
 topLevelBlock = located PLoc $ do
-  whitespace anySpace
   statements <- sepByReqEnd endStatement blockStatement
   expr <- tm
-  whitespace anySpace
   pure $ PBlock True statements expr

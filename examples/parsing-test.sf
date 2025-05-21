@@ -1,39 +1,55 @@
+Sort : Type
+Sort = (U : Type, El : U -> Type)
 
-Nat : U
-Nat = (A : U) -> A -> (A -> A) -> A
+TypeSort : Sort
+TypeSort = (U = Type, El = \A => A)
 
-zero : Nat
-zero A z s = z
+SizedSort : Bytes -> Sort
+SizedSort b = (U = Sized b, El = \A => Code A)
 
-succ : Nat -> Nat
-  = \n A z s => s (n A z s)
+Tel : Sort -> Type
+Tel = ?f
 
-elim : (A : U) -> A -> (A -> A) -> Nat -> A
-  = \A z s n => n A z s
+empty : [s] -> Tel s
+empty = ?g
 
-add : Nat -> Nat -> Nat
-  = \a b => elim Nat b succ a
+extend : [s : Sort] -> (A : s.U) -> (s.El A -> Tel s) -> Tel s
+extend = ?h
 
-mul : Nat -> Nat -> Nat
-  = \a b => elim Nat zero (add a) b
+TEL := Tel TypeSort
 
-exp : Nat -> Nat -> Nat
-  = \a b => elim Nat (succ zero) (mul a) b
 
-two := succ (succ zero)
+()
 
-four := add two two
+-- Nat : U
+-- Nat = (A : U) -> A -> (A -> A) -> A
 
-eight := mul two four
+-- zero : Nat
+-- zero A z s = z
 
-ten := add eight two
+-- succ : Nat -> Nat
+--   = \n A z s => s (n A z s)
 
-twenty := mul two ten
+-- elim : (A : U) -> A -> (A -> A) -> Nat -> A
+--   = \A z s n => n A z s
 
-main : IO ()
-main = {
-  x <- input;
-  putStrLn (join a x)
-}
+-- add : Nat -> Nat -> Nat
+--   = \a b => elim Nat b succ a
 
-twenty
+-- mul : Nat -> Nat -> Nat
+--   = \a b => elim Nat zero (add a) b
+
+-- exp : Nat -> Nat -> Nat
+--   = \a b => elim Nat (succ zero) (mul a) b
+
+-- two := succ (succ zero)
+
+-- four := add two two
+
+-- eight := mul two four
+
+-- ten := add eight two
+
+-- twenty := mul two ten
+
+-- ([res] = four, five, six)
