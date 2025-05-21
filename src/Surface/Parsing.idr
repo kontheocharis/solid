@@ -29,14 +29,14 @@ data ParseErrorKind : Type where
 public export
 record ParserState where
   constructor MkParserState
-  stream : List Char
-  pos : Fin (length stream)
+  seen : SnocList Char
+  toSee : List Char
 
 emptyState : ParserState
-emptyState = MkParserState [' '] FZ
+emptyState = MkParserState [<] []
 
 stateLoc : ParserState -> Loc
-stateLoc (MkParserState cs pos) = MkLoc cs pos
+stateLoc (MkParserState seen toSee) = MkLoc (toList seen ++ toSee) (length seen)
 
 public export
 record ParseError where
@@ -95,12 +95,8 @@ optional p = MkParser $ \ts => case runParser p ts of
   Right (a, ts') => Right (Just a, ts')
 
 indexNext : ParserState -> Maybe (Char, Lazy ParserState)
-indexNext (MkParserState [] pos) impossible
-indexNext (MkParserState (_ :: []) FZ) = Nothing
-indexNext (MkParserState (x :: y :: ys) FZ) = Just (y, MkParserState (x :: y :: ys) (FS FZ))
-indexNext (MkParserState (x :: xs) (FS n)) = case indexNext (MkParserState xs n) of
-  Nothing => Nothing
-  Just (c, MkParserState xs' n') => Just (c, MkParserState (x :: xs') (FS n'))
+indexNext (MkParserState seen (s :: toSee)) = Just (s, MkParserState (seen :< s) toSee)
+indexNext (MkParserState seen []) = Nothing
 
 peek : Parser (Maybe Char)
 peek = MkParser $ \ts => case indexNext ts of
@@ -207,16 +203,14 @@ brackets p = betweenGrouping (symbol "[") (symbol "]") p
 located : (Loc -> a -> b) -> Parser a -> Parser b
 located f p = MkParser $ \ts => case runParser p ts of
   Left s => Left s
-  Right (a, ts') => Right (f (MkLoc ts.stream ts.pos) a, ts')
-
+  Right (a, ts') => Right (f (stateLoc ts) a, ts')
 
 public export
 parse : Parser a -> String -> Either ParseError a
-parse p s = case unpack s of
-  [] => Left $ MkParseError EndOfInput emptyState
-  (c :: cs) => case runParser (whitespace anySpace >> p <* whitespace anySpace) (MkParserState (c :: cs) FZ) of
+parse p s = case runParser (whitespace anySpace >> p <* whitespace anySpace) (MkParserState [<] (unpack s)) of
     Left s => Left s
-    Right (a, ts@(MkParserState (c :: cs') l)) => if l == last then Right a else Left $ MkParseError TrailingChars ts
+    Right (a, MkParserState _ []) => Right a
+    Right (a, ts@(MkParserState _ (_ :: _))) => Left $ MkParseError TrailingChars ts
 
 -- Actual language:
 

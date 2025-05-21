@@ -47,15 +47,15 @@ public export
 record Loc where
   constructor MkLoc
   src : List Char
-  pos : Fin (length src)
+  pos : Nat -- not necessarily in range
 
 public export
 dummyLoc : Loc
-dummyLoc = MkLoc [' '] (FZ)
+dummyLoc = MkLoc [] Z
 
 public export
 linesBefore : Loc -> List String
-linesBefore loc = lines (substr 0 (finToNat loc.pos) (pack loc.src))
+linesBefore loc = lines (substr 0 loc.pos (pack loc.src))
 
 public export
 (.row) : Loc -> Nat
