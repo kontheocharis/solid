@@ -20,6 +20,28 @@ extend = ?h
 TEL := Tel TypeSort
 
 
+User : Type
+User = (
+  name : String,
+  age : Nat,
+  telephone : Nat,
+  friend : User,
+)
+
+kelsey : User = (
+  name = "Kelsey",
+  age = 1919,
+  telephone = 283238423,
+  friend = ()
+)
+
+alex : User = (
+  name = "Alex",
+  age = 24,
+  telephone = 283238423,
+  friend = kelsey
+)
+
 ()
 
 -- Nat : U

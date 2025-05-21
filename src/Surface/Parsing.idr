@@ -24,6 +24,7 @@ data ParseErrorKind : Type where
   EndOfInput : ParseErrorKind
   UnexpectedChar : Char -> ParseErrorKind
   ReservedWord : String -> ParseErrorKind
+  InvalidLiteral : String -> ParseErrorKind
   CannotUseLetFlags : LetFlags -> ParseErrorKind
 
 public export
@@ -50,6 +51,7 @@ Show ParseErrorKind where
   show Empty = "Empty input"
   show EndOfInput = "Unexpected end of input"
   show (UnexpectedChar c) = "Unexpected character: " ++ show c
+  show (InvalidLiteral s) = "Invalid literal: " ++ s
   show (ReservedWord s) = "Reserved word: " ++ s
   show (CannotUseLetFlags f) = "Cannot use let flags here"
 
@@ -406,8 +408,37 @@ hole : Parser PTm
 hole = located PLoc $
   (string "?" >> PHole . Just <$> identifier) <|> (symbol "?" >> pure (PHole Nothing))
 
+literal : Parser PTm
+literal = located PLoc $ do
+  (string "\'" >> do
+      c <- parseChar
+      _ <- symbol "\'"
+      pure $ PLit (Chr c)
+    )
+    <|> (string "\"" >> do
+            s <- many parseStringChar
+            _ <- symbol "\""
+            pure $ PLit (Str (pack s))
+        )
+    <|> ( do
+          n <- pack . fst <$> many1 (satisfy isDigit)
+          case parsePositive n of
+            Nothing => fail $ InvalidLiteral n
+            Just np => pure $ PLit (Num np)
+      )
+  where
+    parseStringChar =
+      ((string "\\\\") >> pure '\\')
+        <|> (string "\\\"" >> pure '\"')
+        <|> (satisfy (/= '"') >>= \x => pure x)
+
+    parseChar =
+      (string "\\\\" >> pure '\\')
+        <|> (string "\\'" >> pure '\'')
+        <|> (satisfy (/= '\'') >>= \x => pure x)
+
 singleTm = do
-  hd <- atom $ choice [block, parens tm, name, unit, sigma, pairs, hole]
+  hd <- atom $ choice [block, parens tm, name, literal, unit, sigma, pairs, hole]
   n <- optional (string ".")
   case n of
     Nothing => pure hd

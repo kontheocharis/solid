@@ -121,6 +121,7 @@ data PTm : Type where
   -- Projection e.g. x.n : A where x : (.., n : A, ...)
   PProj : PTm -> (field : String) -> PTm
   PLoc : Loc -> PTm -> PTm
+  PLit : Lit -> PTm
 
 public export
 Show PTm
@@ -239,3 +240,4 @@ Show PTm where
   show (PHole Nothing) = "?"
   show (PProj t n) = showAtomic t ++ "." ++ n
   show (PLoc _ t) = show t
+  show (PLit l) = show l
