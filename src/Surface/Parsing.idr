@@ -330,8 +330,7 @@ blockStatement = atom . located (|>) $ do
   s <- optional stage
   irr <- irr
   let flags = MkLetFlags s irr
-  d <- decl
-  case d of
+  (decl >>= \case
     (n, Just ty) => -- can be a bind or let with type, or a let rec
       -- let with type
       (symbol "=" >> do
@@ -361,12 +360,16 @@ blockStatement = atom . located (|>) $ do
         when (not $ letFlagsAreDefault flags) (fail $ CannotUseLetFlags flags)
         v <- tm
         pure $ \l => PBind l n Nothing v)
+    ) <|> (do
+      -- just a term statement
+      t <- tm
+      pure $ \l => PBlockTm l t)
+
 
 block : Parser PTm
 block = located PLoc . curlies $ do
-  statements <- sepByReqEnd endStatement blockStatement
-  expr <- tm
-  pure $ PBlock False statements expr
+  statements <- sepBy endStatement blockStatement
+  pure $ PBlock False statements
 
 name : Parser PTm
 name = located PLoc $ PName <$> identifier
@@ -449,6 +452,5 @@ tm = atom $ choice [lam, pi, app]
 public export
 topLevelBlock : Parser PTm
 topLevelBlock = located PLoc $ do
-  statements <- sepByReqEnd endStatement blockStatement
-  expr <- tm
-  pure $ PBlock True statements expr
+  statements <- sepBy endStatement blockStatement
+  pure $ PBlock True statements

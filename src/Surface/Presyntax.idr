@@ -99,6 +99,8 @@ data PBlockStatement : Type where
   -- or
   -- x <- a
   PBind : Loc -> (name : String) -> Maybe PTy -> PTm -> PBlockStatement
+  -- Just a term statement; monadic or returning a value
+  PBlockTm : Loc -> PTm -> PBlockStatement
 
 -- Main syntax tree, pretty self explanatory
 --
@@ -117,7 +119,7 @@ data PTm : Type where
   PSigmas : PTel Pairs -> PTy
   PPairs : PSpine Pairs -> PTm
   PHole : (name : Maybe String) -> PTy
-  PBlock : (topLevel : Bool) -> List PBlockStatement -> PTm -> PTm
+  PBlock : (topLevel : Bool) -> List PBlockStatement -> PTm
   -- Projection e.g. x.n : A where x : (.., n : A, ...)
   PProj : PTm -> (field : String) -> PTm
   PLoc : Loc -> PTm -> PTm
@@ -134,7 +136,7 @@ isAtomic (PSigmas _) = True
 isAtomic PUnit = True
 isAtomic (PHole _) = True
 isAtomic (PPairs _) = True
-isAtomic (PBlock False _ _) = True
+isAtomic (PBlock False _) = True
 isAtomic (PProj _ _) = True
 isAtomic (PLoc _ t) = isAtomic t
 isAtomic _ = False
@@ -218,6 +220,7 @@ Show PBlockStatement where
   show (PLet _ f n (Just ty) v) = showLetFlags f ++ n ++ " : " ++ show ty ++ " = " ++ show v
   show (PBind _ n (Just ty) v) = n ++ " : " ++ show ty ++ " <- " ++ show v
   show (PBind _ n Nothing v) = n ++ " <- " ++ show v
+  show (PBlockTm _ t) = show t
 
 public export total
 Show BinOp where
@@ -234,8 +237,8 @@ Show PTm where
   show (PSigmas t) = show t
   show (PPairs sp) = show sp
   show (PUnit) = "()"
-  show (PBlock True h t) = (map show h |> joinBy "\n\n") ++ "\n\n" ++ show t
-  show (PBlock False h t) = "{" ++ indented ((map show h |> joinBy ";\n") ++ ";\n" ++ show t) ++ "}"
+  show (PBlock True h) = (map show h |> joinBy "\n\n")
+  show (PBlock False h) = "{" ++ indented ((map show h |> joinBy ";\n")) ++ "}"
   show (PHole (Just n)) = "?" ++ n
   show (PHole Nothing) = "?"
   show (PProj t n) = showAtomic t ++ "." ++ n

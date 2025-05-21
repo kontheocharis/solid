@@ -1,12 +1,9 @@
 
-Sort : Type
-Sort = (U : Type, El : U -> Type)
+Sort : Type = (U : Type, El : U -> Type)
 
-TypeSort : Sort
-TypeSort = (U = Type, El = \A => A)
+TypeSort : Sort = (U = Type, El = \A => A)
 
-SizedSort : Bytes -> Sort
-SizedSort b = (U = Sized b, El = \A => Code A)
+SizedSort : Bytes -> Sort = \b => { (U = Sized b, El = \A => Code A) }
 
 Tel : Sort -> Type
 Tel = ?f
@@ -20,8 +17,7 @@ extend = ?h
 TEL := Tel TypeSort
 
 
-User : Type
-User = (
+User : Type = (
   name : String,
   age : Nat,
   telephone : Nat,
@@ -41,6 +37,12 @@ alex : User = (
   telephone = 283238423,
   friend = kelsey
 )
+
+main := {
+  for (lines x) { \l =>
+    print l
+  }
+}
 
 ()
 

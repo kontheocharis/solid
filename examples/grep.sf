@@ -1,0 +1,18 @@
+
+if : Bool -> a -> () -> a -> a
+if = ?fa
+
+else : () = ()
+
+main : IO ()
+main = {
+  searchFor <- getArg 0;
+  in <- input;
+  for (lines in) (\l => {
+    if (contains searchFor l) {
+      print l
+    } else {
+      pure ()
+    }
+  })
+}
