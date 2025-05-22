@@ -30,6 +30,10 @@ public export
 0 Ident : Type
 Ident = (PiMode, Name)
 
+-- public export
+-- DecEq Ident where
+--   decEq (x, y) (x', y') = let xe = decEq x x' in let ye = decEq y y' in ?fakjfajkf
+
 -- The stage we are in
 --
 -- This is a two-level language.

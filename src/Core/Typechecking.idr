@@ -69,6 +69,12 @@ record Expr (d : Domain) (ns : Ctx) where
   ty : ValTy ns
   stage : Stage
 
+-- An annotation is a type and a stage
+record Annot (ns : Ctx) where
+  constructor MkAnnot
+  ty : ValTy ns
+  stage : Stage
+
 -- Turn `ExprAt` into `Expr`
 packStage : {s : Stage} -> ExprAt s d ns -> Expr d ns
 packStage (MkExprAt tm ty) = MkExpr tm ty s
@@ -78,16 +84,10 @@ packStage (MkExprAt tm ty) = MkExpr tm ty s
 ExprAtMaybe Nothing = Expr
 ExprAtMaybe (Just s) = ExprAt s
 
--- An annotation is a type and a stage
-record Annot (ns : Ctx) where
-  constructor MkAnnot
-  ty : ValTy ns
-  stage : Stage
-
 -- Add a potentially self-referencing definition to the context.
 addToContext : (n : Ident) -> Stage -> ValTy ns -> Val (ns :< n) -> Context ns -> Context (ns :< n)
 addToContext n stage ty tm (MkContext (Val idents) con defs stages size) =
-  MkContext (Val (idents :< n)) (con :<  ty) (defs . Drop Id :< tm) (stages :< stage) (SS size)
+  MkContext (Val (idents :< n)) (con :< ty) (defs . Drop Id :< tm) (stages :< stage) (SS size)
 
 -- Add a definition to the context that lazily evaluates to its value.
 define : (n : Ident) -> Expr Value ns -> Context ns -> Context (ns :< n)
@@ -143,6 +143,9 @@ resolve x = resolveGlueAndMetas {sm = SolvingAllowed} @{metas} x
 evaluate : Context ns -> Tm ns -> Val ns
 evaluate ctx t = eval ctx.defs t
 
+reify : Context ns -> Val ns -> Tm ns
+reify ctx v = quote ctx.size v
+
 -- Create a fresh metavariable
 freshMeta : HasTc m => Context ns -> Stage -> m (Tm ns)
 freshMeta ctx s = do
@@ -176,29 +179,6 @@ adjustStage : (HasTc m) => Context ns -> Expr Syntax ns -> (s : Stage) -> m (Exp
 -- Coerce an expression to a given type.
 coerce : (HasTc m) => Expr Syntax ns -> Annot ns -> m (Tm ns)
 
--- Force a typechecking operation to be in checking mode. This might involve unifying with an
--- inferred type.
-check : HasTc m => Tc Infer m -> Tc Check m
-check f = \ctx, annot => (.tm) <$> (insertAt ctx annot.stage $ f ctx (Just annot.stage))
-
--- `Type b` for some *compile-time* byte size `b`, object-level type of types.
-sizedObjType : (b : Val ns) -> ValTy ns
-sizedObjType b = SimpPrimNormal (SimpApplied PrimUnsized
-    [(SimpPrimNormal (SimpApplied PrimEmbedBYTES [b]))])
-
--- The `0` bytes value.
-zeroBytes : Val ns
-zeroBytes = SimpPrimNormal (SimpApplied PrimZeroBYTES [])
-
--- `TYPE`, meta-level type of types.
-mtaType : ValTy ns
-mtaType = SimpPrimNormal (SimpApplied PrimTYPE [])
-
--- Get either `Type 0` or `TYPE` depending on the stage.
-sizedTypeOfTypes : Stage -> Annot ns
-sizedTypeOfTypes Mta = MkAnnot mtaType Mta
-sizedTypeOfTypes Obj = MkAnnot (sizedObjType zeroBytes) Obj
-
 -- Unify two values in the given context.
 --
 -- Succeeds if the unification says `AreSame`.
@@ -206,6 +186,14 @@ unify : HasTc m => Context ns -> Val ns -> Val ns -> m ()
 unify ctx a b = unify {sm = SolvingAllowed} @{unifyValues @{metas}} ctx.size a b >>= \case
   AreSame => pure ()
   failure => tcError ctx $ WhenUnifying a b failure
+
+-- Force a typechecking operation to be in checking mode. This might involve unifying with an
+-- inferred type.
+check : HasTc m => Tc Infer m -> Tc Check m
+check f = \ctx, annot => do
+  result <- insertAt ctx annot.stage $ f ctx (Just annot.stage)
+  unify ctx annot.ty result.ty
+  pure result.tm
 
 -- Evaluate a closure with a extended environment
 evalClosure : Context ns -> Body Value n ns -> Term Value (ns :< n')
@@ -275,7 +263,7 @@ ifForcePi ctx mode stage potentialPi ifMatching ifMismatching
 inferAnnot : HasTc m => Context ns -> Tc Infer m -> m (Annot ns)
 inferAnnot ctx ty = do
   MkExpr ty univ stage <- ty ctx Nothing
-  unify ctx univ (sizedTypeOfTypes stage).ty
+  unify ctx univ (evaluate ctx $ sizedType stage)
   let vty = evaluate ctx ty
   pure $ MkAnnot vty stage
 
@@ -305,7 +293,7 @@ tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnot ty stage) => do
       a : Annot ns <- case bindTy of
         Nothing => pure $ MkAnnot a piStage
         Just bindTy => do
-          bindTy' <- evaluate ctx <$> check bindTy ctx (sizedTypeOfTypes piStage)
+          bindTy' <- evaluate ctx <$> check bindTy ctx (MkAnnot (evaluate ctx $ sizedType piStage) piStage)
           unify ctx a bindTy'
           pure $ MkAnnot bindTy' piStage
       -- Then check the body with the computed annotation type.
@@ -340,3 +328,13 @@ tcLam Infer lamIdent bindTy body = \ctx, stage => do
         -- because we don't know that the stage is valid for the given type yet.
         res <- tcLam Infer lamIdent (Just bindTy) body ctx Nothing
         adjustStage ctx res stage
+
+ensureKnownStage : HasTc m => Context ns -> Maybe Stage -> m Stage
+ensureKnownStage ctx (Just s) = pure s
+ensureKnownStage ctx Nothing = tcError ctx CannotInferStage
+
+tcTuple : HasTc m => List (Ident, Tc Check m) -> Tc Check m
+-- tcTuple [] = check (\ctx, stage => case stage of
+--     Nothing => tcError ctx CannotInferStage
+--     Just s => pure $ MkExprAt (reify ctx $ unitTerm s) (unitType s))
+-- tcTuple ((n, ty) :: rest) = ?fa

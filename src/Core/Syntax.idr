@@ -286,6 +286,10 @@ public export
 vPi : Stage -> (n : Ident) -> ValTy ns -> Body Value n ns -> Term Value ns
 vPi s n ty body = RigidBinding s (Bound s (BindPi n ty) body)
 
+public export
+sPi : Stage -> (n : Ident) -> Ty ns -> Ty (ns :< n) -> Ty ns
+sPi s n ty body = SynApps (SynBinding s Rigid (Bound s (BindPi n ty) (Delayed body)) $$ [])
+
 -- We can extend the variable search machinery to the syntax:
 
 public export
@@ -304,10 +308,21 @@ data Primitive where
   PrimSizeBYTES : Primitive PrimNorm PrimIrreducible []
   PrimPtrBYTES : Primitive PrimNorm PrimIrreducible []
   PrimBytes : Primitive PrimNorm PrimIrreducible []
+  PrimUNIT : Primitive PrimNorm PrimIrreducible []
+  PrimTT : Primitive PrimNorm PrimIrreducible []
+  PrimPadTy : Primitive PrimNorm PrimIrreducible [(Explicit, "bytes")]
+  PrimPad : Primitive PrimNorm PrimIrreducible [(Implicit, "bytes")]
   PrimEmbedBYTES : Primitive PrimNorm PrimIrreducible [(Explicit, "staticBytes")]
   PrimUnsized : Primitive PrimNorm PrimIrreducible [(Explicit, "bytes")]
   PrimAddBYTES : Primitive PrimNorm PrimReducible [(Explicit, "a"), (Explicit, "b")]
   PrimAddBytes : Primitive PrimNorm PrimReducible [(Explicit, "a"), (Explicit, "b")]
+  PrimSIGMA : (a : Name) -> Primitive PrimNorm PrimIrreducible [(Explicit, a), (Explicit, "rest")]
+  PrimPAIR : (a : Name) -> Primitive PrimNorm PrimIrreducible
+    [(Implicit, a), (Implicit, "rest"), (Explicit, "va"), (Explicit, "vrest")]
+  PrimSigma : (a : Name) -> Primitive PrimNorm PrimIrreducible
+    [(Implicit, "ba"), (Implicit, "bRest"), (Explicit, a), (Explicit, "rest")]
+  PrimPair : (a : Name) -> Primitive PrimNorm PrimIrreducible
+    [(Implicit, "ba"), (Implicit, "bRest"), (Implicit, a), (Implicit, "rest"), (Explicit, "va"), (Explicit, "vrest")]
 
 -- Can't be DecEq without writing out all cases smh
 public export
@@ -317,9 +332,115 @@ primEq PrimBYTES PrimBYTES = Just Refl
 primEq PrimZeroBYTES PrimZeroBYTES = Just Refl
 primEq PrimSizeBYTES PrimSizeBYTES = Just Refl
 primEq PrimPtrBYTES PrimPtrBYTES = Just Refl
+primEq PrimUNIT PrimUNIT = Just Refl
+primEq PrimTT PrimTT = Just Refl
+primEq PrimPadTy PrimPadTy = Just Refl
+primEq PrimPad PrimPad = Just Refl
 primEq PrimBytes PrimBytes = Just Refl
 primEq PrimEmbedBYTES PrimEmbedBYTES = Just Refl
+primEq (PrimSigma x) (PrimSigma x') = case decEq x x' of
+  Yes Refl => Just Refl
+  No contra => Nothing
 primEq PrimUnsized PrimUnsized = Just Refl
 primEq PrimAddBYTES PrimAddBYTES = Just Refl
 primEq PrimAddBytes PrimAddBytes = Just Refl
 primEq _ _ = Nothing
+
+-- Some shorthands
+
+-- Compile-time bytes as partially-static
+public export
+embedBytes : Tm ns -> Tm ns
+embedBytes b = SynPrimNormal (PrimEmbedBYTES $$ [b])
+
+public export
+mtaBytes : Ty ns
+mtaBytes = SynPrimNormal (PrimBYTES $$ [])
+
+public export
+psBytes : Tm ns
+psBytes = SynPrimNormal (PrimBytes $$ [])
+
+-- `Type b` for some *compile-time* byte size `b`, object-level type of types.
+public export
+sizedObjType : (b : Tm ns) -> Ty ns
+sizedObjType b = SynPrimNormal (PrimUnsized $$ [embedBytes b])
+
+public export
+objType : Tm ns -> Ty ns
+objType b = SynPrimNormal (PrimUnsized $$ [b])
+
+-- The `0` bytes value.
+public export
+zeroBytes : Tm ns
+zeroBytes = SynPrimNormal (PrimZeroBYTES $$ [])
+
+public export
+sizeBytes : Tm ns
+sizeBytes = SynPrimNormal (PrimSizeBYTES $$ [])
+
+public export
+ptrBytes :  Tm ns
+ptrBytes = SynPrimNormal (PrimPtrBYTES $$ [])
+
+-- `TYPE`, meta-level type of types.
+public export
+mtaType : Ty ns
+mtaType = SynPrimNormal (PrimTYPE $$ [])
+
+-- Get either `Type 0` or `TYPE` depending on the stage.
+public export
+sizedType : Stage -> Ty ns
+sizedType Mta = mtaType
+sizedType Obj = sizedObjType zeroBytes
+
+public export
+mtaUnit : Ty ns
+mtaUnit = SynPrimNormal (PrimUNIT $$ [])
+
+public export
+psBytesAdd : Tm ns -> Tm ns -> Tm ns
+psBytesAdd a b = SynPrimNormal (PrimAddBytes $$ [a, b])
+
+public export
+primN : PrimitiveApplied PrimNorm Syntax NA ns -> Term Syntax ns
+primN = SynPrimNormal
+
+-- Types of the arguments and return values of all the primitives
+public export
+primTy : (p : Primitive k r ar) -> (Tel ar Ty ns, Ty (ns ::< ar))
+primTy PrimTYPE = ([], mtaType)
+primTy PrimBYTES = ([], mtaType)
+primTy PrimZeroBYTES = ([], mtaBytes)
+primTy PrimSizeBYTES = ([], mtaBytes)
+primTy PrimPtrBYTES = ([], mtaBytes)
+primTy PrimBytes = ([], sizedObjType sizeBytes)
+primTy PrimUNIT = ([], mtaType)
+primTy PrimTT = ([], mtaUnit)
+primTy PrimPadTy = ([psBytes], sizedObjType (var "bytes"))
+primTy PrimPad = ([psBytes], primN (PrimPadTy $$ [var "bytes"]))
+primTy PrimEmbedBYTES = ([mtaBytes], psBytes)
+primTy PrimUnsized = ([psBytes], sizedObjType zeroBytes)
+primTy PrimAddBYTES = ([mtaBytes, mtaBytes], mtaBytes)
+primTy PrimAddBytes = ([psBytes, psBytes], psBytes)
+primTy (PrimSIGMA a) = ([mtaType, sPi Mta (Explicit, "x") (var a) mtaType], mtaType)
+primTy (PrimPAIR a) = ([
+    mtaType,
+    sPi Mta (Explicit, "x") (var a) mtaType,
+    var a,
+    varApp "rest" (Explicit, "x") (var "va")
+  ], primN (PrimSIGMA a $$ [var a, var "rest"]))
+primTy (PrimSigma a) = ([
+    psBytes,
+    psBytes,
+    objType (var "ba"),
+    sPi Mta (Explicit, "x") (var a) (objType (var "bRest"))
+  ], objType (psBytesAdd (var "ba") (var "bRest")))
+primTy (PrimPair a) = ([
+    psBytes,
+    psBytes,
+    objType (var "ba"),
+    sPi Mta (Explicit, "x") (var a) (objType (var "bRest")),
+    var a,
+    varApp "rest" (Explicit, "x") (var "va")
+  ], primN (PrimSigma a $$ [var "ba", var "bRest", var a, var "rest"]))
