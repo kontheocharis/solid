@@ -214,6 +214,10 @@ interface Weak (0 tm : Ctx -> Type) where
   weak : Wk ns ms -> tm ms -> tm ns
 
 public export
+(x : Type) => Weak (const x) where
+  weak l x = x
+
+public export
 (.) : Weak tm => Sub ms tm qs -> Wk ns ms -> Sub ns tm qs
 [<] . e = [<]
 (xs :< x) . e = xs . e :< weak e x

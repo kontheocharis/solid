@@ -190,6 +190,10 @@ tryAdjustStage : (HasTc m) => Context ns -> Expr Syntax ns -> (s : Stage) -> m (
 -- Adjust the stage of an expression.
 adjustStage : (HasTc m) => Context ns -> Expr Syntax ns -> (s : Stage) -> m (ExprAt s Syntax ns)
 
+adjustStageIfNeeded : (HasTc m) => Context ns -> Expr Syntax ns -> (s : Maybe Stage) -> m (ExprAtMaybe s Syntax ns)
+adjustStageIfNeeded ctx expr Nothing = pure $ MkExpr expr.tm expr.ty expr.stage
+adjustStageIfNeeded ctx expr (Just s) = adjustStage ctx expr s
+
 -- Coerce an expression to a given type.
 coerce : (HasTc m) => Expr Syntax ns -> Annot ns -> m (Tm ns)
 
@@ -355,8 +359,10 @@ tcTuple : HasTc m => List (Ident, Tc Check m) -> Tc Check m
 -- tcTuple ((n, ty) :: rest) = ?fa
 
 tcVar : HasTc m => Name -> Tc Infer m
-tcVar n = \ctx, stage => case stage of
-  Nothing => ?fa
-  Just s => case lookup ctx n of
+tcVar n = \ctx, stage' => case lookup ctx n of
     Nothing => tcError ctx $ UnknownName n
-    Just idx => pure $ MkExprAt (SynApps (SynVar (Index idx) $$ [])) (ctx.con.index idx)
+    Just idx => do
+      let tm = SynApps (SynVar (Index idx) $$ [])
+      let ty = ctx.con.index idx
+      let stage = ctx.stages.index idx
+      adjustStageIfNeeded ctx (MkExpr tm ty stage) stage'
