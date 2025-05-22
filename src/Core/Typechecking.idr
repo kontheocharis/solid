@@ -143,11 +143,13 @@ resolve x = resolveGlueAndMetas {sm = SolvingAllowed} @{metas} x
 evaluate : Context ns -> Tm ns -> Val ns
 evaluate ctx t = eval ctx.defs t
 
--- Create a fresh metavariable and evaluate it
-freshMetaVal : HasTc m => Context ns -> Stage -> m (Val ns)
-
 -- Create a fresh metavariable
 freshMeta : HasTc m => Context ns -> Stage -> m (Tm ns)
+freshMeta ctx s = ?j
+
+-- Create a fresh metavariable and evaluate it
+freshMetaVal : HasTc m => Context ns -> Stage -> m (Val ns)
+freshMetaVal ctx s = eval ctx.defs <$> freshMeta ctx s
 
 -- Insert all lambdas implicit lambdas in a type-directed manner, without regard
 -- for what the expression is.

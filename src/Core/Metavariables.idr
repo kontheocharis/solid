@@ -210,6 +210,14 @@ data Flex : MetaVar -> Ctx -> Type where
 (.meta) : Flex meta ns -> MetaVar
 (.meta) (MkFlex m _) = m
 
+-- Resolve any top-level metas appearing in the value
+public export
+resolveMetas : HasMetas m => Term Value ns -> m sm (Term Value ns)
+resolveMetas t@(SimpApps (ValMeta m $$ sp)) = getMeta m >>= \case
+  Nothing => pure t
+  Just t' => resolveMetas $ apps (weak Terminal t') sp
+resolveMetas t = pure t
+
 -- Resolve any top-level metas appearing in the value, as well as any glued values.
 public export
 resolveGlueAndMetas : HasMetas m => Term Value ns -> m sm (Term Value ns)
