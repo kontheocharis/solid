@@ -58,6 +58,7 @@ interface (HasMetas m) => Unify m sm (0 lhs : Ctx -> Type) (0 rhs : Ctx -> Type)
   unifyImpl : Size ns -> lhs ns -> rhs ns -> m sm (Unification ns)
 
 -- The actual unification function, first resolves both sides.
+public export
 unify : Unify m sm lhs rhs => Size ns -> lhs ns -> rhs ns -> m sm (Unification ns)
 unify @{u} s l r = do
   l' <- resolveLhs @{u} l

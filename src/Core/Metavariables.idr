@@ -178,6 +178,9 @@ interface (forall sm . Monad (m sm)) => HasMetas (0 m : SolvingMode -> Type -> T
   -- Get the solution of a metavariable, if any.
   getMeta : MetaVar -> m sm (Maybe (Term Value [<]))
 
+  -- Create a new metavariable without a solution.
+  newMeta : m sm MetaVar
+
   -- Check if we are allowed to solve metavariables.
   canSolve : m sm (Singleton sm)
 

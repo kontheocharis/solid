@@ -145,7 +145,9 @@ evaluate ctx t = eval ctx.defs t
 
 -- Create a fresh metavariable
 freshMeta : HasTc m => Context ns -> Stage -> m (Tm ns)
-freshMeta ctx s = ?j
+freshMeta ctx s = do
+  m <- newMeta {sm = SolvingAllowed} @{metas}
+  pure $ SynApps (SynMeta m $$ [])
 
 -- Create a fresh metavariable and evaluate it
 freshMetaVal : HasTc m => Context ns -> Stage -> m (Val ns)
