@@ -176,6 +176,12 @@ namespace Sub
   (.size) [<] = SZ
   (.size) (xs :< x) = SS xs.size
 
+  -- Index into a substitution
+  public export
+  (.index) : Sub ns f ms -> Idx ms -> f ns
+  (.index) (xs :< x) IZ = x
+  (.index) (xs :< x) (IS i) = .index xs i
+
 public export
 subFromSpine : Spine ar f ns -> Sub ns f (arityToCtx ar)
 subFromSpine [] = [<]
@@ -234,6 +240,13 @@ id (SS k) = lift k (id k)
 public export
 proj : (Weak tm, Vars tm) => Size ns -> Sub (ns :< n) tm ns
 proj s = id s . Drop Id
+
+-- Index into a context
+namespace Con
+  public export
+  (.index) : Weak f => Con f ms -> Idx ms -> f ms
+  (.index) (xs :< x) IZ = wk x
+  (.index) (xs :< x) (IS i) = wk (xs.index i)
 
 -- Evaluation and quoting interfaces
 

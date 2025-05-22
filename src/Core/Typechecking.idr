@@ -27,6 +27,8 @@ data TcErrorAt : Ctx -> Type where
   WrongPiMode : PiMode -> ValTy ns -> TcErrorAt ns
   -- Cannot infer stage
   CannotInferStage : TcErrorAt ns
+  -- Cannot find a name
+  UnknownName : Name -> TcErrorAt ns
 
 -- Context for typechecking
 record Context (ns : Ctx) where
@@ -44,6 +46,18 @@ record Context (ns : Ctx) where
   stages : Con (const Stage) ns
   -- The size of the context, for quick access
   size : Size ns
+
+-- Find a name in the context
+lookup : Context ns -> Name -> Maybe (Idx ns)
+lookup ctx n = findIdx ctx.idents n
+  where
+    findIdx : forall ns . Singleton ns -> Name -> Maybe (Idx ns)
+    findIdx (Val [<]) n = Nothing
+    findIdx (Val (ns :< (m, n'))) n = case n == n' of
+      True => Just IZ
+      False => do
+        idx <- findIdx (Val ns) n
+        pure $ IS idx
 
 -- Packaging an error with its context
 record TcError where
@@ -204,6 +218,7 @@ public export
 close : Context ns -> Tm (ns :< n) -> Body Value n ns
 close ctx ty = Closure (id ctx.size) ty
 
+
 -- Insert (some kind of an implicit) lambda from the given information.
 --
 -- This adds the binder to the subject and `recurses`, yielding a lambda with the
@@ -338,3 +353,10 @@ tcTuple : HasTc m => List (Ident, Tc Check m) -> Tc Check m
 --     Nothing => tcError ctx CannotInferStage
 --     Just s => pure $ MkExprAt (reify ctx $ unitTerm s) (unitType s))
 -- tcTuple ((n, ty) :: rest) = ?fa
+
+tcVar : HasTc m => Name -> Tc Infer m
+tcVar n = \ctx, stage => case stage of
+  Nothing => ?fa
+  Just s => case lookup ctx n of
+    Nothing => tcError ctx $ UnknownName n
+    Just idx => pure $ MkExprAt (SynApps (SynVar (Index idx) $$ [])) (ctx.con.index idx)

@@ -126,7 +126,7 @@ many p = MkParser $ \ts => case runParser p ts of
       Left _ => Right ([a], ts')
       Right (as, ts'') => Right (a :: as, ts'')
 
-many1 : Parser a -> Parser (DPair (List a) NonEmpty)
+many1 : Parser a -> Parser (l : List a ** NonEmpty l)
 many1 p = do
   a <- p
   as <- many p

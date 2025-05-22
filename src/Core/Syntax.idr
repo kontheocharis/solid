@@ -428,7 +428,7 @@ public export
 primN : PrimitiveApplied PrimNorm Syntax NA ns -> Term Syntax ns
 primN = SynPrimNormal
 
--- An annotation is a type and a stage
+-- A type packaged with a stage
 0 AnyTy : Ctx -> Type
 AnyTy ns = (Stage, Ty ns)
 
