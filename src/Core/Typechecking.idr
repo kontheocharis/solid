@@ -70,46 +70,18 @@ record TcError where
   -- The error itself
   err : TcErrorAt conNs
 
--- A typed expression at a given stage
-record ExprAt (s : Stage) (d : Domain) (ns : Ctx) where
-  constructor MkExprAt
-  tm : Term d ns
-  ty : ValTy ns
-
--- Version of ExprAt which also packages the stage
-record Expr (d : Domain) (ns : Ctx) where
-  constructor MkExpr
-  tm : Term d ns
-  ty : ValTy ns
-  stage : Stage
-
--- An annotation is a type and a stage
-record Annot (ns : Ctx) where
-  constructor MkAnnot
-  ty : ValTy ns
-  stage : Stage
-
--- Turn `ExprAt` into `Expr`
-packStage : {s : Stage} -> ExprAt s d ns -> Expr d ns
-packStage (MkExprAt tm ty) = MkExpr tm ty s
-
--- Helper to decide which `Expr` to pick based on an optional stage
-0 ExprAtMaybe : Maybe Stage -> Domain -> Ctx -> Type
-ExprAtMaybe Nothing = Expr
-ExprAtMaybe (Just s) = ExprAt s
-
 -- Add a potentially self-referencing definition to the context.
 addToContext : (n : Ident) -> Stage -> ValTy ns -> Val (ns :< n) -> Context ns -> Context (ns :< n)
 addToContext n stage ty tm (MkContext (Val idents) con defs stages size) =
   MkContext (Val (idents :< n)) (con :< ty) (defs . Drop Id :< tm) (stages :< stage) (SS size)
 
 -- Add a definition to the context that lazily evaluates to its value.
-define : (n : Ident) -> Expr Value ns -> Context ns -> Context (ns :< n)
+define : (n : Ident) -> Expr Value Value ns -> Context ns -> Context (ns :< n)
 define n rhs ctx =
   addToContext n rhs.stage rhs.ty (Glued (LazyApps (ValDef (Level (lastLvl ctx.size)) $$ []) (wk rhs.tm))) ctx
 
 -- Add a binding with no value to the context.
-bind : (n : Ident) -> Annot ns -> Context ns -> Context (ns :< n)
+bind : (n : Ident) -> Annot Value ns -> Context ns -> Context (ns :< n)
 bind n annot ctx = addToContext n annot.stage annot.ty (varLvl (lastLvl ctx.size)) ctx
 
 -- Typechecking has access to metas
@@ -129,8 +101,8 @@ interface (Monad m) => HasTc m where
 --
 -- It can be executed to produce an elaborated expression, depending on what `md` is.
 0 TcOp : (md : TcMode) -> (0 m : Type -> Type) -> Ctx -> Type
-TcOp Check m ms = Annot ms -> m (Tm ms)
-TcOp Infer m ms = (s : Maybe Stage) -> m (ExprAtMaybe s Syntax ms)
+TcOp Check m ms = Annot Value ms -> m (Tm ms)
+TcOp Infer m ms = (s : Maybe Stage) -> m (ExprAtMaybe s Syntax Value ms)
 
 -- Typechecking in a specific context
 0 TcAt : (md : TcMode) -> (0 m : Type -> Type) -> Ctx -> Type
@@ -172,30 +144,30 @@ freshMetaVal ctx s = eval ctx.defs <$> freshMeta ctx s
 
 -- Insert all lambdas implicit lambdas in a type-directed manner, without regard
 -- for what the expression is.
-insertAll : (HasTc m) => Context ns -> m (Expr Syntax ns) -> m (Expr Syntax ns)
+insertAll : (HasTc m) => Context ns -> m (Expr Syntax Value ns) -> m (Expr Syntax Value ns)
 
 -- Insert all lambdas implicit lambdas in a type-directed manner, unless the given expression is a
 -- matching implicit lambda.
-insert : (HasTc m) => Context ns -> m (Expr Syntax ns) -> m (Expr Syntax ns)
+insert : (HasTc m) => Context ns -> m (Expr Syntax Value ns) -> m (Expr Syntax Value ns)
 
 -- Stage-aware `insert`.
-insertAt : (HasTc m) => Context ns -> (s : Stage) -> m (ExprAt s Syntax ns) -> m (ExprAt s Syntax ns)
+insertAt : (HasTc m) => Context ns -> (s : Stage) -> m (ExprAt s Syntax Value ns) -> m (ExprAt s Syntax Value ns)
 
 -- Insert until a given name is reached.
-insertUntil : (HasTc m) => Context ns -> Name -> m (Expr Syntax ns) -> m (Expr Syntax ns)
+insertUntil : (HasTc m) => Context ns -> Name -> m (Expr Syntax Value ns) -> m (Expr Syntax Value ns)
 
 -- Try to adjust the stage of an expression.
-tryAdjustStage : (HasTc m) => Context ns -> Expr Syntax ns -> (s : Stage) -> m (Maybe (ExprAt s Syntax ns))
+tryAdjustStage : (HasTc m) => Context ns -> Expr Syntax Value ns -> (s : Stage) -> m (Maybe (ExprAt s Syntax Value ns))
 
 -- Adjust the stage of an expression.
-adjustStage : (HasTc m) => Context ns -> Expr Syntax ns -> (s : Stage) -> m (ExprAt s Syntax ns)
+adjustStage : (HasTc m) => Context ns -> Expr Syntax Value ns -> (s : Stage) -> m (ExprAt s Syntax Value ns)
 
-adjustStageIfNeeded : (HasTc m) => Context ns -> Expr Syntax ns -> (s : Maybe Stage) -> m (ExprAtMaybe s Syntax ns)
+adjustStageIfNeeded : (HasTc m) => Context ns -> Expr Syntax Value ns -> (s : Maybe Stage) -> m (ExprAtMaybe s Syntax Value ns)
 adjustStageIfNeeded ctx expr Nothing = pure $ MkExpr expr.tm expr.ty expr.stage
 adjustStageIfNeeded ctx expr (Just s) = adjustStage ctx expr s
 
 -- Coerce an expression to a given type.
-coerce : (HasTc m) => Expr Syntax ns -> Annot ns -> m (Tm ns)
+coerce : (HasTc m) => Expr Syntax Value ns -> Annot Value ns -> m (Tm ns)
 
 -- Unify two values in the given context.
 --
@@ -233,7 +205,7 @@ insertLam : HasTc m => Context ns
   -> (bindTy : ValTy ns)
   -> (body : Body Value piIdent ns)
   -> (subject : Tc Check m)
-  -> m (ExprAt piStage Syntax ns)
+  -> m (ExprAt piStage Syntax Value ns)
 insertLam ctx piStage piIdent bindTy body subject = do
   let b = evalClosure ctx body
   s <- subject (bind piIdent (MkAnnot bindTy piStage) ctx) (MkAnnot b piStage)
@@ -279,7 +251,7 @@ ifForcePi ctx mode stage potentialPi ifMatching ifMismatching
       ifMatching createdPi stage piIdent a b
 
 -- Infer the given job as a type, also inferring its stage in the process.
-inferAnnot : HasTc m => Context ns -> Tc Infer m -> m (Annot ns)
+inferAnnot : HasTc m => Context ns -> Tc Infer m -> m (Annot Value ns)
 inferAnnot ctx ty = do
   MkExpr ty univ stage <- ty ctx Nothing
   unify ctx univ (evaluate ctx $ sizedType stage)
@@ -291,7 +263,7 @@ inferLam : HasTc m => Context ns
   -> (stage : Stage)
   -> (n : Ident)
   -> (a : ValTy ns)
-  -> Tc Infer m -> m (ExprAt stage Syntax ns)
+  -> Tc Infer m -> m (ExprAt stage Syntax Value ns)
 inferLam ctx stage lamIdent a body = do
   MkExprAt body' bTy <- body (bind lamIdent (MkAnnot a stage) ctx) (Just stage)
   let b = close ctx (quote (SS ctx.size) bTy)
@@ -309,7 +281,7 @@ tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnot ty stage) => do
     (\_, piStage, piIdent, a, b => do
       -- Great, it is a pi. Now first reconcile this with the annotation type
       -- of the lambda.
-      a : Annot ns <- case bindTy of
+      a : Annot Value ns <- case bindTy of
         Nothing => pure $ MkAnnot a piStage
         Just bindTy => do
           bindTy' <- evaluate ctx <$> check bindTy ctx (MkAnnot (evaluate ctx $ sizedType piStage) piStage)
@@ -366,3 +338,6 @@ tcVar n = \ctx, stage' => case lookup ctx n of
       let ty = ctx.con.index idx
       let stage = ctx.stages.index idx
       adjustStageIfNeeded ctx (MkExpr tm ty stage) stage'
+
+tcHole : HasTc m => {md : TcMode} -> Tc md m
+tcHole {md = Check} ctx annot = ?fa

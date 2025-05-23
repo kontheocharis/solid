@@ -263,6 +263,39 @@ public export
 0 Env : Ctx -> Ctx -> Type
 Env ms ns = Sub ms Val ns
 
+-- A typed expression at a given stage
+public export
+record ExprAt (s : Stage) (d : Domain) (dTy : Domain) (ns : Ctx) where
+  constructor MkExprAt
+  tm : Term d ns
+  ty : Term dTy ns
+
+-- Version of ExprAt which also packages the stage
+public export
+record Expr (d : Domain) (dTy : Domain) (ns : Ctx) where
+  constructor MkExpr
+  tm : Term d ns
+  ty : Term dTy ns
+  stage : Stage
+
+-- An annotation is a type and a stage
+public export
+record Annot (d : Domain) (ns : Ctx) where
+  constructor MkAnnot
+  ty : Term d ns
+  stage : Stage
+
+-- Turn `ExprAt` into `Expr`
+public export
+packStage : {s : Stage} -> ExprAt s d dTy ns -> Expr d dTy ns
+packStage (MkExprAt tm ty) = MkExpr tm ty s
+
+-- Helper to decide which `Expr` to pick based on an optional stage
+public export
+0 ExprAtMaybe : Maybe Stage -> Domain -> Domain -> Ctx -> Type
+ExprAtMaybe Nothing = Expr
+ExprAtMaybe (Just s) = ExprAt s
+
 -- Helpers to create syntax
 
 public export
@@ -428,50 +461,46 @@ public export
 primN : PrimitiveApplied PrimNorm Syntax NA ns -> Term Syntax ns
 primN = SynPrimNormal
 
--- A type packaged with a stage
-0 AnyTy : Ctx -> Type
-AnyTy ns = (Stage, Ty ns)
-
 -- Types of the arguments and return values of all the primitives
 public export
-primTy : (p : Primitive k r ar) -> (Tel ar AnyTy ns, AnyTy (ns ::< ar))
-primTy PrimTYPE = ([], (Mta, mtaType))
-primTy PrimCode = ([(Obj, psBytes), (Obj, objType (var "bytes"))], (Mta, mtaType))
-primTy PrimQuote = ([(Obj, psBytes), (Obj, objType (var "bytes")), (Obj, var "ty")], (Mta, sCode (var "bytes") (var "ty")))
-primTy PrimSplice = ([(Obj, psBytes), (Obj, objType (var "bytes")), (Mta, sCode (var "bytes") (var "ty"))], (Obj, var "ty"))
-primTy PrimBYTES = ([], (Mta, mtaType))
-primTy PrimZeroBYTES = ([], (Mta, mtaBytes))
-primTy PrimSizeBYTES = ([], (Mta, mtaBytes))
-primTy PrimPtrBYTES = ([], (Mta, mtaBytes))
-primTy PrimBytes = ([], (Obj, sizedObjType sizeBytes))
-primTy PrimUNIT = ([], (Mta, mtaType))
-primTy PrimTT = ([], (Mta, mtaUnit))
-primTy PrimIrrTy = ([(Obj, psBytes), (Obj, sizedObjType (var "bytes"))], (Obj, sizedObjType zeroBytes))
-primTy PrimIrr = ([(Obj, psBytes), (Obj, sizedObjType (var "bytes")), (Obj, var "ty")], (Obj, primN (PrimIrrTy $$ [var "bytes", var "ty"])))
-primTy PrimPadTy = ([(Obj, psBytes)], (Obj, sizedObjType (var "bytes")))
-primTy PrimPad = ([(Obj, psBytes)], (Obj, primN (PrimPadTy $$ [var "bytes"])))
-primTy PrimEmbedBYTES = ([(Mta, mtaBytes)], (Obj, psBytes))
-primTy PrimUnsized = ([(Obj, psBytes)], (Obj, sizedObjType zeroBytes))
-primTy PrimAddBYTES = ([(Mta, mtaBytes), (Mta, mtaBytes)], (Mta, mtaBytes))
-primTy PrimAddBytes = ([(Obj, psBytes), (Obj, psBytes)], (Obj, psBytes))
-primTy (PrimSIGMA a) = ([(Mta, mtaType), (Mta, sPi Mta (Explicit, "x") (var a) mtaType)], (Mta, mtaType))
+primTy : (p : Primitive k r ar) -> (Tel ar (Annot Syntax) ns, Annot Syntax (ns ::< ar))
+primTy PrimTYPE = ([], MkAnnot mtaType Mta)
+primTy PrimCode = ([MkAnnot psBytes Obj, MkAnnot (objType (var "bytes")) Obj], MkAnnot mtaType Mta)
+primTy PrimQuote = ([MkAnnot psBytes Obj, MkAnnot (objType (var "bytes")) Obj, MkAnnot (var "ty") Obj], MkAnnot (sCode (var "bytes") (var "ty")) Mta)
+primTy PrimSplice = ([MkAnnot psBytes Obj, MkAnnot (objType (var "bytes")) Obj, MkAnnot (sCode (var "bytes") (var "ty")) Mta], MkAnnot (var "ty") Obj)
+primTy PrimBYTES = ([], MkAnnot mtaType Mta)
+primTy PrimZeroBYTES = ([], MkAnnot mtaBytes Mta)
+primTy PrimSizeBYTES = ([], MkAnnot mtaBytes Mta)
+primTy PrimPtrBYTES = ([], MkAnnot mtaBytes Mta)
+primTy PrimBytes = ([], MkAnnot (sizedObjType sizeBytes) Obj)
+primTy PrimUNIT = ([], MkAnnot mtaType Mta)
+primTy PrimTT = ([], MkAnnot mtaUnit Mta)
+primTy PrimIrrTy = ([MkAnnot psBytes Obj, MkAnnot (sizedObjType (var "bytes")) Obj], MkAnnot (sizedObjType zeroBytes) Obj)
+primTy PrimIrr = ([MkAnnot psBytes Obj, MkAnnot (sizedObjType (var "bytes")) Obj, MkAnnot (var "ty") Obj], MkAnnot (primN (PrimIrrTy $$ [var "bytes", var "ty"])) Obj)
+primTy PrimPadTy = ([MkAnnot psBytes Obj], MkAnnot (sizedObjType (var "bytes")) Obj)
+primTy PrimPad = ([MkAnnot psBytes Obj], MkAnnot (primN (PrimPadTy $$ [var "bytes"])) Obj)
+primTy PrimEmbedBYTES = ([MkAnnot mtaBytes Mta], MkAnnot psBytes Obj)
+primTy PrimUnsized = ([MkAnnot psBytes Obj], MkAnnot (sizedObjType zeroBytes) Obj)
+primTy PrimAddBYTES = ([MkAnnot mtaBytes Mta, MkAnnot mtaBytes Mta], MkAnnot mtaBytes Mta)
+primTy PrimAddBytes = ([MkAnnot psBytes Obj, MkAnnot psBytes Obj], MkAnnot psBytes Obj)
+primTy (PrimSIGMA a) = ([MkAnnot mtaType Mta, MkAnnot (sPi Mta (Explicit, "x") (var a) mtaType) Mta], MkAnnot mtaType Mta)
 primTy (PrimPAIR a) = ([
-    (Mta, mtaType),
-    (Mta, sPi Mta (Explicit, "x") (var a) mtaType),
-    (Mta, var a),
-    (Mta, varApp "rest" (Explicit, "x") (var "va"))
-  ], (Mta, primN (PrimSIGMA a $$ [var a, var "rest"])))
+    MkAnnot mtaType Mta,
+    MkAnnot (sPi Mta (Explicit, "x") (var a) mtaType) Mta,
+    MkAnnot (var a) Mta,
+    MkAnnot (varApp "rest" (Explicit, "x") (var "va")) Mta
+  ], MkAnnot (primN (PrimSIGMA a $$ [var a, var "rest"])) Mta)
 primTy (PrimSigma a) = ([
-    (Obj, psBytes),
-    (Obj, psBytes),
-    (Obj, objType (var "ba")),
-    (Obj, sPi Mta (Explicit, "x") (var a) (objType (var "bRest")))
-  ], (Obj, objType (psBytesAdd (var "ba") (var "bRest"))))
+    MkAnnot psBytes Obj,
+    MkAnnot psBytes Obj,
+    MkAnnot (objType (var "ba")) Obj,
+    MkAnnot (sPi Mta (Explicit, "x") (var a) (objType (var "bRest"))) Obj
+  ], MkAnnot (objType (psBytesAdd (var "ba") (var "bRest"))) Obj)
 primTy (PrimPair a) = ([
-    (Obj, psBytes),
-    (Obj, psBytes),
-    (Obj, objType (var "ba")),
-    (Obj, sPi Mta (Explicit, "x") (var a) (objType (var "bRest"))),
-    (Obj, var a),
-    (Obj, varApp "rest" (Explicit, "x") (var "va"))
-  ], (Obj, primN (PrimSigma a $$ [var "ba", var "bRest", var a, var "rest"])))
+    MkAnnot psBytes Obj,
+    MkAnnot psBytes Obj,
+    MkAnnot (objType (var "ba")) Obj,
+    MkAnnot (sPi Mta (Explicit, "x") (var a) (objType (var "bRest"))) Obj,
+    MkAnnot (var a) Obj,
+    MkAnnot (varApp "rest" (Explicit, "x") (var "va")) Obj
+  ], MkAnnot (primN (PrimSigma a $$ [var "ba", var "bRest", var a, var "rest"])) Obj)
