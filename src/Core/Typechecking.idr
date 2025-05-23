@@ -4,6 +4,7 @@ module Core.Typechecking
 import Utils
 import Common
 import Data.Singleton
+import Data.DPair
 import Core.Syntax
 import Core.Base
 import Core.Evaluation
@@ -46,6 +47,9 @@ record Context (ns : Ctx) where
   stages : Con (const Stage) ns
   -- The size of the context, for quick access
   size : Size ns
+  -- The bound variables in the context, in the form of a spine ready to be applied
+  -- to a metavariable.
+  binds : Exists (\ar => Spine ar (ValTy) ns)
 
 -- Find a name in the context
 lookup : Context ns -> Name -> Maybe (Idx ns)
@@ -71,18 +75,20 @@ record TcError where
   err : TcErrorAt conNs
 
 -- Add a potentially self-referencing definition to the context.
-addToContext : (n : Ident) -> Stage -> ValTy ns -> Val (ns :< n) -> Context ns -> Context (ns :< n)
-addToContext n stage ty tm (MkContext (Val idents) con defs stages size) =
-  MkContext (Val (idents :< n)) (con :< ty) (defs . Drop Id :< tm) (stages :< stage) (SS size)
+addToContext : (isBound : Bool) -> (n : Ident) -> Stage -> ValTy ns -> Val (ns :< n) -> Context ns -> Context (ns :< n)
+addToContext isBound n stage ty tm (MkContext (Val idents) con defs stages size (Evidence ar bounds)) =
+  MkContext
+    (Val (idents :< n)) (con :< ty) (defs . Drop Id :< tm) (stages :< stage) (SS size)
+    (if isBound then (Evidence (ar ++ [n]) $ wk bounds ++ [tm]) else (Evidence ar $ wk bounds))
 
 -- Add a definition to the context that lazily evaluates to its value.
 define : (n : Ident) -> Expr Value Value ns -> Context ns -> Context (ns :< n)
 define n rhs ctx =
-  addToContext n rhs.stage rhs.ty (Glued (LazyApps (ValDef (Level (lastLvl ctx.size)) $$ []) (wk rhs.tm))) ctx
+  addToContext False n rhs.stage rhs.ty (Glued (LazyApps (ValDef (Level (lastLvl ctx.size)) $$ []) (wk rhs.tm))) ctx
 
 -- Add a binding with no value to the context.
 bind : (n : Ident) -> Annot Value ns -> Context ns -> Context (ns :< n)
-bind n annot ctx = addToContext n annot.stage annot.ty (varLvl (lastLvl ctx.size)) ctx
+bind n annot ctx = addToContext True n annot.stage annot.ty (varLvl (lastLvl ctx.size)) ctx
 
 -- Typechecking has access to metas
 interface (Monad m) => HasTc m where
@@ -133,14 +139,17 @@ reify : Context ns -> Val ns -> Tm ns
 reify ctx v = quote ctx.size v
 
 -- Create a fresh metavariable
-freshMeta : HasTc m => Context ns -> Stage -> m (Tm ns)
-freshMeta ctx s = do
-  m <- newMeta {sm = SolvingAllowed} @{metas}
-  pure $ SynApps (SynMeta m $$ [])
-
--- Create a fresh metavariable and evaluate it
 freshMetaVal : HasTc m => Context ns -> Stage -> m (Val ns)
-freshMetaVal ctx s = eval ctx.defs <$> freshMeta ctx s
+freshMetaVal ctx s = do
+  m <- newMeta {sm = SolvingAllowed} @{metas}
+  -- Get all the bound variables in the context, and apply them to the
+  -- metavariable. This will later result in the metavariable being solved as a
+  -- lambda of all these variables.
+  pure $ SimpApps (ValMeta m $$ snd ctx.binds)
+
+-- Create a fresh metavariable and quote it
+freshMeta : HasTc m => Context ns -> Stage -> m (Tm ns)
+freshMeta ctx s = reify ctx <$> freshMetaVal ctx s
 
 -- Insert all lambdas implicit lambdas in a type-directed manner, without regard
 -- for what the expression is.
