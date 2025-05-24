@@ -186,6 +186,16 @@ insertAt : (HasTc m) => Context ns -> (s : Stage) -> m (ExprAt s Syntax Value ns
 -- Insert until a given name is reached.
 insertUntil : (HasTc m) => Context ns -> Name -> m (Expr Syntax Value ns) -> m (Expr Syntax Value ns)
 
+-- Ensure that the given `Maybe Stage` is `Just _`, eliminating with the
+-- supplied method.
+ensureKnownStage : HasTc m
+  => (Context ns -> (s : Stage) -> m (ExprAt s d d' ns))
+  -> Context ns
+  -> (ms : Maybe Stage)
+  -> m (ExprAtMaybe ms d d' ns)
+ensureKnownStage f ctx (Just s) = f ctx s
+ensureKnownStage f ctx Nothing = tcError ctx CannotInferStage
+
 -- Try to adjust the stage of an expression.
 tryAdjustStage : (HasTc m) => Context ns -> Expr Syntax Value ns -> (s : Stage) -> m (Maybe (ExprAt s Syntax Value ns))
 
@@ -351,20 +361,14 @@ tcLam Infer lamIdent bindTy body = \ctx, stage => do
         res <- tcLam Infer lamIdent (Just bindTy) body ctx Nothing
         adjustStage ctx res stage
 
-ensureKnownStage : HasTc m
-  => (Context ns -> (s : Stage) -> m (ExprAt s d d' ns))
-  -> Context ns
-  -> (ms : Maybe Stage)
-  -> m (ExprAtMaybe ms d d' ns)
-ensureKnownStage f ctx (Just s) = f ctx s
-ensureKnownStage f ctx Nothing = tcError ctx CannotInferStage
-
+-- Infer a tuple, given by a list of named terms
 tcTuple : HasTc m => List (Ident, Tc Check m) -> Tc Check m
 -- tcTuple [] = check (\ctx, stage => case stage of
 --     Nothing => tcError ctx CannotInferStage
 --     Just s => pure $ MkExprAt (reify ctx $ unitTerm s) (unitType s))
 -- tcTuple ((n, ty) :: rest) = ?fa
 
+-- Infer a variable, by looking up in the context
 tcVar : HasTc m => Name -> Tc Infer m
 tcVar n = \ctx, stage' => case lookup ctx n of
     Nothing => tcError ctx $ UnknownName n
@@ -388,3 +392,18 @@ tcHole {md = Infer} name = ensureKnownStage $ \ctx, stage => do
   mta <- freshMeta ctx tyMta stage
   addGoal name (MkExpr mta tyMta stage) ctx
   pure $ MkExprAt mta tyMta
+
+
+-- TODO:
+--
+-- Unit type and term
+-- Let
+-- Let rec
+-- Pi
+-- Universe
+-- Code, quote, splice
+-- Rest of primitives
+-- Sigma
+-- Pairs
+-- Projection
+-- Literals
