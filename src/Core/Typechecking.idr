@@ -31,6 +31,20 @@ data TcErrorAt : Ctx -> Type where
   -- Cannot find a name
   UnknownName : Name -> TcErrorAt ns
 
+-- A goal is a hole in a context.
+record Goal where
+  constructor MkGoal
+
+  -- The context in which the goal exists
+  {0 conNs : Ctx}
+  ctx : Con ValTy conNs
+
+  -- The actual hole term and its type
+  hole : Expr Syntax Value conNs
+
+  -- The name of the goal hole, if given
+  name : Maybe Name
+
 -- Context for typechecking
 record Context (ns : Ctx) where
   constructor MkContext
@@ -74,6 +88,7 @@ record TcError where
   -- The error itself
   err : TcErrorAt conNs
 
+
 -- Add a potentially self-referencing definition to the context.
 addToContext : (isBound : Bool) -> (n : Ident) -> Stage -> ValTy ns -> Val (ns :< n) -> Context ns -> Context (ns :< n)
 addToContext isBound n stage ty tm (MkContext (Val idents) con defs stages size (Evidence ar bounds)) =
@@ -100,6 +115,12 @@ interface (Monad m) => HasTc m where
 
   -- Set the current typechecking location in the source file
   enterLoc : Loc -> m a -> m a
+
+  -- Add a user goal
+  addGoal : Maybe Name -> Expr Syntax Value ns -> Context ns -> m ()
+
+  -- Get all the goals that have been seen
+  getGoals : m (SnocList Goal)
 
 -- This is the type over which we build the typechecking combinators.
 --
@@ -139,8 +160,8 @@ reify : Context ns -> Val ns -> Tm ns
 reify ctx v = quote ctx.size v
 
 -- Create a fresh metavariable
-freshMetaVal : HasTc m => Context ns -> Stage -> m (Val ns)
-freshMetaVal ctx s = do
+freshMetaVal : HasTc m => Context ns -> ValTy ns -> Stage -> m (Val ns)
+freshMetaVal ctx ty s = do -- @@Todo: use type
   m <- newMeta {sm = SolvingAllowed} @{metas}
   -- Get all the bound variables in the context, and apply them to the
   -- metavariable. This will later result in the metavariable being solved as a
@@ -148,8 +169,8 @@ freshMetaVal ctx s = do
   pure $ SimpApps (ValMeta m $$ snd ctx.binds)
 
 -- Create a fresh metavariable and quote it
-freshMeta : HasTc m => Context ns -> Stage -> m (Tm ns)
-freshMeta ctx s = reify ctx <$> freshMetaVal ctx s
+freshMeta : HasTc m => Context ns -> ValTy ns -> Stage -> m (Tm ns)
+freshMeta ctx ty s = reify ctx <$> freshMetaVal ctx ty s
 
 -- Insert all lambdas implicit lambdas in a type-directed manner, without regard
 -- for what the expression is.
@@ -252,9 +273,10 @@ ifForcePi ctx mode stage potentialPi ifMatching ifMismatching
     resolvedPi => do
       -- Did not get a pi, try to construct a pi based on the info we have and
       -- unify it with the potential pi.
-      a <- freshMetaVal ctx stage
-      let piIdent = (mode, "_")
-      b <- close ctx <$> freshMeta (bind piIdent (MkAnnot a stage) ctx) stage
+      let univ = evaluate ctx $ sizedType stage
+      a <- freshMetaVal ctx univ stage
+      let piIdent = (mode, "x")
+      b <- close ctx <$> freshMeta (bind piIdent (MkAnnot a stage) ctx) (wk univ) stage
       let createdPi = vPi stage piIdent a b
       unify ctx resolvedPi createdPi
       ifMatching createdPi stage piIdent a b
@@ -320,7 +342,7 @@ tcLam Infer lamIdent bindTy body = \ctx, stage => do
     Just stage => case bindTy of
       -- We have a stage, but no type, so just instantiate a meta..
       Nothing => do
-        a <- freshMetaVal ctx stage
+        a <- freshMetaVal ctx (evaluate ctx $ sizedType stage) stage
         inferLam ctx stage lamIdent a body
       Just bindTy => do
         -- We have a stage and a type. For this, we infer with the type, and
@@ -329,9 +351,13 @@ tcLam Infer lamIdent bindTy body = \ctx, stage => do
         res <- tcLam Infer lamIdent (Just bindTy) body ctx Nothing
         adjustStage ctx res stage
 
-ensureKnownStage : HasTc m => Context ns -> Maybe Stage -> m Stage
-ensureKnownStage ctx (Just s) = pure s
-ensureKnownStage ctx Nothing = tcError ctx CannotInferStage
+ensureKnownStage : HasTc m
+  => (Context ns -> (s : Stage) -> m (ExprAt s d d' ns))
+  -> Context ns
+  -> (ms : Maybe Stage)
+  -> m (ExprAtMaybe ms d d' ns)
+ensureKnownStage f ctx (Just s) = f ctx s
+ensureKnownStage f ctx Nothing = tcError ctx CannotInferStage
 
 tcTuple : HasTc m => List (Ident, Tc Check m) -> Tc Check m
 -- tcTuple [] = check (\ctx, stage => case stage of
@@ -348,5 +374,17 @@ tcVar n = \ctx, stage' => case lookup ctx n of
       let stage = ctx.stages.index idx
       adjustStageIfNeeded ctx (MkExpr tm ty stage) stage'
 
-tcHole : HasTc m => {md : TcMode} -> Tc md m
-tcHole {md = Check} ctx annot = ?fa
+-- Infer or check a user-supplied hole
+--
+-- We should at least know the stage of the hole. User holes are added to the
+-- list of goals, which can be displayed after typechecking.
+tcHole : HasTc m => {md : TcMode} -> Maybe Name -> Tc md m
+tcHole {md = Check} name = \ctx, (MkAnnot ty stage) => do
+  mta <- freshMeta ctx ty stage
+  addGoal name (MkExpr mta ty stage) ctx
+  pure mta
+tcHole {md = Infer} name = ensureKnownStage $ \ctx, stage => do
+  tyMta <- freshMetaVal ctx (evaluate ctx $ sizedType stage) stage
+  mta <- freshMeta ctx tyMta stage
+  addGoal name (MkExpr mta tyMta stage) ctx
+  pure $ MkExprAt mta tyMta
