@@ -283,7 +283,7 @@ ifForcePi ctx mode stage potentialPi ifMatching ifMismatching
     resolvedPi => do
       -- Did not get a pi, try to construct a pi based on the info we have and
       -- unify it with the potential pi.
-      let univ = evaluate ctx $ sizedType stage
+      let univ = evaluate ctx $ typeForStage stage
       a <- freshMetaVal ctx univ stage
       let piIdent = (mode, "x")
       b <- close ctx <$> freshMeta (bind piIdent (MkAnnot a stage) ctx) (wk univ) stage
@@ -295,7 +295,7 @@ ifForcePi ctx mode stage potentialPi ifMatching ifMismatching
 inferAnnot : HasTc m => Context ns -> Tc Infer m -> m (Annot Value ns)
 inferAnnot ctx ty = do
   MkExpr ty univ stage <- ty ctx Nothing
-  unify ctx univ (evaluate ctx $ sizedType stage)
+  unify ctx univ (evaluate ctx $ typeForStage stage)
   let vty = evaluate ctx ty
   pure $ MkAnnot vty stage
 
@@ -325,7 +325,7 @@ tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnot ty stage) => do
       a : Annot Value ns <- case bindTy of
         Nothing => pure $ MkAnnot a piStage
         Just bindTy => do
-          bindTy' <- evaluate ctx <$> check bindTy ctx (MkAnnot (evaluate ctx $ sizedType piStage) piStage)
+          bindTy' <- evaluate ctx <$> check bindTy ctx (MkAnnot (evaluate ctx $ typeForStage piStage) piStage)
           unify ctx a bindTy'
           pure $ MkAnnot bindTy' piStage
       -- Then check the body with the computed annotation type.
@@ -352,7 +352,7 @@ tcLam Infer lamIdent bindTy body = \ctx, stage => do
     Just stage => case bindTy of
       -- We have a stage, but no type, so just instantiate a meta..
       Nothing => do
-        a <- freshMetaVal ctx (evaluate ctx $ sizedType stage) stage
+        a <- freshMetaVal ctx (evaluate ctx $ typeForStage stage) stage
         inferLam ctx stage lamIdent a body
       Just bindTy => do
         -- We have a stage and a type. For this, we infer with the type, and
@@ -363,10 +363,6 @@ tcLam Infer lamIdent bindTy body = \ctx, stage => do
 
 -- Infer a tuple, given by a list of named terms
 tcTuple : HasTc m => List (Ident, Tc Check m) -> Tc Check m
--- tcTuple [] = check (\ctx, stage => case stage of
---     Nothing => tcError ctx CannotInferStage
---     Just s => pure $ MkExprAt (reify ctx $ unitTerm s) (unitType s))
--- tcTuple ((n, ty) :: rest) = ?fa
 
 -- Infer a variable, by looking up in the context
 tcVar : HasTc m => Name -> Tc Infer m
@@ -388,15 +384,24 @@ tcHole {md = Check} name = \ctx, (MkAnnot ty stage) => do
   addGoal name (MkExpr mta ty stage) ctx
   pure mta
 tcHole {md = Infer} name = ensureKnownStage $ \ctx, stage => do
-  tyMta <- freshMetaVal ctx (evaluate ctx $ sizedType stage) stage
+  tyMta <- freshMetaVal ctx (evaluate ctx $ typeForStage stage) stage
   mta <- freshMeta ctx tyMta stage
   addGoal name (MkExpr mta tyMta stage) ctx
   pure $ MkExprAt mta tyMta
 
+checkSpine : HasTc m => List (Ident, Tc Check m) -> Tel ar (Annot Value) ns -> m (Spine ar Tm ns)
+
+tcPrimNorm : HasTc m => {r : PrimitiveReducibility} -> Primitive PrimNorm r ar -> List (Ident, Tc Check m) -> Tc Infer m
+tcPrimNorm {r} p args = \ctx, stage => do
+  let (pParams, pRet) = primTy p
+  sp <- checkSpine args (evalTel ctx.size ctx.defs pParams)
+  adjustStageIfNeeded ctx
+    (MkExpr (SynPrimNormal (p $$ sp)) (evaluate (?ctx) $ ?qa) pRet.stage)
+    stage
+
 
 -- TODO:
 --
--- Unit type and term
 -- Let
 -- Let rec
 -- Pi

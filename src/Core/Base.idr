@@ -291,6 +291,12 @@ public export
 Eval over tm val => Eval over (Spine ar tm) (Spine ar val) where
   eval env sp = mapSpine (eval env) sp
 
+-- This can't be implemented with the interface cause we need the `Size` parameter..
+public export
+evalTel : (Vars over, Eval over tm val) => Size ns -> Sub ns over ms -> Tel ar tm ms -> Tel ar val ns
+evalTel s env [] = []
+evalTel s env (x :: xs) = eval env x :: evalTel (SS s) (lift s env) xs
+
 public export
 Quote val tm => Quote (Spine ar val) (Spine ar tm) where
   quote s sp = mapSpine (quote s) sp

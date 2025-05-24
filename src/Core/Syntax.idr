@@ -445,9 +445,9 @@ mtaType = SynPrimNormal (PrimTYPE $$ [])
 
 -- Get either `Type 0` or `TYPE` depending on the stage.
 public export
-sizedType : Stage -> Ty ns
-sizedType Mta = mtaType
-sizedType Obj = sizedObjType zeroBytes
+typeForStage : Stage -> Ty ns
+typeForStage Mta = mtaType
+typeForStage Obj = sizedObjType zeroBytes
 
 public export
 mtaUnit : Ty ns
@@ -460,6 +460,16 @@ psBytesAdd a b = SynPrimNormal (PrimAddBytes $$ [a, b])
 public export
 primN : PrimitiveApplied PrimNorm Syntax NA ns -> Term Syntax ns
 primN = SynPrimNormal
+
+public export
+unitForStage : Stage -> Ty ns
+unitForStage Mta = primN $ (PrimUNIT $$ [])
+unitForStage Obj = primN $ (PrimPadTy $$ [embedBytes zeroBytes])
+
+public export
+ttForStage : Stage -> Ty ns
+ttForStage Mta = primN $ (PrimTT $$ [])
+ttForStage Obj = primN $ (PrimPad $$ [embedBytes zeroBytes])
 
 -- Types of the arguments and return values of all the primitives
 public export

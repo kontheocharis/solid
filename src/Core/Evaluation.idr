@@ -21,6 +21,8 @@ Quote (Term Value) (Term Syntax)
 -- We will give the reduction rules of primitives separately
 public export
 Eval (Term Value) (PrimitiveApplied k Syntax e) (Term Value)
+  
+
 
 -- Evaluation and quoting for all the syntax:
 
@@ -56,6 +58,10 @@ Quote (Term d) (Term d') => Quote (Binder md r d n) (Binder md r d' n) where
 public export
 Weak (Binder md r Value n) where
   weak e b = mapBinder (weak e) b
+
+public export
+Eval (Term Value) (Annot Syntax) (Annot Value) where
+  eval env (MkAnnot ty stage) = MkAnnot (eval env ty) stage
 
 public export
 Eval (Term Value) (Variable Syntax) (Term Value) where
