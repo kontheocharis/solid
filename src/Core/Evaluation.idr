@@ -64,6 +64,10 @@ Eval (Term Value) (Annot Syntax) (Annot Value) where
   eval env (MkAnnot ty stage) = MkAnnot (eval env ty) stage
 
 public export
+Weak (Annot Value) where
+  weak s (MkAnnot ty stage) = MkAnnot (weak s ty) stage
+
+public export
 Eval (Term Value) (Variable Syntax) (Term Value) where
   eval (env :< e) (Index IZ) = e
   eval (env :< e) (Index (IS i)) = eval env (Index i)

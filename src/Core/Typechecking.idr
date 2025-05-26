@@ -30,6 +30,8 @@ data TcErrorAt : Ctx -> Type where
   CannotInferStage : TcErrorAt ns
   -- Cannot find a name
   UnknownName : Name -> TcErrorAt ns
+  -- Too many applications
+  TooManyApps : Expr Syntax Value ns -> Spine ar Tm ns -> TcErrorAt ns
 
 -- A goal is a hole in a context.
 record Goal where
@@ -153,15 +155,15 @@ intercept f {md = Infer} x = \ctx, s => f (x ctx s)
 resolve : HasTc m => Val ns -> m (Val ns)
 resolve x = resolveGlueAndMetas {sm = SolvingAllowed} @{metas} x
 
-evaluate : Context ns -> Tm ns -> Val ns
+evaluate : Eval Val term value => Context ns -> term ns -> value ns
 evaluate ctx t = eval ctx.defs t
 
 reify : Context ns -> Val ns -> Tm ns
 reify ctx v = quote ctx.size v
 
 -- Create a fresh metavariable
-freshMetaVal : HasTc m => Context ns -> ValTy ns -> Stage -> m (Val ns)
-freshMetaVal ctx ty s = do -- @@Todo: use type
+freshMetaVal : HasTc m => Context ns -> Annot Value ns -> m (Val ns)
+freshMetaVal ctx (MkAnnot ty s) = do -- @@Todo: use type
   m <- newMeta {sm = SolvingAllowed} @{metas}
   -- Get all the bound variables in the context, and apply them to the
   -- metavariable. This will later result in the metavariable being solved as a
@@ -169,8 +171,8 @@ freshMetaVal ctx ty s = do -- @@Todo: use type
   pure $ SimpApps (ValMeta m $$ snd ctx.binds)
 
 -- Create a fresh metavariable and quote it
-freshMeta : HasTc m => Context ns -> ValTy ns -> Stage -> m (Tm ns)
-freshMeta ctx ty s = reify ctx <$> freshMetaVal ctx ty s
+freshMeta : HasTc m => Context ns -> Annot Value ns -> m (Tm ns)
+freshMeta ctx annot = reify ctx <$> freshMetaVal ctx annot
 
 -- Insert all lambdas implicit lambdas in a type-directed manner, without regard
 -- for what the expression is.
@@ -195,6 +197,10 @@ ensureKnownStage : HasTc m
   -> m (ExprAtMaybe ms d d' ns)
 ensureKnownStage f ctx (Just s) = f ctx s
 ensureKnownStage f ctx Nothing = tcError ctx CannotInferStage
+  
+-- Create an annotation for typechecking types
+typeAnnot : Context ns -> Stage -> Annot Value ns
+typeAnnot ctx stage = MkAnnot (evaluate ctx $ typeForStage stage) stage
 
 -- Try to adjust the stage of an expression.
 tryAdjustStage : (HasTc m) => Context ns -> Expr Syntax Value ns -> (s : Stage) -> m (Maybe (ExprAt s Syntax Value ns))
@@ -283,10 +289,10 @@ ifForcePi ctx mode stage potentialPi ifMatching ifMismatching
     resolvedPi => do
       -- Did not get a pi, try to construct a pi based on the info we have and
       -- unify it with the potential pi.
-      let univ = evaluate ctx $ typeForStage stage
-      a <- freshMetaVal ctx univ stage
+      let univ = typeAnnot ctx stage
+      a <- freshMetaVal ctx univ
       let piIdent = (mode, "x")
-      b <- close ctx <$> freshMeta (bind piIdent (MkAnnot a stage) ctx) (wk univ) stage
+      b <- close ctx <$> freshMeta (bind piIdent (MkAnnot a stage) ctx) (wk univ)
       let createdPi = vPi stage piIdent a b
       unify ctx resolvedPi createdPi
       ifMatching createdPi stage piIdent a b
@@ -325,7 +331,7 @@ tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnot ty stage) => do
       a : Annot Value ns <- case bindTy of
         Nothing => pure $ MkAnnot a piStage
         Just bindTy => do
-          bindTy' <- evaluate ctx <$> check bindTy ctx (MkAnnot (evaluate ctx $ typeForStage piStage) piStage)
+          bindTy' <- evaluate ctx <$> check bindTy ctx (typeAnnot ctx piStage)
           unify ctx a bindTy'
           pure $ MkAnnot bindTy' piStage
       -- Then check the body with the computed annotation type.
@@ -352,7 +358,7 @@ tcLam Infer lamIdent bindTy body = \ctx, stage => do
     Just stage => case bindTy of
       -- We have a stage, but no type, so just instantiate a meta..
       Nothing => do
-        a <- freshMetaVal ctx (evaluate ctx $ typeForStage stage) stage
+        a <- freshMetaVal ctx (typeAnnot ctx stage)
         inferLam ctx stage lamIdent a body
       Just bindTy => do
         -- We have a stage and a type. For this, we infer with the type, and
@@ -379,26 +385,44 @@ tcVar n = \ctx, stage' => case lookup ctx n of
 -- We should at least know the stage of the hole. User holes are added to the
 -- list of goals, which can be displayed after typechecking.
 tcHole : HasTc m => {md : TcMode} -> Maybe Name -> Tc md m
-tcHole {md = Check} name = \ctx, (MkAnnot ty stage) => do
-  mta <- freshMeta ctx ty stage
+tcHole {md = Check} name = \ctx, annot@(MkAnnot ty stage) => do
+  mta <- freshMeta ctx annot
   addGoal name (MkExpr mta ty stage) ctx
   pure mta
 tcHole {md = Infer} name = ensureKnownStage $ \ctx, stage => do
-  tyMta <- freshMetaVal ctx (evaluate ctx $ typeForStage stage) stage
-  mta <- freshMeta ctx tyMta stage
+  tyMta <- freshMetaVal ctx (typeAnnot ctx stage)
+  mta <- freshMeta ctx (MkAnnot tyMta stage)
   addGoal name (MkExpr mta tyMta stage) ctx
   pure $ MkExprAt mta tyMta
 
-checkSpine : HasTc m => List (Ident, Tc Check m) -> Tel ar (Annot Value) ns -> m (Spine ar Tm ns)
+checkSpine : HasTc m => List (Ident, Tc Check m) -> Tel ar (Annot Value) ns -> m (Spine ar Tm ns, List (Ident, Tc Check m))
 
-tcPrimNorm : HasTc m => {r : PrimitiveReducibility} -> Primitive PrimNorm r ar -> List (Ident, Tc Check m) -> Tc Infer m
-tcPrimNorm {r} p args = \ctx, stage => do
+tcApp : HasTc m
+  => (subject : Expr Syntax Value ns)
+  -> List (Ident, Tc Check m)
+  -> Tc Infer m
+
+tcPrim : HasTc m
+  => {r : PrimitiveReducibility}
+  -> {k : PrimitiveClass}
+  -> Primitive k r ar
+  -> List (Ident, Tc Check m)
+  -> Tc Infer m
+tcPrim p args = \ctx, stage => do
   let (pParams, pRet) = primTy p
-  sp <- checkSpine args (evalTel ctx.size ctx.defs pParams)
-  adjustStageIfNeeded ctx
-    (MkExpr (SynPrimNormal (p $$ sp)) (evaluate (?ctx) $ ?qa) pRet.stage)
-    stage
-
+  (sp, rest) <- checkSpine args (evalTel ctx.size ctx.defs pParams)
+  let vsp = eval ctx.defs sp
+  let ret = eval {over = Val} (ctx.defs ::< vsp) pRet.ty
+  tcApp (MkExpr (prim p sp) ret pRet.stage) rest ctx stage
+    
+tcPi : HasTc m
+  => Ident
+  -> Tc Check m
+  -> Tc Check m
+  -> Tc Infer m
+tcPi x a b = ensureKnownStage $ \ctx, stage => do
+  exprA <- a ctx (typeAnnot ctx stage)
+  ?fa
 
 -- TODO:
 --
@@ -407,7 +431,6 @@ tcPrimNorm {r} p args = \ctx, stage => do
 -- Pi
 -- Universe
 -- Code, quote, splice
--- Rest of primitives
 -- Sigma
 -- Pairs
 -- Projection

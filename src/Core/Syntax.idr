@@ -323,6 +323,11 @@ public export
 sPi : Stage -> (n : Ident) -> Ty ns -> Ty (ns :< n) -> Ty ns
 sPi s n ty body = SynApps (SynBinding s Rigid (Bound s (BindPi n ty) (Delayed body)) $$ [])
 
+public export
+prim : {k : PrimitiveClass} -> {r : PrimitiveReducibility} -> Primitive k r ar -> Spine ar Tm ns -> Tm ns
+prim {k = PrimNorm} p sp = SynPrimNormal (p $$ sp)
+prim {k = PrimNeu} p sp = SynApps (PrimNeutral (p $$ sp) $$ [])
+
 -- We can extend the variable search machinery to the syntax:
 
 public export

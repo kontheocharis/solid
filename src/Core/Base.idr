@@ -170,6 +170,11 @@ namespace Sub
   (++) : Sub ns f ms -> Sub ns f ms' -> Sub ns f (ms ++ ms')
   s ++ [<] = s
   s ++ (xs :< x) = (s ++ xs) :< x
+  
+  public export
+  (::<) : Sub ns f ms -> Spine ar f ns -> Sub ns f (ms ::< ar)
+  s ::< [] = s
+  s ::< (x :: xs) = s :< x ::< xs
 
   public export
   (.size) : Sub ns f ms -> Size ms
