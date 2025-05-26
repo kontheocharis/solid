@@ -158,7 +158,8 @@ HasMetas m => Unify m sm (Term Value) (Term Value)
 {r, r' : Reducibility} -> HasMetas m => Unify m sm (Binder md r Value n) (Binder md r' Value n') where
   unifyImpl _ (BindLam _) (BindLam _) = pure AreSame
   unifyImpl s (BindLet _ tyA a) (BindLet _ tyB b) = noSolving ((unify s tyA tyB /\ unify s a b) \/ pure DontKnow)
-  unifyImpl s (BindPi _ a) (BindPi _ b) = unify s a b
+  unifyImpl s (BindMtaPi _ a) (BindMtaPi _ b) = unify s a b
+  unifyImpl s (BindObjPi _ ba bb a) (BindObjPi _ ba' bb' a') = unify s ba ba' /\ unify s bb bb' /\ unify s a a'
   unifyImpl {r = Rigid} {r' = Rigid} _ _ _ = pure AreDifferent
   unifyImpl _ _ _ = pure DontKnow
 

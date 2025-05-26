@@ -265,7 +265,7 @@ insertLam : HasTc m => Context ns
 insertLam ctx piStage piIdent bindTy body subject = do
   let b = evalClosure ctx body
   s <- subject (bind piIdent (MkAnnot bindTy piStage) ctx) (MkAnnot b piStage)
-  pure $ MkExprAt (sLam piStage piIdent s) (vPi piStage piIdent bindTy body)
+  pure $ MkExprAt (sLam piStage piIdent s) (?vPi piStage piIdent bindTy body)
 
 -- The type of the callback that `ifForcePi` calls when it finds a matching
 -- type.
@@ -291,19 +291,22 @@ ifForcePi : (HasTc m) => Context ns
   -> m r
 ifForcePi ctx mode stage potentialPi ifMatching ifMismatching
   = resolve potentialPi >>= \case
-    resolvedPi@(RigidBinding piStage (Bound piStage (BindPi piIdent a) b)) =>
+    -- @@Todo: object-level pi
+    resolvedPi@(RigidBinding _ (Bound _ (BindMtaPi piIdent a) b)) =>
       -- We got a pi
-      if fst piIdent == mode && piStage == stage
-        then ifMatching resolvedPi piStage piIdent a b
-        else ifMismatching resolvedPi piStage piIdent a b
+      if fst piIdent == mode -- && piStage == stage
+        then ifMatching resolvedPi stage piIdent a b
+        else ifMismatching resolvedPi stage piIdent a b
     resolvedPi => do
       -- Did not get a pi, try to construct a pi based on the info we have and
       -- unify it with the potential pi.
+      
+      -- @@Todo: object level pi
       let univ = typeAnnot ctx stage
       a <- freshMetaVal ctx univ
       let piIdent = (mode, "x")
       b <- close ctx <$> freshMeta (bind piIdent (MkAnnot a stage) ctx) (wk univ)
-      let createdPi = vPi stage piIdent a b
+      let createdPi = vMtaPi piIdent a b
       unify ctx resolvedPi createdPi
       ifMatching createdPi stage piIdent a b
 
@@ -324,7 +327,7 @@ inferLam : HasTc m => Context ns
 inferLam ctx stage lamIdent a body = do
   MkExprAt body' bTy <- body (bind lamIdent (MkAnnot a stage) ctx) (Just stage)
   let b = close ctx (quote (SS ctx.size) bTy)
-  pure $ MkExprAt (sLam stage lamIdent body') (vPi stage lamIdent a b)
+  pure $ MkExprAt (sLam stage lamIdent body') (vMtaPi lamIdent a b) -- @@Todo: object-level
 
 -- Typechecking combinator for lambdas.
 tcLam : HasTc m => (md : TcMode)
@@ -406,7 +409,10 @@ tcHole {md = Infer} name = ensureKnownStage $ \ctx, stage => do
   addGoal name (MkExpr mta annot) ctx
   pure $ MkExprAt mta tyMta
 
-checkSpine : HasTc m => List (Ident, Tc Check m) -> Tel ar (Annot Value) ns -> m (Spine ar Tm ns, List (Ident, Tc Check m))
+checkSpine : HasTc m
+  => List (Ident, Tc Check m)
+  -> Tel ar (Annot Value) ns
+  -> m (Spine ar Tm ns, List (Ident, Tc Check m))
 
 tcApp : HasTc m
   => (subject : Expr Syntax Value ns)
@@ -435,7 +441,7 @@ tcPi x a b = ensureKnownStage $ \ctx, stage => case stage of
   Mta => do
     a' <- a ctx mtaTypeAnnot
     b' <- b (bind x (MkAnnot (evaluate ctx a') Mta) ctx) mtaTypeAnnot
-    pure $ MkExprAt (sPi Mta x a' b') mtaTypeAnnot.ty
+    pure $ MkExprAt (sMtaPi x a' b') mtaTypeAnnot.ty
   Obj => do
     ba <- freshMetaVal ctx psBytesAnnot
     bb <- freshMetaVal ctx psBytesAnnot

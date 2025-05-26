@@ -92,15 +92,19 @@ data Binder : Stage -> Reducibility -> Domain -> Ident -> Ctx -> Type where
   -- Meta or object-level let
   BindLet : (n : Ident) -> (ty : Term d ns) -> (rhs : Term d ns) -> Binder s Thunk d n ns
 
-  -- Meta or object-level pi
-  BindPi : (n : Ident) -> (dom : Term d ns) -> Binder s Rigid d n ns
+  -- Meta-level pi
+  BindMtaPi : (n : Ident) -> (dom : Term d ns) -> Binder Mta Rigid d n ns
+
+  -- Object-level pi
+  BindObjPi : (n : Ident) -> (domBytes : Term d ns) -> (codBytes : Term d ns) -> (dom : Term d ns) -> Binder Obj Rigid d n ns
 
 public export
 traverseBinder : Applicative f => (Term d ns -> f (Term d' ms)) -> Binder md r d n ns -> f (Binder md r d' n ms)
 traverseBinder _ InternalLam = pure InternalLam
 traverseBinder _ (BindLam n) = pure (BindLam n)
 traverseBinder f (BindLet n ty t) = BindLet n <$> (f ty) <*> (f t)
-traverseBinder f (BindPi n t) = BindPi n <$> f t
+traverseBinder f (BindMtaPi n a) = BindMtaPi n <$> f a
+traverseBinder f (BindObjPi n ba bb a) = BindObjPi n <$> f ba <*> f bb <*> f a
 
 public export
 mapBinder : (Term d ns -> Term d' ms) -> Binder md r d n ns -> Binder md r d' n ms
@@ -111,7 +115,8 @@ displayIdent : Binder md r d n ns -> Maybe (Singleton n)
 displayIdent InternalLam = Nothing
 displayIdent (BindLam n) = Just (Val n)
 displayIdent (BindLet n _ _) = Just (Val n)
-displayIdent (BindPi n _) = Just (Val n)
+displayIdent (BindObjPi n _ _ _) = Just (Val n)
+displayIdent (BindMtaPi n _) = Just (Val n)
 
 -- Variables are de-Brujin indices or levels depending on if we are in value or
 -- syntax ~> fast variable lookup during evaluation, and free weakening for
@@ -315,12 +320,12 @@ sLam : Stage -> (n : Ident) -> Term Syntax (ns :< n) -> Term Syntax ns
 sLam s n t = SynApps (SynBinding s Callable (Bound s (BindLam n) (Delayed t)) $$ [])
 
 public export
-vPi : Stage -> (n : Ident) -> ValTy ns -> Body Value n ns -> Term Value ns
-vPi s n ty body = RigidBinding s (Bound s (BindPi n ty) body)
+vMtaPi : (n : Ident) -> ValTy ns -> Body Value n ns -> Term Value ns
+vMtaPi n ty body = RigidBinding _ (Bound _ (BindMtaPi n ty) body)
 
 public export
-sPi : Stage -> (n : Ident) -> Ty ns -> Ty (ns :< n) -> Ty ns
-sPi s n ty body = SynApps (SynBinding s Rigid (Bound s (BindPi n ty) (Delayed body)) $$ [])
+sMtaPi : (n : Ident) -> Ty ns -> Ty (ns :< n) -> Ty ns
+sMtaPi n ty body = SynApps (SynBinding _ Rigid (Bound _ (BindMtaPi n ty) (Delayed body)) $$ [])
 
 public export
 prim : {k : PrimitiveClass} -> {r : PrimitiveReducibility} -> Primitive k r ar -> Spine ar Tm ns -> Tm ns
@@ -497,10 +502,10 @@ primTy PrimEmbedBYTES = ([MkAnnot mtaBytes Mta], MkAnnot psBytes Obj)
 primTy PrimUnsized = ([MkAnnot psBytes Obj], MkAnnot (sizedObjType zeroBytes) Obj)
 primTy PrimAddBYTES = ([MkAnnot mtaBytes Mta, MkAnnot mtaBytes Mta], MkAnnot mtaBytes Mta)
 primTy PrimAddBytes = ([MkAnnot psBytes Obj, MkAnnot psBytes Obj], MkAnnot psBytes Obj)
-primTy (PrimSIGMA a) = ([MkAnnot mtaType Mta, MkAnnot (sPi Mta (Explicit, "x") (var a) mtaType) Mta], MkAnnot mtaType Mta)
+primTy (PrimSIGMA a) = ([MkAnnot mtaType Mta, MkAnnot (sMtaPi (Explicit, "x") (var a) mtaType) Mta], MkAnnot mtaType Mta)
 primTy (PrimPAIR a) = ([
     MkAnnot mtaType Mta,
-    MkAnnot (sPi Mta (Explicit, "x") (var a) mtaType) Mta,
+    MkAnnot (sMtaPi (Explicit, "x") (var a) mtaType) Mta,
     MkAnnot (var a) Mta,
     MkAnnot (varApp "rest" (Explicit, "x") (var "va")) Mta
   ], MkAnnot (primN (PrimSIGMA a $$ [var a, var "rest"])) Mta)
@@ -508,13 +513,13 @@ primTy (PrimSigma a) = ([
     MkAnnot psBytes Obj,
     MkAnnot psBytes Obj,
     MkAnnot (objType (var "ba")) Obj,
-    MkAnnot (sPi Mta (Explicit, "x") (var a) (objType (var "bRest"))) Obj
+    MkAnnot (sMtaPi (Explicit, "x") (var a) (objType (var "bRest"))) Obj
   ], MkAnnot (objType (psBytesAdd (var "ba") (var "bRest"))) Obj)
 primTy (PrimPair a) = ([
     MkAnnot psBytes Obj,
     MkAnnot psBytes Obj,
     MkAnnot (objType (var "ba")) Obj,
-    MkAnnot (sPi Mta (Explicit, "x") (var a) (objType (var "bRest"))) Obj,
+    MkAnnot (sMtaPi (Explicit, "x") (var a) (objType (var "bRest"))) Obj,
     MkAnnot (var a) Obj,
     MkAnnot (varApp "rest" (Explicit, "x") (var "va")) Obj
   ], MkAnnot (primN (PrimSigma a $$ [var "ba", var "bRest", var a, var "rest"])) Obj)
