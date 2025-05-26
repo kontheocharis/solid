@@ -222,3 +222,32 @@ Eval (Term Value) (PrimitiveApplied k Syntax h) (Term Value) where
   eval env (($$) {r = PrimIrreducible} {k = PrimNeu} p sp) = SimpApps (PrimNeutral (SimpApplied p (eval env sp)) $$ [])
   eval env (PrimAddBYTES $$ [a, b]) = primAddBYTES (eval env a) (eval env b)
   eval env (PrimAddBytes $$ [a, b]) = primAddBytes (eval env a) (eval env b)
+
+
+-- Context-aware domain
+-- 
+-- This is so that operations can be generic over the domain. However,
+-- to do this we need the size of the context to be known when the domain is
+-- a value, so that we can eval/quote freely.
+public export
+data DomainIn : Domain -> Ctx -> Type where
+  SyntaxIn : DomainIn Syntax ns
+  ValueIn : Size ns -> DomainIn Value ns
+
+-- Create a primitive in the given domain
+public export
+prim : {k : PrimitiveClass} -> {r : PrimitiveReducibility}
+  -> DomainIn d ns
+  -> Primitive k r ar
+  -> Spine ar (Term d) ns
+  -> Term d ns
+prim SyntaxIn p sp = sPrim p sp
+prim (ValueIn s) p sp = eval {over = ValTy} (id s) (sPrim p (quote s sp))
+
+public export
+vPrim : {k : PrimitiveClass} -> {r : PrimitiveReducibility}
+  -> Size ns
+  -> Primitive k r ar
+  -> Spine ar Val ns
+  -> Val ns
+vPrim s = prim (ValueIn s)

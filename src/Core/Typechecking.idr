@@ -430,7 +430,7 @@ tcPrim p args = \ctx, stage => do
   (sp, rest) <- checkSpine args (evalTel ctx.size ctx.defs pParams)
   let vsp = eval ctx.defs sp
   let ret = eval {over = Val} (ctx.defs ::< vsp) pRet.ty
-  tcApp (MkExpr (prim p sp) (MkAnnot ret pRet.stage)) rest ctx stage
+  tcApp (MkExpr (sPrim p sp) (MkAnnot ret pRet.stage)) rest ctx stage
     
 tcPi : HasTc m
   => Ident
@@ -443,17 +443,21 @@ tcPi x a b = ensureKnownStage $ \ctx, stage => case stage of
     b' <- b (bind x (MkAnnot (evaluate ctx a') Mta) ctx) mtaTypeAnnot
     pure $ MkExprAt (sMtaPi x a' b') mtaTypeAnnot.ty
   Obj => do
-    ba <- freshMetaVal ctx psBytesAnnot
-    bb <- freshMetaVal ctx psBytesAnnot
-    a' <- a ctx (objTypeAnnot ba)
-    b' <- b (bind x (MkAnnot (evaluate ctx a') Obj) ctx) (objTypeAnnot (wk bb))
-    pure $ MkExprAt (?xa) (?xb)
+    ba <- freshMeta ctx psBytesAnnot
+    let vba = evaluate ctx ba
+    bb <- freshMeta ctx psBytesAnnot
+    let vbb = evaluate ctx bb
+    a' <- a ctx (objTypeAnnot vba)
+    b' <- b (bind x (MkAnnot (evaluate ctx a') Obj) ctx) (objTypeAnnot (wk vbb))
+    pure $ MkExprAt
+      (sObjPi x ba bb a' b')
+      (objTypeAnnot (evaluate ctx $ sPrim PrimEmbedBYTES [sPrim PrimPtrBYTES []])).ty
 
 -- TODO:
 --
+-- fix lambdas
 -- Let
 -- Let rec
--- Pi
 -- Universe
 -- Code, quote, splice
 -- Sigma

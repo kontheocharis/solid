@@ -328,9 +328,13 @@ sMtaPi : (n : Ident) -> Ty ns -> Ty (ns :< n) -> Ty ns
 sMtaPi n ty body = SynApps (SynBinding _ Rigid (Bound _ (BindMtaPi n ty) (Delayed body)) $$ [])
 
 public export
-prim : {k : PrimitiveClass} -> {r : PrimitiveReducibility} -> Primitive k r ar -> Spine ar Tm ns -> Tm ns
-prim {k = PrimNorm} p sp = SynPrimNormal (p $$ sp)
-prim {k = PrimNeu} p sp = SynApps (PrimNeutral (p $$ sp) $$ [])
+sObjPi : (n : Ident) -> Tm ns -> Tm ns -> Ty ns -> Ty (ns :< n) -> Ty ns
+sObjPi n ba bb a b = SynApps (SynBinding _ Rigid (Bound _ (BindObjPi n ba bb a) (Delayed b)) $$ [])
+
+public export
+sPrim : {k : PrimitiveClass} -> {r : PrimitiveReducibility} -> Primitive k r ar -> Spine ar Tm ns -> Tm ns
+sPrim {k = PrimNorm} p sp = SynPrimNormal (p $$ sp)
+sPrim {k = PrimNeu} p sp = SynApps (PrimNeutral (p $$ sp) $$ [])
 
 -- We can extend the variable search machinery to the syntax:
 
@@ -402,11 +406,11 @@ primEq _ _ = Nothing
 
 public export
 sCode : Tm ns -> Tm ns -> Tm ns
-sCode by ty = SynPrimNormal (PrimCode $$ [by, ty])
+sCode by ty = sPrim PrimCode [by, ty]
 
 public export
 sQuote : Tm ns -> Tm ns -> Tm ns -> Tm ns
-sQuote by ty val = SynPrimNormal (PrimQuote $$ [by, ty, val])
+sQuote by ty val = sPrim PrimQuote [by, ty, val]
 
 public export
 sSplice : Tm ns -> Tm ns -> Tm ns -> Tm ns
@@ -444,8 +448,9 @@ sizeBytes : Tm ns
 sizeBytes = SynPrimNormal (PrimSizeBYTES $$ [])
 
 public export
-ptrBytes :  Tm ns
-ptrBytes = SynPrimNormal (PrimPtrBYTES $$ [])
+ptrBytes : {d : Domain} -> Term d ns
+ptrBytes {d = Syntax} = SynPrimNormal (PrimPtrBYTES $$ [])
+ptrBytes {d = Value} = SimpPrimNormal (SimpApplied PrimPtrBYTES [])
 
 -- `TYPE`, meta-level type of types.
 public export
