@@ -92,8 +92,8 @@ record TcError where
 
 
 -- Add a potentially self-referencing definition to the context.
-addToContext : (isBound : Bool) -> (n : Ident) -> Stage -> ValTy ns -> Val (ns :< n) -> Context ns -> Context (ns :< n)
-addToContext isBound n stage ty tm (MkContext (Val idents) con defs stages size (Evidence ar bounds)) =
+addToContext : (isBound : Bool) -> (n : Ident) -> Annot Value ns -> Val (ns :< n) -> Context ns -> Context (ns :< n)
+addToContext isBound n (MkAnnot ty stage) tm (MkContext (Val idents) con defs stages size (Evidence ar bounds)) =
   MkContext
     (Val (idents :< n)) (con :< ty) (defs . Drop Id :< tm) (stages :< stage) (SS size)
     (if isBound then (Evidence (ar ++ [n]) $ wk bounds ++ [tm]) else (Evidence ar $ wk bounds))
@@ -101,11 +101,11 @@ addToContext isBound n stage ty tm (MkContext (Val idents) con defs stages size 
 -- Add a definition to the context that lazily evaluates to its value.
 define : (n : Ident) -> Expr Value Value ns -> Context ns -> Context (ns :< n)
 define n rhs ctx =
-  addToContext False n rhs.stage rhs.ty (Glued (LazyApps (ValDef (Level (lastLvl ctx.size)) $$ []) (wk rhs.tm))) ctx
+  addToContext False n rhs.annot (Glued (LazyApps (ValDef (Level (lastLvl ctx.size)) $$ []) (wk rhs.tm))) ctx
 
 -- Add a binding with no value to the context.
 bind : (n : Ident) -> Annot Value ns -> Context ns -> Context (ns :< n)
-bind n annot ctx = addToContext True n annot.stage annot.ty (varLvl (lastLvl ctx.size)) ctx
+bind n annot ctx = addToContext True n annot (varLvl (lastLvl ctx.size)) ctx
 
 -- Typechecking has access to metas
 interface (Monad m) => HasTc m where
@@ -199,8 +199,18 @@ ensureKnownStage f ctx (Just s) = f ctx s
 ensureKnownStage f ctx Nothing = tcError ctx CannotInferStage
   
 -- Create an annotation for typechecking types
+-- @@FIXME: It is not right to use this!! Need Type b not Type 0
 typeAnnot : Context ns -> Stage -> Annot Value ns
 typeAnnot ctx stage = MkAnnot (evaluate ctx $ typeForStage stage) stage
+
+mtaTypeAnnot : Annot Value ns
+mtaTypeAnnot = MkAnnot (SimpPrimNormal (SimpApplied PrimTYPE [])) Mta
+
+objTypeAnnot : Val ns -> Annot Value ns
+objTypeAnnot b = MkAnnot (SimpPrimNormal (SimpApplied PrimUnsized [b])) Obj
+
+psBytesAnnot : Annot Value ns
+psBytesAnnot = MkAnnot (SimpPrimNormal (SimpApplied PrimBytes [])) Mta
 
 -- Try to adjust the stage of an expression.
 tryAdjustStage : (HasTc m) => Context ns -> Expr Syntax Value ns -> (s : Stage) -> m (Maybe (ExprAt s Syntax Value ns))
@@ -209,7 +219,7 @@ tryAdjustStage : (HasTc m) => Context ns -> Expr Syntax Value ns -> (s : Stage) 
 adjustStage : (HasTc m) => Context ns -> Expr Syntax Value ns -> (s : Stage) -> m (ExprAt s Syntax Value ns)
 
 adjustStageIfNeeded : (HasTc m) => Context ns -> Expr Syntax Value ns -> (s : Maybe Stage) -> m (ExprAtMaybe s Syntax Value ns)
-adjustStageIfNeeded ctx expr Nothing = pure $ MkExpr expr.tm expr.ty expr.stage
+adjustStageIfNeeded ctx expr Nothing = pure expr
 adjustStageIfNeeded ctx expr (Just s) = adjustStage ctx expr s
 
 -- Coerce an expression to a given type.
@@ -300,7 +310,7 @@ ifForcePi ctx mode stage potentialPi ifMatching ifMismatching
 -- Infer the given job as a type, also inferring its stage in the process.
 inferAnnot : HasTc m => Context ns -> Tc Infer m -> m (Annot Value ns)
 inferAnnot ctx ty = do
-  MkExpr ty univ stage <- ty ctx Nothing
+  MkExpr ty (MkAnnot univ stage) <- ty ctx Nothing
   unify ctx univ (evaluate ctx $ typeForStage stage)
   let vty = evaluate ctx ty
   pure $ MkAnnot vty stage
@@ -378,21 +388,22 @@ tcVar n = \ctx, stage' => case lookup ctx n of
       let tm = SynApps (SynVar (Index idx) $$ [])
       let ty = ctx.con.index idx
       let stage = ctx.stages.index idx
-      adjustStageIfNeeded ctx (MkExpr tm ty stage) stage'
+      adjustStageIfNeeded ctx (MkExpr tm (MkAnnot ty stage)) stage'
 
 -- Infer or check a user-supplied hole
 --
 -- We should at least know the stage of the hole. User holes are added to the
 -- list of goals, which can be displayed after typechecking.
 tcHole : HasTc m => {md : TcMode} -> Maybe Name -> Tc md m
-tcHole {md = Check} name = \ctx, annot@(MkAnnot ty stage) => do
+tcHole {md = Check} name = \ctx, annot => do
   mta <- freshMeta ctx annot
-  addGoal name (MkExpr mta ty stage) ctx
+  addGoal name (MkExpr mta annot) ctx
   pure mta
 tcHole {md = Infer} name = ensureKnownStage $ \ctx, stage => do
   tyMta <- freshMetaVal ctx (typeAnnot ctx stage)
-  mta <- freshMeta ctx (MkAnnot tyMta stage)
-  addGoal name (MkExpr mta tyMta stage) ctx
+  let annot = MkAnnot tyMta stage
+  mta <- freshMeta ctx annot
+  addGoal name (MkExpr mta annot) ctx
   pure $ MkExprAt mta tyMta
 
 checkSpine : HasTc m => List (Ident, Tc Check m) -> Tel ar (Annot Value) ns -> m (Spine ar Tm ns, List (Ident, Tc Check m))
@@ -413,16 +424,24 @@ tcPrim p args = \ctx, stage => do
   (sp, rest) <- checkSpine args (evalTel ctx.size ctx.defs pParams)
   let vsp = eval ctx.defs sp
   let ret = eval {over = Val} (ctx.defs ::< vsp) pRet.ty
-  tcApp (MkExpr (prim p sp) ret pRet.stage) rest ctx stage
+  tcApp (MkExpr (prim p sp) (MkAnnot ret pRet.stage)) rest ctx stage
     
 tcPi : HasTc m
   => Ident
   -> Tc Check m
   -> Tc Check m
   -> Tc Infer m
-tcPi x a b = ensureKnownStage $ \ctx, stage => do
-  exprA <- a ctx (typeAnnot ctx stage)
-  ?fa
+tcPi x a b = ensureKnownStage $ \ctx, stage => case stage of
+  Mta => do
+    a' <- a ctx mtaTypeAnnot
+    b' <- b (bind x (MkAnnot (evaluate ctx a') Mta) ctx) mtaTypeAnnot
+    pure $ MkExprAt (sPi Mta x a' b') mtaTypeAnnot.ty
+  Obj => do
+    ba <- freshMetaVal ctx psBytesAnnot
+    bb <- freshMetaVal ctx psBytesAnnot
+    a' <- a ctx (objTypeAnnot ba)
+    b' <- b (bind x (MkAnnot (evaluate ctx a') Obj) ctx) (objTypeAnnot (wk bb))
+    pure $ MkExprAt (?xa) (?xb)
 
 -- TODO:
 --

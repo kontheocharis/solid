@@ -270,14 +270,6 @@ record ExprAt (s : Stage) (d : Domain) (dTy : Domain) (ns : Ctx) where
   tm : Term d ns
   ty : Term dTy ns
 
--- Version of ExprAt which also packages the stage
-public export
-record Expr (d : Domain) (dTy : Domain) (ns : Ctx) where
-  constructor MkExpr
-  tm : Term d ns
-  ty : Term dTy ns
-  stage : Stage
-
 -- An annotation is a type and a stage
 public export
 record Annot (d : Domain) (ns : Ctx) where
@@ -285,10 +277,17 @@ record Annot (d : Domain) (ns : Ctx) where
   ty : Term d ns
   stage : Stage
 
+-- Version of ExprAt which also packages the stage
+public export
+record Expr (d : Domain) (dTy : Domain) (ns : Ctx) where
+  constructor MkExpr
+  tm : Term d ns
+  annot : Annot dTy ns
+  
 -- Turn `ExprAt` into `Expr`
 public export
 packStage : {s : Stage} -> ExprAt s d dTy ns -> Expr d dTy ns
-packStage (MkExprAt tm ty) = MkExpr tm ty s
+packStage (MkExprAt tm ty) = MkExpr tm (MkAnnot ty s)
 
 -- Helper to decide which `Expr` to pick based on an optional stage
 public export
