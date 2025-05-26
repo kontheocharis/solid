@@ -21,21 +21,21 @@ Quote (Term Value) (Term Syntax)
 -- We will give the reduction rules of primitives separately
 public export
 Eval (Term Value) (PrimitiveApplied k Syntax e) (Term Value)
-  
-
 
 -- Evaluation and quoting for all the syntax:
 
 -- Every callable binding value can be applied to a term.
 public export
 callBinding : Binding s Callable Value ns -> Term Value ns -> Term Value ns
-callBinding (Bound s (BindLam _) (Closure env body)) arg = eval (env :< arg) body
+callBinding (Bound _ (BindObjLam _ _ _) (Closure env body)) arg = eval (env :< arg) body
+callBinding (Bound _ (BindMtaLam _) (Closure env body)) arg = eval (env :< arg) body
 callBinding (Bound s InternalLam (Closure env body)) arg = eval (env :< arg) body
 
 -- Every thunk can be forced.
 public export
 forceThunk : Binding s Thunk Value ns -> Term Value ns
-forceThunk (Bound s (BindLet _ _ v) (Closure env body)) = eval (env :< v) body
+forceThunk (Bound _ (BindObjLet _ _ _ v) (Closure env body)) = eval (env :< v) body
+forceThunk (Bound _ (BindMtaLet _ _ v) (Closure env body)) = eval (env :< v) body
 
 public export
 Quote (PrimitiveApplied k Value e) (PrimitiveApplied k Syntax NA) where

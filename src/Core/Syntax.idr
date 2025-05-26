@@ -80,17 +80,24 @@ export infixr 5 $$
 
 -- The list of binders in the language, indexed by stage.
 --
--- Each of these might carry some data.
+-- Each of these might carry some data, which we mostly care about
+-- during codegen
 public export
 data Binder : Stage -> Reducibility -> Domain -> Ident -> Ctx -> Type where
   -- Internal lambda, does not store a name
   InternalLam : Binder s Callable d n ns
 
-  -- Meta or object-level lambda
-  BindLam : (n : Ident) -> Binder s Callable d n ns
+  -- Meta-level lambda
+  BindMtaLam : (n : Ident) -> Binder Mta Callable d n ns
 
-  -- Meta or object-level let
-  BindLet : (n : Ident) -> (ty : Term d ns) -> (rhs : Term d ns) -> Binder s Thunk d n ns
+  -- Object-level lambda
+  BindObjLam : (n : Ident) -> (domBytes : Term d ns) -> (codBytes : Term d ns) -> Binder Obj Callable d n ns
+
+  -- Meta-level let
+  BindMtaLet : (n : Ident) -> (ty : Term d ns) -> (rhs : Term d ns) -> Binder Mta Thunk d n ns
+
+  -- Object-level let
+  BindObjLet : (n : Ident) -> (tyBytes : Term d ns) -> (ty : Term d ns) -> (rhs : Term d ns) -> Binder Obj Thunk d n ns
 
   -- Meta-level pi
   BindMtaPi : (n : Ident) -> (dom : Term d ns) -> Binder Mta Rigid d n ns
@@ -101,8 +108,10 @@ data Binder : Stage -> Reducibility -> Domain -> Ident -> Ctx -> Type where
 public export
 traverseBinder : Applicative f => (Term d ns -> f (Term d' ms)) -> Binder md r d n ns -> f (Binder md r d' n ms)
 traverseBinder _ InternalLam = pure InternalLam
-traverseBinder _ (BindLam n) = pure (BindLam n)
-traverseBinder f (BindLet n ty t) = BindLet n <$> (f ty) <*> (f t)
+traverseBinder _ (BindMtaLam n) = pure (BindMtaLam n)
+traverseBinder f (BindObjLam n ba bb) = BindObjLam n <$> f ba <*> f bb
+traverseBinder f (BindMtaLet n ty t) = BindMtaLet n <$> f ty <*> f t
+traverseBinder f (BindObjLet n bty ty t) = BindObjLet n <$> f bty <*> f ty <*> f t
 traverseBinder f (BindMtaPi n a) = BindMtaPi n <$> f a
 traverseBinder f (BindObjPi n ba bb a) = BindObjPi n <$> f ba <*> f bb <*> f a
 
@@ -113,8 +122,10 @@ mapBinder f b = (traverseBinder (Id . f) b).runIdentity
 public export
 displayIdent : Binder md r d n ns -> Maybe (Singleton n)
 displayIdent InternalLam = Nothing
-displayIdent (BindLam n) = Just (Val n)
-displayIdent (BindLet n _ _) = Just (Val n)
+displayIdent (BindMtaLam n) = Just (Val n)
+displayIdent (BindObjLam n _ _) = Just (Val n)
+displayIdent (BindMtaLet n _ _) = Just (Val n)
+displayIdent (BindObjLet n _ _ _) = Just (Val n)
 displayIdent (BindObjPi n _ _ _) = Just (Val n)
 displayIdent (BindMtaPi n _) = Just (Val n)
 
@@ -303,11 +314,11 @@ ExprAtMaybe (Just s) = ExprAt s
 -- Helpers to create syntax
 
 public export
-internalLam : (0 n : Ident) -> Term Syntax (ns :< n) -> Term Syntax ns
+internalLam : (0 n : Ident) -> Tm (ns :< n) -> Tm ns
 internalLam _ t = SynApps (SynBinding Mta Callable (Bound Mta InternalLam (Delayed t)) $$ [])
 
 public export
-closeWithLams : Size ns -> Term Syntax ns -> Term Syntax [<]
+closeWithLams : Size ns -> Tm ns -> Tm [<]
 closeWithLams SZ t = t
 closeWithLams (SS s) t = closeWithLams s (internalLam _ t)
 
@@ -316,8 +327,12 @@ varLvl : Lvl ns -> Val ns
 varLvl l = SimpApps (ValVar (Level l) $$ [])
 
 public export
-sLam : Stage -> (n : Ident) -> Term Syntax (ns :< n) -> Term Syntax ns
-sLam s n t = SynApps (SynBinding s Callable (Bound s (BindLam n) (Delayed t)) $$ [])
+sMtaLam : (n : Ident) -> Tm (ns :< n) -> Tm ns
+sMtaLam n t = SynApps (SynBinding _ Callable (Bound _ (BindMtaLam n) (Delayed t)) $$ [])
+
+public export
+sObjLam : (n : Ident) -> Tm ns -> Tm ns -> Tm (ns :< n) -> Tm ns
+sObjLam n ba bb t = SynApps (SynBinding _ Callable (Bound _ (BindObjLam n ba bb) (Delayed t)) $$ [])
 
 public export
 vMtaPi : (n : Ident) -> ValTy ns -> Body Value n ns -> Term Value ns

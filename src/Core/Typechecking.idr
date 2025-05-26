@@ -265,7 +265,7 @@ insertLam : HasTc m => Context ns
 insertLam ctx piStage piIdent bindTy body subject = do
   let b = evalClosure ctx body
   s <- subject (bind piIdent (MkAnnot bindTy piStage) ctx) (MkAnnot b piStage)
-  pure $ MkExprAt (sLam piStage piIdent s) (?vPi piStage piIdent bindTy body)
+  pure $ MkExprAt (?sLam piStage piIdent s) (?vPi piStage piIdent bindTy body)
 
 -- The type of the callback that `ifForcePi` calls when it finds a matching
 -- type.
@@ -327,7 +327,7 @@ inferLam : HasTc m => Context ns
 inferLam ctx stage lamIdent a body = do
   MkExprAt body' bTy <- body (bind lamIdent (MkAnnot a stage) ctx) (Just stage)
   let b = close ctx (quote (SS ctx.size) bTy)
-  pure $ MkExprAt (sLam stage lamIdent body') (vMtaPi lamIdent a b) -- @@Todo: object-level
+  pure $ MkExprAt (?sLam2 stage lamIdent body') (vMtaPi lamIdent a b) -- @@Todo: object-level
 
 -- Typechecking combinator for lambdas.
 tcLam : HasTc m => (md : TcMode)
@@ -349,7 +349,7 @@ tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnot ty stage) => do
           pure $ MkAnnot bindTy' piStage
       -- Then check the body with the computed annotation type.
       body' <- body (bind lamIdent a ctx) (MkAnnot (evalClosure ctx b) piStage)
-      pure $ sLam piStage lamIdent body'
+      pure $ ?sLam3 piStage lamIdent body'
     )
     (\resolvedPi, piStage, piIdent, a, b => case fst piIdent of
       -- It wasn't the right kind of pi; if it was implicit, insert a lambda

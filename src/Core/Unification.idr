@@ -153,11 +153,16 @@ public export
 HasMetas m => Unify m sm (Term Value) (Term Value)
 
 -- Unification outcome depends on reducibility
+-- Conservative for lets.
 --
 -- Must also be in the same stage to be unifiable.
 {r, r' : Reducibility} -> HasMetas m => Unify m sm (Binder md r Value n) (Binder md r' Value n') where
-  unifyImpl _ (BindLam _) (BindLam _) = pure AreSame
-  unifyImpl s (BindLet _ tyA a) (BindLet _ tyB b) = noSolving ((unify s tyA tyB /\ unify s a b) \/ pure DontKnow)
+  unifyImpl _ (BindMtaLam _) (BindMtaLam _) = pure AreSame
+  -- unification presupposes same-typedness of both sides so we don't need to check the data here
+  unifyImpl _ (BindObjLam _ _ _) (BindObjLam _ _ _) = pure AreSame
+  unifyImpl s (BindMtaLet _ tyA a) (BindMtaLet _ tyB b) = noSolving ((unify s tyA tyB /\ unify s a b) \/ pure DontKnow)
+  -- same here
+  unifyImpl s (BindObjLet _ _ tyA a) (BindObjLet _ _ tyB b) = noSolving ((unify s tyA tyB /\ unify s a b) \/ pure DontKnow)
   unifyImpl s (BindMtaPi _ a) (BindMtaPi _ b) = unify s a b
   unifyImpl s (BindObjPi _ ba bb a) (BindObjPi _ ba' bb' a') = unify s ba ba' /\ unify s bb bb' /\ unify s a a'
   unifyImpl {r = Rigid} {r' = Rigid} _ _ _ = pure AreDifferent
