@@ -498,9 +498,8 @@ tcPrim p args = \ctx, stage => do
 -- Let
 -- Let rec
 -- Universe
--- Code, quote, splice
 -- Sigma
 -- Pairs
 -- Projection
 -- Literals
-
+-- Coercion
