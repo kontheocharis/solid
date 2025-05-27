@@ -311,6 +311,12 @@ public export
 ExprAtMaybe Nothing = Expr
 ExprAtMaybe (Just s) = ExprAt s
 
+-- Turn `ExprAtMaybe` into `Expr`
+public export
+maybePackStage : {s : Maybe Stage} -> ExprAtMaybe s d dTy ns -> Expr d dTy ns
+maybePackStage {s = Just s} (MkExprAt tm ty) = MkExpr tm (MkAnnot ty s)
+maybePackStage {s = Nothing} (MkExpr tm (MkAnnot ty s)) = MkExpr tm (MkAnnot ty s)
+
 -- Helpers to create syntax
 
 public export
