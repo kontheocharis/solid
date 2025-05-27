@@ -210,8 +210,14 @@ mtaTypeAnnot = MkAnnot (SimpPrimNormal (SimpApplied PrimTYPE [])) Mta
 objTypeAnnot : Val ns -> Annot Value ns
 objTypeAnnot b = MkAnnot (SimpPrimNormal (SimpApplied PrimUnsized [b])) Obj
 
+sizedObjTypeAnnot : Val ns -> Annot Value ns
+sizedObjTypeAnnot b = MkAnnot (SimpPrimNormal (SimpApplied PrimUnsized [SimpPrimNormal (SimpApplied PrimEmbedBYTES [b])])) Obj
+
 psBytesAnnot : Annot Value ns
 psBytesAnnot = MkAnnot (SimpPrimNormal (SimpApplied PrimBytes [])) Mta
+
+staBytesAnnot : Annot Value ns
+staBytesAnnot = MkAnnot (SimpPrimNormal (SimpApplied PrimBYTES [])) Mta
 
 -- Try to adjust the stage of an expression.
 tryAdjustStage : (HasTc m) => Context ns -> Expr Syntax Value ns -> (s : Stage) -> m (Maybe (ExprAt s Syntax Value ns))
@@ -327,15 +333,15 @@ tcPi x a b = ensureKnownStage $ \ctx, stage => case stage of
     b' <- b (bind x (MkAnnot (evaluate ctx a') Mta) ctx) mtaTypeAnnot
     pure $ MkExprAt (sMtaPi x a' b') mtaTypeAnnot.ty
   Obj => do
-    ba <- freshMeta ctx psBytesAnnot
+    ba <- freshMeta ctx staBytesAnnot
     let vba = evaluate ctx ba
-    bb <- freshMeta ctx psBytesAnnot
+    bb <- freshMeta ctx staBytesAnnot
     let vbb = evaluate ctx bb
-    a' <- a ctx (objTypeAnnot vba)
-    b' <- b (bind x (MkAnnot (evaluate ctx a') Obj) ctx) (objTypeAnnot (wk vbb))
+    a' <- a ctx (sizedObjTypeAnnot vba)
+    b' <- b (bind x (MkAnnot (evaluate ctx a') Obj) ctx) (sizedObjTypeAnnot (wk vbb))
     pure $ MkExprAt
       (sObjPi x ba bb a' b')
-      (objTypeAnnot (evaluate ctx $ sPrim PrimEmbedBYTES [sPrim PrimPtrBYTES []])).ty
+      (sizedObjTypeAnnot (vPrim ctx.size PrimPtrBYTES [])).ty
 
 -- The type of the callback that `ifForcePi` calls when it finds a matching
 -- type.
