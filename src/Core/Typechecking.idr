@@ -488,7 +488,7 @@ tcPrim p args = \ctx, stage => do
   let (pParams, pRet) = primTy p
   (sp, rest) <- checkSpine args (evalTel ctx.size ctx.defs pParams)
   let vsp = eval ctx.defs sp
-  let ret = eval {over = Val} (ctx.defs ::< vsp) pRet.ty
+  let ret = eval (ctx.defs ::< vsp) pRet.ty
   tcApp (MkExpr (sPrim p sp) (MkAnnot ret pRet.stage)) rest ctx stage
 
 

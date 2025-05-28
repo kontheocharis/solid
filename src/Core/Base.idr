@@ -260,7 +260,7 @@ namespace Con
 -- Evaluation and quoting interfaces
 
 public export
-interface Eval (0 over : Ctx -> Type) (0 tm : Ctx -> Type) (0 val : Ctx -> Type) where
+interface Eval (0 over : Ctx -> Type) (0 tm : Ctx -> Type) (0 val : Ctx -> Type) | tm, val where
   eval : Sub ns over ms -> tm ms -> val ns
 
 public export
