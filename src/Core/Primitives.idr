@@ -60,8 +60,9 @@ data Primitive : PrimitiveClass -> PrimitiveReducibility -> Arity -> Type where
   PrimPair : (a : Name) -> Primitive PrimNorm PrimIrreducible
     [(Implicit, "ba"), (Implicit, "bRest"), (Implicit, a), (Implicit, "rest"), (Explicit, "va"), (Explicit, "vrest")]
 
+
 -- Can't be DecEq without writing out all cases smh
-public export
+export
 primEq : (a : Primitive k r ar) -> (b : Primitive k' r' ar') -> Maybe (a = b)
 primEq PrimCode PrimCode = Just Refl
 primEq PrimQuote PrimQuote = Just Refl

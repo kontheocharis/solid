@@ -351,7 +351,7 @@ tcPi x a b = ensureKnownStage $ \ctx, stage => case stage of
 ForcePiCallback r stage ns = (resolvedPi : ValTy ns)
   -> (piIdent : Ident)
   -> (extra : case stage of
-        Obj => (Val ns, Val ns) -- (ba, bb)
+        Obj => (Val ns, Val ns) -- (ba, bb), the bytes of the domain and codomain respectively.
         Mta => ())
   -> (a : ValTy ns)
   -> (b : Body Value piIdent ns)
@@ -392,25 +392,27 @@ ifForcePi ctx (mode, name) stage potentialPi ifMatching ifMismatching
 -- Typechecking combinator for lambdas.
 tcLam : HasTc m => (md : TcMode)
   -> (n : Ident)
-  -> (bindTy : Maybe (Tc Infer m))
+  -> (bindTy : Maybe (Tc Check m))
   -> (body : Tc md m)
   -> Tc md m
 tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnot ty stage) => do
   -- We must check that the type we have is a pi
   ifForcePi ctx lamIdent stage ty
-    (\_, piIdent, extra, a, b => do
+    (\resolvedPi, piIdent, extra, a, b => do
       -- Great, it is a pi. Now first reconcile this with the annotation type
       -- of the lambda.
-      a : Annot Value ns <- ?idk2 -- case bindTy of
-        -- Nothing => pure $ MkAnnot a stage
-        -- Just bindTy => do
-        --   bindTy' <- evaluate ctx <$> check bindTy ctx (typeAnnot ctx piStage)
-        --   unify ctx a bindTy'
-        --   pure $ MkAnnot bindTy' piStage
+      whenJust bindTy $ \bindTy' => do
+        MkExprAt bindPi _ <- tcPi lamIdent bindTy' (tcMeta {md = Check}) ctx (Just stage)
+        let vBindPi = evaluate ctx bindPi
+        unify ctx resolvedPi vBindPi
+
       -- Then check the body with the computed annotation type.
-      body' <- body (bind lamIdent a ctx) (MkAnnot (evalClosure ctx b) stage)
-      ?fafafafa
-      -- pure $ ?sLam3 piStage lamIdent body'
+      body' <- body (bind lamIdent (MkAnnot a stage) ctx) (MkAnnot (evalClosure ctx b) stage)
+      
+      -- Produce the appropriate lambda based on the stage.
+      pure $ case stage of
+        Obj => let (ba, bb) = extra in sObjLam lamIdent (reify ctx ba) (reify ctx bb) body'
+        Mta => let () = extra in sMtaLam lamIdent body'
     )
     (\piStage, resolvedPi, piIdent, extra, a, b => case fst piIdent of
       -- It wasn't the right kind of pi; if it was implicit, insert a lambda
@@ -427,7 +429,7 @@ tcLam Infer lamIdent bindTy body = \ctx, stage => do
       Nothing => tcError ctx CannotInferStage
       -- We have at least a type, so we can deduce the stage from that.
       Just bindTy => do
-        MkAnnot a stage <- inferAnnot ctx Nothing bindTy
+        let MkAnnot a stage = ?inferAnnot2 ctx Nothing bindTy
         packStage <$> inferLam ctx stage lamIdent a body
     Just stage => case bindTy of
       -- We have a stage, but no type, so just instantiate a meta..
