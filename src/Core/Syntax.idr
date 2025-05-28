@@ -251,43 +251,89 @@ public export
 0 Env : Ctx -> Ctx -> Type
 Env ms ns = Sub ms Val ns
 
--- A typed expression at a given stage
 public export
-record ExprAt (s : Stage) (d : Domain) (dTy : Domain) (ns : Ctx) where
-  constructor MkExprAt
-  tm : Term d ns
-  ty : Term dTy ns
+record AnyDomain (tm : Domain -> Ctx -> Type) (ns : Ctx) where
+  constructor Choice
+  syn : Lazy (tm Syntax ns)
+  val : Lazy (tm Value ns)
+
+public export
+(WeakSized (tm Syntax), Weak (tm Value)) => WeakSized (AnyDomain tm) where
+  weakS src dest e (Choice syn val) = Choice (weakS src dest e syn) (weak e val)
+  
+-- An atom is a term and a value at the same time.
+public export
+Atom : Ctx -> Type
+Atom = AnyDomain Term
+
+public export
+AtomTy : Ctx -> Type
+AtomTy = AnyDomain Term
 
 -- An annotation is a type and a stage
 public export
-record Annot (d : Domain) (ns : Ctx) where
+record Annot (ns : Ctx) where
   constructor MkAnnot
-  ty : Term d ns
+  ty : AtomTy ns
+  sort : AtomTy ns
   stage : Stage
+
+-- An annotation at a given stage, which is a type and a sort.
+public export
+record AnnotAt (s : Stage) (ns : Ctx) where
+  constructor MkAnnotAt
+  ty : AtomTy ns
+  sort : AtomTy ns
+
+namespace Annot
+  -- Turn `ExprAt` into `Expr`
+  public export
+  packStage : {s : Stage} -> AnnotAt s ns -> Annot ns
+  packStage (MkAnnotAt ty sort) = MkAnnot ty sort s
+
+  public export
+  forgetStage : (e : Annot ns) -> AnnotAt e.stage ns
+  forgetStage (MkAnnot ty sort s) = MkAnnotAt ty sort
 
 -- Version of ExprAt which also packages the stage
 public export
-record Expr (d : Domain) (dTy : Domain) (ns : Ctx) where
+record Expr (ns : Ctx) where
   constructor MkExpr
-  tm : Term d ns
-  annot : Annot dTy ns
-  
--- Turn `ExprAt` into `Expr`
+  tm : Atom ns
+  annot : Annot ns
+
+-- A typed expression at a given stage
 public export
-packStage : {s : Stage} -> ExprAt s d dTy ns -> Expr d dTy ns
-packStage (MkExprAt tm ty) = MkExpr tm (MkAnnot ty s)
+record ExprAt (s : Stage) (ns : Ctx) where
+  constructor MkExprAt
+  tm : Atom ns
+  annot : AnnotAt s ns
+
+namespace Expr
+  -- Turn `ExprAt` into `Expr`
+  public export
+  packStage : {s : Stage} -> ExprAt s ns -> Expr ns
+  packStage (MkExprAt tm a) = MkExpr tm (packStage a)
+
+  public export
+  forgetStage : (e : Expr ns) -> ExprAt e.annot.stage ns
+  forgetStage (MkExpr tm a) = MkExprAt tm (forgetStage a)
+  
+  public export
+  asTypeIn : Atom ns -> Annot ns -> Annot ns
+  asTypeIn ty (MkAnnot sort _ s) = MkAnnot ty sort s
 
 -- Helper to decide which `Expr` to pick based on an optional stage
 public export
-0 ExprAtMaybe : Maybe Stage -> Domain -> Domain -> Ctx -> Type
+0 ExprAtMaybe : Maybe Stage -> Ctx -> Type
 ExprAtMaybe Nothing = Expr
 ExprAtMaybe (Just s) = ExprAt s
 
 -- Turn `ExprAtMaybe` into `Expr`
 public export
-maybePackStage : {s : Maybe Stage} -> ExprAtMaybe s d dTy ns -> Expr d dTy ns
-maybePackStage {s = Just s} (MkExprAt tm ty) = MkExpr tm (MkAnnot ty s)
-maybePackStage {s = Nothing} (MkExpr tm (MkAnnot ty s)) = MkExpr tm (MkAnnot ty s)
+maybePackStage : {s : Maybe Stage} -> ExprAtMaybe s ns -> Expr ns
+maybePackStage {s = Just s} (MkExprAt tm (MkAnnotAt ty sort)) = MkExpr tm (MkAnnot ty sort s)
+maybePackStage {s = Nothing} x = x
 
 -- Helpers to create syntax
 
@@ -299,6 +345,10 @@ public export
 closeWithLams : Size ns -> Tm ns -> Tm [<]
 closeWithLams SZ t = t
 closeWithLams (SS s) t = closeWithLams s (internalLam _ t)
+
+public export
+varIdx : Idx ns -> Tm ns
+varIdx i = SynApps (SynVar (Index i) $$ [])
 
 public export
 varLvl : Lvl ns -> Val ns
@@ -313,7 +363,7 @@ sObjLam : (n : Ident) -> Tm ns -> Tm ns -> Tm (ns :< n) -> Tm ns
 sObjLam n ba bb t = SynApps (SynBinding _ Callable (Bound _ (BindObjLam n ba bb) (Delayed t)) $$ [])
 
 public export
-vMtaPi : (n : Ident) -> ValTy ns -> Body Value n ns -> Term Value ns
+vMtaPi : (n : Ident) -> ValTy ns -> Body Value n ns -> ValTy ns
 vMtaPi n ty body = RigidBinding _ (Bound _ (BindMtaPi n ty) body)
 
 public export
@@ -323,6 +373,10 @@ sMtaPi n ty body = SynApps (SynBinding _ Rigid (Bound _ (BindMtaPi n ty) (Delaye
 public export
 sObjPi : (n : Ident) -> Tm ns -> Tm ns -> Ty ns -> Ty (ns :< n) -> Ty ns
 sObjPi n ba bb a b = SynApps (SynBinding _ Rigid (Bound _ (BindObjPi n ba bb a) (Delayed b)) $$ [])
+
+public export
+vObjPi : (n : Ident) -> Val ns -> Val ns -> ValTy ns -> Body Value n ns -> ValTy ns
+vObjPi n ba bb ty body = RigidBinding _ (Bound _ (BindObjPi n ba bb ty) body)
 
 public export
 sPrim : {k : PrimitiveClass} -> {r : PrimitiveReducibility} -> Primitive k r ar -> Spine ar Tm ns -> Tm ns

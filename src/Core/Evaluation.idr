@@ -62,14 +62,6 @@ Weak (Binder md r Value n) where
   weak e b = mapBinder (weak e) b
 
 public export
-EvalPrims => Eval (Term Value) (Annot Syntax) (Annot Value) where
-  eval env (MkAnnot ty stage) = MkAnnot (eval env ty) stage
-
-public export
-Weak (Annot Value) where
-  weak s (MkAnnot ty stage) = MkAnnot (weak s ty) stage
-
-public export
 Eval (Term Value) (Variable Syntax) (Term Value) where
   eval (env :< e) (Index IZ) = e
   eval (env :< e) (Index (IS i)) = eval env (Index i)
@@ -193,3 +185,24 @@ EvalPrims => Quote (Term Value) (Term Syntax) where
   quote s (SimpObjCallable c) = SynApps (SynBinding Obj Callable (quote s c) $$ [])
   quote s (RigidBinding md c) = RigidBinding md (quote s c)
   quote s (SimpPrimNormal p) = SynPrimNormal (quote s p)
+  
+public export
+EvalPrims => WeakSized (Term Syntax) where
+  weakS src dest e t = quote {val = Term Value} src (weak e (eval (id dest) t))
+  
+public export
+EvalPrims => WeakSized Annot where
+  weakS src dest e (MkAnnot t a s) = MkAnnot (weakS src dest e t) (weakS src dest e a) s
+
+public export
+EvalPrims => WeakSized (AnnotAt s) where
+  weakS src dest e (MkAnnotAt t a) = MkAnnotAt (weakS src dest e t) (weakS src dest e a)
+
+public export
+EvalPrims => WeakSized Expr where
+  weakS src dest e (MkExpr t a) = MkExpr (weakS src dest e t) (weakS src dest e a)
+
+public export
+EvalPrims => WeakSized (ExprAt s) where
+  weakS src dest e (MkExprAt t a) = MkExprAt (weakS src dest e t) (weakS src dest e a)
+

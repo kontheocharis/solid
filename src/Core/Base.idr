@@ -218,6 +218,15 @@ public export
 interface Weak (0 tm : Ctx -> Type) where
   weak : Wk ns ms -> tm ms -> tm ns
 
+-- Weakening when knowing the size of the source context.
+public export
+interface WeakSized (0 tm : Ctx -> Type) where
+  weakS : Size ns -> Size ms -> Wk ns ms -> tm ms -> tm ns
+  
+public export
+Weak tm => WeakSized tm where
+  weakS _ _ = weak
+
 public export
 (x : Type) => Weak (const x) where
   weak l x = x
@@ -230,6 +239,10 @@ public export
 public export
 wk : Weak tm => tm ns -> tm (ns :< n)
 wk x = weak (Drop Id) x
+
+public export
+wkS : WeakSized tm => Size ns -> tm ns -> tm (ns :< n)
+wkS s x = weakS (SS s) s (Drop Id) x
 
 -- Syntax supports variables if it supports weakenings and the zero-th deBrujin
 -- index.
@@ -260,7 +273,7 @@ namespace Con
 -- Evaluation and quoting interfaces
 
 public export
-interface Eval (0 over : Ctx -> Type) (0 tm : Ctx -> Type) (0 val : Ctx -> Type) | tm, val where
+interface Eval (0 over : Ctx -> Type) (0 tm : Ctx -> Type) (0 val : Ctx -> Type) | tm where
   eval : Sub ns over ms -> tm ms -> val ns
 
 public export

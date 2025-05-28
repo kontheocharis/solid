@@ -49,7 +49,7 @@ data Primitive : PrimitiveClass -> PrimitiveReducibility -> Arity -> Type where
   PrimIrrTy : Primitive PrimNorm PrimIrreducible [(Implicit, "bytes"), (Explicit, "ty")]
   PrimIrr : Primitive PrimNorm PrimIrreducible [(Implicit, "bytes"), (Implicit, "ty"), (Explicit, "val")]
   PrimEmbedBYTES : Primitive PrimNorm PrimIrreducible [(Explicit, "staticBytes")]
-  PrimUnsized : Primitive PrimNorm PrimIrreducible [(Explicit, "bytes")]
+  PrimDyn : Primitive PrimNorm PrimIrreducible [(Explicit, "bytes")]
   PrimAddBYTES : Primitive PrimNorm PrimReducible [(Explicit, "a"), (Explicit, "b")]
   PrimAddBytes : Primitive PrimNorm PrimReducible [(Explicit, "a"), (Explicit, "b")]
   PrimSIGMA : (a : Name) -> Primitive PrimNorm PrimIrreducible [(Explicit, a), (Explicit, "rest")]
@@ -83,7 +83,7 @@ primEq PrimEmbedBYTES PrimEmbedBYTES = Just Refl
 primEq (PrimSigma x) (PrimSigma x') = case decEq x x' of
   Yes Refl => Just Refl
   No contra => Nothing
-primEq PrimUnsized PrimUnsized = Just Refl
+primEq PrimDyn PrimDyn = Just Refl
 primEq PrimAddBYTES PrimAddBYTES = Just Refl
 primEq PrimAddBytes PrimAddBytes = Just Refl
 primEq _ _ = Nothing
