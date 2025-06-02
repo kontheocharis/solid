@@ -233,17 +233,6 @@ check f = \ctx, annot => do
   result <- insertAt ctx annot.stage $ f ctx (Just annot.stage)
   unify ctx annot.ty result.annot.ty
   pure result.tm
-
--- Promote a closure to a function on atoms.
-promoteClosure : Context ns -> Body Value n ns -> (Atom (ns :< n) -> Atom (ns :< n))
-promoteClosure ctx (Closure env body) v
-  = promoteWithoutDefs (SS ctx.size) $ eval {val = Term Value} (env . Drop Id :< v.val) body
-
--- public export
--- asBodyAnnotAt : Context ns -> AnnotFor s (Body Value n) ns -> AnnotAt s (ns :< n')
--- asBodyAnnotAt ctx (MkSort k ty) = 
--- asBodyAnnotAt ctx (DynObjAnnot by ty) = forgetStage $ promoteWithoutDefs (SS ctx.size) (evalClosure ctx ty) `asTypeIn` (weaken ctx $ dynObjTypeAnnot ctx by)
--- asBodyAnnotAt ctx (SizedObjAnnot by ty) = forgetStage $ promoteWithoutDefs (SS ctx.size) (evalClosure ctx ty) `asTypeIn` (weaken ctx $ sizedObjTypeAnnot ctx by)
   
 freshSortData : HasTc m => Context ns -> (s : Stage) -> (k : SortKind s) -> m (SortData s k ns)
 freshSortData ctx Mta k = pure $ MtaSort 
@@ -267,8 +256,8 @@ lamExpr : Context ns
   -> (piIdent : Ident)
   -> (lamIdent : Ident)
   -> (bindAnnot : AnnotFor piStage Sized AtomTy ns)
-  -> (bodyAnnot : AnnotFor piStage Sized (Body Value piIdent) ns)
-  -> (body : Atom (ns :< lamIdent))
+  -> (bodyAnnot : AnnotFor piStage Sized (AtomBody piIdent) ns)
+  -> (body : AtomBody lamIdent ns)
   -> (ExprAt piStage ns)
 lamExpr ctx piStage piIdent lamIdent bindAnnot bodyAnnot body =
   case piStage of
@@ -276,15 +265,15 @@ lamExpr ctx piStage piIdent lamIdent bindAnnot bodyAnnot body =
       let MkAnnotFor MtaSort bindTy = bindAnnot
       let MkAnnotFor MtaSort bodyClosure = bodyAnnot
       MkExprAt
-        (promote $ sMtaLam lamIdent body.syn)
-        (forgetStage $ (promote $ vMtaPi piIdent bindTy.val bodyClosure)
+        (promote $ sMtaLam lamIdent body.open.syn)
+        (forgetStage $ (promote $ vMtaPi piIdent bindTy.val bodyClosure.val)
           `asTypeIn` mtaTypeAnnot)
     Obj => do
       let MkAnnotFor (ObjSort Sized ba) bindTy = bindAnnot
       let MkAnnotFor (ObjSort Sized bb) bodyClosure = bodyAnnot
       MkExprAt
-        (promote $ sObjLam lamIdent ba.syn bb.syn body.syn)
-        (forgetStage $ (promote $ vObjPi piIdent ba.val bb.val bindTy.val bodyClosure)
+        (promote $ sObjLam lamIdent ba.syn bb.syn body.open.syn)
+        (forgetStage $ (promote $ vObjPi piIdent ba.val bb.val bindTy.val bodyClosure.val)
           `asTypeIn` sizedObjTypeAnnot (Choice ptrBytes ptrBytes))
 
 -- Insert (some kind of an implicit) lambda from the given information.
@@ -295,13 +284,13 @@ insertLam : HasTc m => Context ns
   -> (piStage : Stage)
   -> (piIdent : Ident)
   -> (bindAnnot : AnnotFor piStage Sized AtomTy ns)
-  -> (bodyAnnot : AnnotFor piStage Sized (Body Value piIdent) ns)
+  -> (bodyAnnot : AnnotFor piStage Sized (AtomBody piIdent) ns)
   -> (subject : Tc Check m)
   -> m (ExprAt piStage ns)
 insertLam ctx piStage piIdent bindAnnot bodyAnnot subject = do
   s <- subject (bind piIdent (packStage bindAnnot.sortData.asAnnot) ctx)
-        (promoteClosure ctx bodyAnnot.inner here `asTypeIn` (wkS $ typeOfTypeAnnot piStage))
-  pure $ lamExpr ctx piStage piIdent piIdent bindAnnot bodyAnnot s
+        (bodyAnnot.inner.open `asTypeIn` (wkS $ typeOfTypeAnnot piStage))
+  pure $ lamExpr ctx piStage piIdent piIdent bindAnnot bodyAnnot (close ctx.defs s)
   
 -- Infer the given object as a type, also inferring its stage in the process.
 inferAnnot : HasTc m => Context ns -> (k : forall s . SortKind s) -> Tc Infer m -> m (s ** AnnotFor s k Atom ns)
@@ -366,7 +355,7 @@ tcPi x a b = ensureKnownStage $ \ctx, stage => case stage of
 ForcePiCallback r stage ns = (resolvedPi : AtomTy ns)
   -> (piIdent : Ident)
   -> (a : AnnotFor stage Sized Atom ns)
-  -> (b : AnnotFor stage Sized (Body Value piIdent) ns)
+  -> (b : AnnotFor stage Sized (AtomBody piIdent) ns)
   -> r
 
 -- Given a `potentialPi`, try to match it given that we expect something in
@@ -393,7 +382,7 @@ ifForcePi ctx (mode, name) stage potentialPi ifMatching ifMismatching
         bb' = promote bb
       in res (promote resolvedPi) (piMode, piName)
           (MkAnnotFor (ObjSort Sized ba') (promote a))
-          (MkAnnotFor (ObjSort Sized bb') b)
+          (MkAnnotFor (ObjSort Sized bb') (promoteBody b))
     -- meta-level pi
     resolvedPi@(RigidBinding piStage@Mta (Bound _ (BindMtaPi (piMode, piName) a) b)) =>
       let res = case decEq (piMode, piStage) (mode, stage) of
@@ -401,7 +390,7 @@ ifForcePi ctx (mode, name) stage potentialPi ifMatching ifMismatching
             _ => ifMismatching Mta
       in res (promote resolvedPi) (piMode, piName)
           (MkAnnotFor MtaSort (promote a))
-          (MkAnnotFor MtaSort b)
+          (MkAnnotFor MtaSort (promoteBody b))
     resolvedPi => do
       -- Did not get a pi, try to construct a pi based on the info we have and
       -- unify it with the potential pi.
@@ -428,10 +417,10 @@ tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnot ty sort stage) => do
       -- Then check the body with the computed annotation type.
       body' <- body
         (bind lamIdent (packStage a.sortData.asAnnot) ctx)
-        (packStage $ ?asBodyAnnotAt ctx b)
+        (packStage b.open.asAnnot)
       
       -- Produce the appropriate lambda based on the stage.
-      pure $ (lamExpr ctx stage piIdent lamIdent a b body').tm
+      pure $ (lamExpr ctx stage piIdent lamIdent a b (close ctx.defs body')).tm
     )
     (\piStage, resolvedPi, piIdent, a, b => case fst piIdent of
       -- It wasn't the right kind of pi; if it was implicit, insert a lambda

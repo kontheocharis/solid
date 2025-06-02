@@ -202,6 +202,9 @@ namespace Wk
     Id : Wk ns ns
     Terminal : Wk ns [<]
     Drop : Wk ns ms -> Wk (ns :< n) ms
+     -- Included for convenience because we index by names but they are also
+     -- irrelevant.
+    Relabel : Wk (ns :< n) (ns :< n')
 
   public export
   (.) : Wk ms ns -> Wk as ms -> Wk as ns
@@ -210,6 +213,11 @@ namespace Wk
   Terminal . Terminal = Terminal
   Terminal . Drop x = Terminal
   Drop x . Drop y = Drop (x . (Drop Id . y))
+  Drop x . Relabel = Drop x
+  Relabel . Drop x = Drop (Relabel . x)
+  Relabel . Relabel = Relabel
+  Relabel . Id = Relabel
+  Terminal . Relabel = Terminal
 
 -- Some interfaces for syntax that involves variables
 
@@ -292,6 +300,8 @@ Weak Lvl where
   weak Id l = l
   weak (Drop x) LZ = LZ
   weak (Drop x) (LS l) = LS (weak x (wkLvl l))
+  weak (Relabel) LZ = LZ
+  weak (Relabel) (LS l) = LS l
 
 public export
 Vars Lvl where

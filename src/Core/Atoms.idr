@@ -17,17 +17,25 @@ record AnyDomain (tm : Domain -> Ctx -> Type) (ns : Ctx) where
   syn : Lazy (tm Syntax ns)
   val : Lazy (tm Value ns)
   
+-- An atom is a term and a value at the same time.
+public export
+Atom : Ctx -> Type
+Atom = AnyDomain Term
+
+public export
+AtomTy : Ctx -> Type
+AtomTy = AnyDomain Term
+  
 -- All syntactic presheaf related bounds
 public export
 0 Psh : (Domain -> Ctx -> Type) -> Type
 Psh tm
-  = (Eval (tm Value) (tm Syntax) (tm Value),
+  = (Eval (Term Value) (tm Syntax) (tm Value),
     Quote (tm Value) (tm Syntax),
-    Weak (tm Value),
-    Vars (tm Value))
+    Weak (tm Value))
   
 -- Promote a term or value to an `AnyDomain` type.
-public export
+public export covering
 promote : {default Term 0 tm : Domain -> Ctx -> Type}
   -> Psh tm
   => Size ns
@@ -41,26 +49,32 @@ public export
 (WeakSized (tm Syntax), Weak (tm Value)) => WeakSized (AnyDomain tm) where
   weakS e (Choice syn val) = Choice (weakS e syn) (weak e val)
 
-public export
-(WeakSized (tm Syntax), Psh tm) => Vars (AnyDomain tm) where
+public export covering
+(WeakSized (tm Syntax), Vars (tm Value), Psh tm) => Vars (AnyDomain tm) where
   here = promote {tm = tm} here
-  
--- An atom is a term and a value at the same time.
-public export
-Atom : Ctx -> Type
-Atom = AnyDomain Term
 
-public export
-AtomTy : Ctx -> Type
-AtomTy = AnyDomain Term
+namespace AtomBody
+  -- The atom version of a closure.
+  public export
+  AtomBody : Ident -> Ctx -> Type
+  AtomBody n = AnyDomain (\d => Body d n)
 
-public export
-AtomBody : Ident -> Ctx -> Type
-AtomBody n = AnyDomain (\d => Body d n)
+  -- Turn a body into a term in an extended context.
+  public export covering
+  (.open) : Size ns => AtomBody n ns -> Atom (ns :< n')
+  (.open) (Choice (Delayed s) (Closure env v)) = Choice (weakS Relabel s) (eval (lift env) v)
 
-covering
-asExt : Size ns => AtomBody n ns -> Atom (ns :< n)
-asExt (Choice (Delayed s) (Closure env v)) = Choice s (eval (lift env) v)
+  public export covering
+  close : Env ns ns -> Atom (ns :< n) -> AtomBody n ns
+  close env t = Choice (Delayed t.syn) (Closure env t.syn)
+
+  -- Promote a syntactical body to an `AtomBody`.
+  public export covering
+  promoteBody : Size ns
+    => {d : Domain}
+    -> Body d n ns
+    -> AtomBody n ns
+  promoteBody b = promote {tm = \d => Body d n} b
 
 -- An annotation is a type and a stage
 public export
@@ -201,24 +215,41 @@ data SortData : (s : Stage) -> SortKind s -> Ctx -> Type where
   -- Object sorts remember their size.
   ObjSort : (k : SortKind Obj) -> (by : Atom ns) -> SortData Obj k ns
   
+public export covering
+WeakSized (SortData s k) where
+  weakS e MtaSort = MtaSort
+  weakS e (ObjSort k by) = ObjSort k (weakS e by)
+  
 -- Convert a `SortData` to its corresponding annotation.
 public export covering
 (.asAnnot) : Size ns => SortData s k ns -> AnnotAt s ns
 (.asAnnot) MtaSort = forgetStage mtaTypeAnnot
 (.asAnnot) (ObjSort Dyn by) = forgetStage $ dynObjTypeAnnot by
 (.asAnnot) (ObjSort Sized by) = forgetStage $ sizedObjTypeAnnot by
-  
--- An annotation for a given sort.
-public export
-data AnnotFor : (s : Stage) -> SortKind s -> (annotTy : Ctx -> Type) -> (ns : Ctx) -> Type where
-  MkAnnotFor : SortData s k ns -> (inner : annotTy ns) -> AnnotFor s k annotTy ns
-  
--- The actual type of the annotation.
-public export
-(.inner) : AnnotFor s k annotTy ns -> annotTy ns
-(.inner) (MkAnnotFor _ ty) = ty
 
--- The sort information for the annotation.
-public export
-(.sortData) : AnnotFor s k annotTy ns -> SortData s k ns
-(.sortData) (MkAnnotFor d _) = d
+namespace AnnotFor
+    
+  -- An annotation for a given sort.
+  public export
+  data AnnotFor : (s : Stage) -> SortKind s -> (annotTy : Ctx -> Type) -> (ns : Ctx) -> Type where
+    MkAnnotFor : SortData s k ns -> (inner : annotTy ns) -> AnnotFor s k annotTy ns
+    
+  -- The actual type of the annotation.
+  public export
+  (.inner) : AnnotFor s k annotTy ns -> annotTy ns
+  (.inner) (MkAnnotFor _ ty) = ty
+
+  -- `AnnotFor` with Atom can be converted to an `AnnotAt` type.
+  public export covering
+  (.asAnnot) : Size ns => AnnotFor s k Atom ns -> AnnotAt s ns
+  (.asAnnot) (MkAnnotFor d i) = MkAnnotAt i d.asAnnot.ty
+
+  -- The sort information for the annotation.
+  public export
+  (.sortData) : AnnotFor s k annotTy ns -> SortData s k ns
+  (.sortData) (MkAnnotFor d _) = d
+
+  -- Open an annotation containing a body
+  public export covering
+  (.open) : Size ns => AnnotFor s k (AtomBody n) ns -> AnnotFor s k Atom (ns :< n')
+  (.open) (MkAnnotFor d i) = MkAnnotFor (wkS d) i.open
