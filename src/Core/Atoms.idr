@@ -1,0 +1,123 @@
+module Core.Atoms
+
+import Data.DPair
+import Common
+import Core.Base
+import Core.Primitives
+import Core.Syntax
+import Core.Evaluation
+import Core.Metavariables
+import Core.Unification
+import Core.Rules
+
+-- Here is the deal: I am getting annoyed of dealing with both syntax and
+-- values in typechecking. So here I define a representation of terms which
+-- lazily stores both syntax and values.
+
+public export
+record AnyDomain (tm : Domain -> Ctx -> Type) (ns : Ctx) where
+  constructor Choice
+  syn : Lazy (tm Syntax ns)
+  val : Lazy (tm Value ns)
+
+public export
+(WeakSized (tm Syntax), Weak (tm Value)) => WeakSized (AnyDomain tm) where
+  weakS src dest e (Choice syn val) = Choice (weakS src dest e syn) (weak e val)
+  
+-- An atom is a term and a value at the same time.
+public export
+Atom : Ctx -> Type
+Atom = AnyDomain Term
+
+public export
+AtomTy : Ctx -> Type
+AtomTy = AnyDomain Term
+
+public export
+AtomBody : Ident -> Ctx -> Type
+AtomBody n = AnyDomain (\d => Body d n)
+
+covering
+asExt : Size ns -> AtomBody n ns -> Atom (ns :< n)
+asExt sz (Choice (Delayed s) (Closure env v)) = Choice s (eval (lift sz env) v)
+
+-- An annotation is a type and a stage
+public export
+record Annot (ns : Ctx) where
+  constructor MkAnnot
+  ty : AtomTy ns
+  sort : AtomTy ns
+  stage : Stage
+
+-- An annotation at a given stage, which is a type and a sort.
+public export
+record AnnotAt (s : Stage) (ns : Ctx) where
+  constructor MkAnnotAt
+  ty : AtomTy ns
+  sort : AtomTy ns
+
+namespace Annot
+  -- Turn `ExprAt` into `Expr`
+  public export
+  packStage : {s : Stage} -> AnnotAt s ns -> Annot ns
+  packStage (MkAnnotAt ty sort) = MkAnnot ty sort s
+
+  public export
+  forgetStage : (e : Annot ns) -> AnnotAt e.stage ns
+  forgetStage (MkAnnot ty sort s) = MkAnnotAt ty sort
+
+-- Version of ExprAt which also packages the stage
+public export
+record Expr (ns : Ctx) where
+  constructor MkExpr
+  tm : Atom ns
+  annot : Annot ns
+
+-- A typed expression at a given stage
+public export
+record ExprAt (s : Stage) (ns : Ctx) where
+  constructor MkExprAt
+  tm : Atom ns
+  annot : AnnotAt s ns
+
+namespace Expr
+  -- Turn `ExprAt` into `Expr`
+  public export
+  packStage : {s : Stage} -> ExprAt s ns -> Expr ns
+  packStage (MkExprAt tm a) = MkExpr tm (packStage a)
+
+  public export
+  forgetStage : (e : Expr ns) -> ExprAt e.annot.stage ns
+  forgetStage (MkExpr tm a) = MkExprAt tm (forgetStage a)
+  
+  public export
+  asTypeIn : Atom ns -> Annot ns -> Annot ns
+  asTypeIn ty (MkAnnot sort _ s) = MkAnnot ty sort s
+
+-- Helper to decide which `Expr` to pick based on an optional stage
+public export
+0 ExprAtMaybe : Maybe Stage -> Ctx -> Type
+ExprAtMaybe Nothing = Expr
+ExprAtMaybe (Just s) = ExprAt s
+
+-- Turn `ExprAtMaybe` into `Expr`
+public export
+maybePackStage : {s : Maybe Stage} -> ExprAtMaybe s ns -> Expr ns
+maybePackStage {s = Just s} (MkExprAt tm (MkAnnotAt ty sort)) = MkExpr tm (MkAnnot ty sort s)
+maybePackStage {s = Nothing} x = x
+  
+public export covering
+EvalPrims => WeakSized Annot where
+  weakS src dest e (MkAnnot t a s) = MkAnnot (weakS src dest e t) (weakS src dest e a) s
+
+public export covering
+EvalPrims => WeakSized (AnnotAt s) where
+  weakS src dest e (MkAnnotAt t a) = MkAnnotAt (weakS src dest e t) (weakS src dest e a)
+
+public export covering
+EvalPrims => WeakSized Expr where
+  weakS src dest e (MkExpr t a) = MkExpr (weakS src dest e t) (weakS src dest e a)
+
+public export covering
+EvalPrims => WeakSized (ExprAt s) where
+  weakS src dest e (MkExprAt t a) = MkExprAt (weakS src dest e t) (weakS src dest e a)

@@ -189,20 +189,4 @@ EvalPrims => Quote (Term Value) (Term Syntax) where
 public export
 EvalPrims => WeakSized (Term Syntax) where
   weakS src dest e t = quote {val = Term Value} src (weak e (eval (id dest) t))
-  
-public export
-EvalPrims => WeakSized Annot where
-  weakS src dest e (MkAnnot t a s) = MkAnnot (weakS src dest e t) (weakS src dest e a) s
-
-public export
-EvalPrims => WeakSized (AnnotAt s) where
-  weakS src dest e (MkAnnotAt t a) = MkAnnotAt (weakS src dest e t) (weakS src dest e a)
-
-public export
-EvalPrims => WeakSized Expr where
-  weakS src dest e (MkExpr t a) = MkExpr (weakS src dest e t) (weakS src dest e a)
-
-public export
-EvalPrims => WeakSized (ExprAt s) where
-  weakS src dest e (MkExprAt t a) = MkExprAt (weakS src dest e t) (weakS src dest e a)
 

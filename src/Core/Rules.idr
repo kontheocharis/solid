@@ -99,7 +99,7 @@ ttForStage Obj = primN $ (PrimPad $$ [embedBytes zeroBytes])
 
 -- Types of the arguments and return values of all the primitives
 public export
-primTy : (p : Primitive k r ar) -> (Tel ar Annot ns, Annot (ns ::< ar))
+primTy : (p : Primitive k r ar) -> (Tel ar ValTy ns, ValTy (ns ::< ar))
 -- primTy PrimTYPE = ([], MkAnnot mtaType Mta)
 -- primTy PrimCode = ([MkAnnot psBytes Obj, MkAnnot (objType (var "bytes")) Obj], MkAnnot mtaType Mta)
 -- primTy PrimQuote = ([MkAnnot psBytes Obj, MkAnnot (objType (var "bytes")) Obj, MkAnnot (var "ty") Obj], MkAnnot (sCode (var "bytes") (var "ty")) Mta)

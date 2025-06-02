@@ -13,6 +13,7 @@ import Core.Evaluation
 import Core.Rules
 import Core.Metavariables
 import Core.Unification
+import Core.Atoms
 
 %default covering
 
@@ -299,61 +300,52 @@ close ctx ty = Closure (id ctx.size) ty
 public export
 here : Context ns -> Atom (ns :< n)
 here ctx = Choice (varIdx IZ) (here {tm = Term Value} ctx.size)
+
+data SortKind : Stage -> Type where
+  Static : SortKind Mta
+  Dyn : SortKind s
+  Sized : SortKind s
   
--- Whether an annotation is sized or dynamic.
-data AnnotKind : Type where
-  Dyn : AnnotKind
-  Sized : AnnotKind
+data SortData : (s : Stage) -> SortKind s -> Ctx -> Type where
+  MtaSort : SortData Mta k ns
+  ObjSort : (k : SortKind Obj) -> (by : Atom ns) -> SortData Obj k ns
   
--- For a given stage and annotation kind, this holds the data of the annotation.
-data AnnotFor : Stage -> AnnotKind -> (annotTy : Ctx -> Type) -> Ctx -> Type where
-  -- A meta-level annotation does not need any size.
-  MtaAnnot : (ty : annotTy ns) -> AnnotFor Mta k annotTy ns
-  -- A dynamic object annotation has a partially-static size.
-  DynObjAnnot : (by : Atom ns) -> (ty : annotTy ns) -> AnnotFor Obj Dyn annotTy ns
-  -- A sized object annotation has a static size.
-  SizedObjAnnot : (by : Atom ns) -> (ty : annotTy ns) -> AnnotFor Obj Sized annotTy ns
+asAnnotAt : Context ns -> SortData s k ns -> AnnotAt s ns
+asAnnotAt ctx MtaSort = forgetStage $ mtaTypeAnnot ctx
+asAnnotAt ctx (ObjSort Dyn by) = forgetStage $ dynObjTypeAnnot ctx by
+asAnnotAt ctx (ObjSort Sized by) = forgetStage $ sizedObjTypeAnnot ctx by
   
--- Extract the inner type of an annotation.
+freshSortData : HasTc m => Context ns -> (s : Stage) -> (k : SortKind s) -> m (SortData s k ns)
+freshSortData ctx Mta k = pure $ MtaSort 
+freshSortData ctx Obj Dyn = do
+  b <- freshMeta ctx (psBytesAnnot ctx)
+  pure $ ObjSort Dyn b
+freshSortData ctx Obj Sized = do
+  b <- freshMeta ctx (staBytesAnnot ctx)
+  pure $ ObjSort Sized b
+  
+-- For a given stage and sort, this holds the data of the annotation.
+data AnnotFor : (s : Stage) -> SortKind s -> (annotTy : Ctx -> Type) -> (ns : Ctx) -> Type where
+  MkAnnotFor : SortData s k ns -> (inner : annotTy ns) -> AnnotFor s k annotTy ns
+  
 (.inner) : AnnotFor s k annotTy ns -> annotTy ns
-(.inner) (MtaAnnot ty) = ty
-(.inner) (DynObjAnnot _ ty) = ty
-(.inner) (SizedObjAnnot _ ty) = ty
-  
--- Forget about the kind of an annotation.
-public export
-asAnnotAt : Context ns -> AnnotFor s k AtomTy ns -> AnnotAt s ns
-asAnnotAt ctx (MtaAnnot ty) = forgetStage $ ty `asTypeIn` mtaTypeAnnot ctx
-asAnnotAt ctx (DynObjAnnot by ty) = forgetStage $ ty `asTypeIn` dynObjTypeAnnot ctx by
-asAnnotAt ctx (SizedObjAnnot by ty) = forgetStage $ ty `asTypeIn` sizedObjTypeAnnot ctx by
+(.inner) (MkAnnotFor _ ty) = ty
 
-public export
-asBodyAnnotAt : Context ns -> AnnotFor s k (Body Value n) ns -> AnnotAt s (ns :< n')
-asBodyAnnotAt ctx (MtaAnnot ty) = forgetStage $ promoteWithoutDefs (SS ctx.size) (evalClosure ctx ty) `asTypeIn` (weaken ctx $ mtaTypeAnnot ctx)
-asBodyAnnotAt ctx (DynObjAnnot by ty) = forgetStage $ promoteWithoutDefs (SS ctx.size) (evalClosure ctx ty) `asTypeIn` (weaken ctx $ dynObjTypeAnnot ctx by)
-asBodyAnnotAt ctx (SizedObjAnnot by ty) = forgetStage $ promoteWithoutDefs (SS ctx.size) (evalClosure ctx ty) `asTypeIn` (weaken ctx $ sizedObjTypeAnnot ctx by)
+(.sortData) : AnnotFor s k annotTy ns -> SortData s k ns
+(.sortData) (MkAnnotFor d _) = d
 
-annotSort : Context ns -> AnnotFor s k annotTy ns -> AnnotAt s ns
-annotSort ctx (MtaAnnot _) = forgetStage $ mtaTypeAnnot ctx
-annotSort ctx (DynObjAnnot by _) = forgetStage $ dynObjTypeAnnot ctx by
-annotSort ctx (SizedObjAnnot by _) = forgetStage $ sizedObjTypeAnnot ctx by
+-- public export
+-- asBodyAnnotAt : Context ns -> AnnotFor s (Body Value n) ns -> AnnotAt s (ns :< n')
+-- asBodyAnnotAt ctx (MkSort k ty) = 
+-- asBodyAnnotAt ctx (DynObjAnnot by ty) = forgetStage $ promoteWithoutDefs (SS ctx.size) (evalClosure ctx ty) `asTypeIn` (weaken ctx $ dynObjTypeAnnot ctx by)
+-- asBodyAnnotAt ctx (SizedObjAnnot by ty) = forgetStage $ promoteWithoutDefs (SS ctx.size) (evalClosure ctx ty) `asTypeIn` (weaken ctx $ sizedObjTypeAnnot ctx by)
   
 -- Fit the given annotation to the given kind.
-fitAnnot : HasTc m => Context ns -> (k : AnnotKind) -> (s : Stage) -> (annotTy ns, AtomTy ns) -> m (AnnotFor s k annotTy ns)
-fitAnnot ctx kind stage (vty, univ) =
-  case stage of
-    Mta => do
-      unify ctx univ (mtaTypeAnnot ctx).ty
-      pure $ MtaAnnot vty
-    Obj => case kind of
-      Dyn => do 
-        b <- freshMeta ctx (psBytesAnnot ctx)
-        unify ctx univ (dynObjTypeAnnot ctx b).ty
-        pure $ DynObjAnnot b vty
-      Sized => do
-        b <- freshMeta ctx (staBytesAnnot ctx)
-        unify ctx univ (sizedObjTypeAnnot ctx b).ty
-        pure $ SizedObjAnnot b vty
+fitAnnot : HasTc m => Context ns -> (s : Stage) -> (k : SortKind s) -> (annotTy ns, AtomTy ns) -> m (AnnotFor s k annotTy ns)
+fitAnnot ctx s k (vty, univ) = do
+  d <- freshSortData ctx s k
+  unify ctx univ (asAnnotAt ctx d).ty
+  pure $ MkAnnotFor d vty
       
 -- Create a lambda expression with the given data.
 lamExpr : Context ns
@@ -367,15 +359,15 @@ lamExpr : Context ns
 lamExpr ctx piStage piIdent lamIdent bindAnnot bodyAnnot body =
   case piStage of
     Mta => do
-      let MtaAnnot bindTy = bindAnnot
-      let MtaAnnot bodyClosure = bodyAnnot
+      let MkAnnotFor MtaSort bindTy = bindAnnot
+      let MkAnnotFor MtaSort bodyClosure = bodyAnnot
       MkExprAt
         (promote ctx $ sMtaLam lamIdent body.syn)
         (forgetStage $ (promote ctx $ vMtaPi piIdent bindTy.val bodyClosure)
           `asTypeIn` mtaTypeAnnot ctx)
     Obj => do
-      let SizedObjAnnot ba bindTy = bindAnnot
-      let SizedObjAnnot bb bodyClosure = bodyAnnot
+      let MkAnnotFor (ObjSort Sized ba) bindTy = bindAnnot
+      let MkAnnotFor (ObjSort Sized bb) bodyClosure = bodyAnnot
       MkExprAt
         (promote ctx $ sObjLam lamIdent ba.syn bb.syn body.syn)
         (forgetStage $ (promote ctx $ vObjPi piIdent ba.val bb.val bindTy.val bodyClosure)
@@ -383,7 +375,7 @@ lamExpr ctx piStage piIdent lamIdent bindAnnot bodyAnnot body =
 
 -- Insert (some kind of an implicit) lambda from the given information.
 --
--- This adds the binder to the subject and `recurses`, yielding a lambda with the
+-- This adds the binder to the subject and 'recurses', yielding a lambda with the
 -- given Pi type.
 insertLam : HasTc m => Context ns
   -> (piStage : Stage)
@@ -393,21 +385,28 @@ insertLam : HasTc m => Context ns
   -> (subject : Tc Check m)
   -> m (ExprAt piStage ns)
 insertLam ctx piStage piIdent bindAnnot bodyAnnot subject = do
-  s <- subject (bind piIdent (packStage (asAnnotAt ctx bindAnnot)) ctx)
+  s <- subject (bind piIdent (packStage (asAnnotAt ctx bindAnnot.sortData)) ctx)
         (promoteClosure ctx bodyAnnot.inner (here ctx) `asTypeIn` (weaken ctx $ typeOfTypeAnnot ctx piStage))
   pure $ lamExpr ctx piStage piIdent piIdent bindAnnot bodyAnnot s
   
 -- Infer the given object as a type, also inferring its stage in the process.
-inferAnnot : HasTc m => Context ns -> (k : AnnotKind) -> Tc Infer m -> m (s ** AnnotFor s k Atom ns)
+inferAnnot : HasTc m => Context ns -> (k : forall s . SortKind s) -> Tc Infer m -> m (s ** AnnotFor s k Atom ns)
 inferAnnot ctx kind ty = do
   MkExpr t (MkAnnot univ _ stage) <- ty ctx Nothing
-  res <- fitAnnot ctx kind stage {annotTy = AtomTy} (t, univ)
+  res <- fitAnnot ctx stage kind {annotTy = AtomTy} (t, univ)
   pure (stage ** res)
   
-freshMetaAnnot : HasTc m => Context ns -> (s : Stage) -> m (AnnotAt s ns)
-freshMetaAnnot ctx s = do
-  tySort <- freshMeta ctx (typeOfTypeAnnot ctx s)
-  ty <- freshMeta ctx (MkAnnot tySort tySort s)
+freshMetaAnnot : HasTc m => Context ns -> (s : Stage) -> SortKind s -> m (AnnotAt s ns)
+freshMetaAnnot ctx s k = do
+  tySort <- asAnnotAt ctx <$> freshSortData ctx s k
+  ty <- freshMeta ctx (packStage tySort)
+  pure $ MkAnnotAt ty tySort.ty
+
+freshMetaAnnotAny : HasTc m => Context ns -> (s : Stage) -> m (AnnotAt s ns)
+freshMetaAnnotAny ctx s = do
+  let tyOfTy = typeOfTypeAnnot ctx s
+  tySort <- freshMeta ctx tyOfTy
+  ty <- freshMeta ctx (MkAnnot tySort tyOfTy.ty s) 
   pure $ MkAnnotAt ty tySort
 
 -- Introduce a metavariable
@@ -417,7 +416,7 @@ tcMeta {md = Check} {name} = \ctx, annot => do
   whenJust name $ \n => addGoal n (MkExpr mta annot) ctx
   pure mta
 tcMeta {md = Infer} {name} = ensureKnownStage $ \ctx, stage => do
-  annot <- freshMetaAnnot ctx stage
+  annot <- freshMetaAnnotAny ctx stage
   mta <- freshMeta ctx (packStage annot)
   whenJust name $ \n => addGoal n (MkExpr mta (packStage annot)) ctx
   pure $ MkExprAt mta annot
@@ -478,13 +477,17 @@ ifForcePi ctx (mode, name) stage potentialPi ifMatching ifMismatching
       in let
         ba' = promote ctx ba
         bb' = promote ctx bb
-      in res (promote ctx resolvedPi) (piMode, piName) (SizedObjAnnot ba' (promote ctx a)) (SizedObjAnnot bb' b)
+      in res (promote ctx resolvedPi) (piMode, piName)
+          (MkAnnotFor (ObjSort Sized ba') (promote ctx a))
+          (MkAnnotFor (ObjSort Sized bb') b)
     -- meta-level pi
     resolvedPi@(RigidBinding piStage@Mta (Bound _ (BindMtaPi (piMode, piName) a) b)) =>
       let res = case decEq (piMode, piStage) (mode, stage) of
             Yes Refl => ifMatching
             _ => ifMismatching Mta
-      in res (promote ctx resolvedPi) (piMode, piName) (MtaAnnot (promote ctx a)) (MtaAnnot b)
+      in res (promote ctx resolvedPi) (piMode, piName)
+          (MkAnnotFor MtaSort (promote ctx a))
+          (MkAnnotFor MtaSort b)
     resolvedPi => do
       -- Did not get a pi, try to construct a pi based on the info we have and
       -- unify it with the potential pi.
@@ -509,7 +512,9 @@ tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnot ty sort stage) => do
         unify ctx resolvedPi bindPi
 
       -- Then check the body with the computed annotation type.
-      body' <- body (bind lamIdent (packStage $ asAnnotAt ctx a) ctx) (packStage $ asBodyAnnotAt ctx b)
+      body' <- body
+        (bind lamIdent (packStage $ asAnnotAt ctx a.sortData) ctx)
+        (packStage $ ?asBodyAnnotAt ctx b)
       
       -- Produce the appropriate lambda based on the stage.
       pure $ (lamExpr ctx stage piIdent lamIdent a b body').tm
@@ -525,7 +530,7 @@ tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnot ty sort stage) => do
 tcLam Infer lamIdent bindTy body = ensureKnownStage $ \ctx, stage => do
   -- @@Reconsider: Same remark as for pis.
   -- We have a stage, but no type, so just instantiate a meta..
-  annot <- freshMetaAnnot ctx stage
+  annot <- freshMetaAnnot ctx stage Sized
   res <- tcLam Check lamIdent bindTy (check body) ctx (packStage annot)
   pure $ MkExprAt res annot
 
@@ -551,10 +556,16 @@ tcHole : HasTc m => {md : TcMode} -> Maybe Name -> Tc md m
 tcHole {md} name = tcMeta {md} {name = name}
 
 checkSpine : HasTc m
-  => List (Ident, Tc Check m)
+  => Context ns
+  -> List (Ident, Tc Check m)
   -> Tel ar Annot ns
   -> m (Spine ar Atom ns, List (Ident, Tc Check m))
-
+checkSpine ctx tms [] = pure ([], ?xs)
+checkSpine ctx [] annots = ?gaga
+checkSpine ctx ((name, tm) :: tms) (annot :: annots) = do
+  tm' <- tm ctx annot 
+  tms' <- checkSpine (bind name ?qq ctx) tms ?annots
+  pure ?fa
 
 tcApp : HasTc m
   => (subject : Expr ns)
@@ -569,10 +580,11 @@ tcPrim : HasTc m
   -> Tc Infer m
 tcPrim p args = \ctx, stage => do
   let (pParams, pRet) = primTy p
-  (sp, rest) <- checkSpine args pParams
-  let ret = promote ctx $ eval (ctx.defs ::< mapSpine (\v => force v.val) sp) pRet.ty.syn
-  let retSort = promote ctx $ eval (ctx.defs ::< mapSpine (\v => force v.val) sp) pRet.sort.syn
-  tcApp (MkExpr (promote ctx $ sPrim p (mapSpine (\v => force v.syn) sp)) (MkAnnot ret retSort pRet.stage)) rest ctx stage
+  ?qjqjqj
+  -- (sp, rest) <- checkSpine ?args ?pParams
+  -- let ret = promote ctx $ eval (ctx.defs ::< mapSpine (\v => force v.val) sp) pRet.ty.syn
+  -- let retSort = promote ctx $ eval (ctx.defs ::< mapSpine (\v => force v.val) sp) pRet.sort.syn
+  -- tcApp (MkExpr (promote ctx $ sPrim p (mapSpine (\v => force v.syn) sp)) (MkAnnot ret retSort pRet.stage)) rest ctx stage
 
 
 -- @@TODO:
