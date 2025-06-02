@@ -454,17 +454,21 @@ tcVar n = \ctx, stage' => case lookup ctx n of
 tcHole : HasTc m => {md : TcMode} -> Maybe Name -> Tc md m
 tcHole {md} name = tcMeta {md} {name = name}
 
+-- Check a spine against a telescope.
+--
+-- Returns the checked spine and the remaining terms in the input.
 checkSpine : HasTc m
   => Context ns
   -> List (Ident, Tc Check m)
   -> Tel ar Annot ns
-  -> m (Spine ar Atom ns, List (Ident, Tc Check m))
-checkSpine ctx tms [] = pure ([], ?xs)
+  -> m (AtomSpine ar ns, List (Ident, Tc Check m))
+checkSpine ctx tms [] = pure ([], tms)
 checkSpine ctx [] annots = ?gaga
 checkSpine ctx ((name, tm) :: tms) (annot :: annots) = do
   tm' <- tm ctx annot 
-  tms' <- checkSpine (bind name ?qq ctx) tms ?annots
-  pure ?fa
+  (tms', rest) <- checkSpine ctx tms ?annots
+  ?fafafaj
+  -- pure (tm' :: sub (ctx.defs :< tm'.val) tms', rest)
 
 tcApp : HasTc m
   => (subject : Expr ns)

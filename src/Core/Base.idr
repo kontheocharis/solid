@@ -186,6 +186,11 @@ namespace Sub
   (.index) : Sub ns f ms -> Idx ms -> f ns
   (.index) (xs :< x) IZ = x
   (.index) (xs :< x) (IS i) = .index xs i
+  
+  public export
+  mapSub : (forall us . f us -> g us) -> Sub ns f ms -> Sub ns g ms
+  mapSub f [<] = [<]
+  mapSub f (xs :< x) = mapSub f xs :< f x
 
 public export
 subFromSpine : Spine ar f ns -> Sub ns f (arityToCtx ar)

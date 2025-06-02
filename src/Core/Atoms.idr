@@ -36,8 +36,7 @@ Psh tm
   
 -- Promote a term or value to an `AnyDomain` type.
 public export covering
-promote : {default Term 0 tm : Domain -> Ctx -> Type}
-  -> Psh tm
+promote : Psh tm
   => Size ns
   => {d : Domain}
   -> tm d ns
@@ -53,6 +52,27 @@ public export covering
 (WeakSized (tm Syntax), Vars (tm Value), Psh tm) => Vars (AnyDomain tm) where
   here = promote {tm = tm} here
 
+-- Substitutions for atoms
+public export covering
+sub : Psh tm => Size ns => Sub ns Val ms -> AnyDomain tm ms -> AnyDomain tm ns
+sub env t = promote {tm = tm} $ eval env t.syn
+
+-- Atom spines
+-- @@Reconsider: this is kind of ugly
+namespace AtomSpine
+  public export
+  AtomSpine : Arity -> Ctx -> Type
+  AtomSpine ar = AnyDomain (\d => Spine ar (Term d))
+  
+  public export covering
+  Nil : AtomSpine [] ns
+  Nil = Choice [] []
+  
+  public export covering
+  (::) : Atom ns -> AtomSpine ar ns -> AtomSpine (n :: ar) ns
+  x :: xs = Choice (x.syn :: xs.syn) (x.val :: xs.val)
+
+-- Atom bodies
 namespace AtomBody
   -- The atom version of a closure.
   public export
@@ -170,7 +190,7 @@ typeOfTypeAnnot stage = let t = promote $ typeOfTypesForStage stage in MkAnnot t
 -- TYPE as an annotation
 public export covering
 mtaTypeAnnot : Size ns => Annot ns
-mtaTypeAnnot = let t = promote mtaType in MkAnnot t t Mta
+mtaTypeAnnot = let t = promote {tm = Term} mtaType in MkAnnot t t Mta
 
 -- Dyn b as an annotation
 public export covering
