@@ -1,3 +1,4 @@
+-- A representation of terms which lazily stores both syntax and values.
 module Core.Atoms
 
 import Data.DPair
@@ -10,30 +11,39 @@ import Core.Metavariables
 import Core.Unification
 import Core.Rules
 
--- Here is the deal: I am getting annoyed of dealing with both syntax and
--- values in typechecking. So here I define a representation of terms which
--- lazily stores both syntax and values.
-
 public export
 record AnyDomain (tm : Domain -> Ctx -> Type) (ns : Ctx) where
   constructor Choice
   syn : Lazy (tm Syntax ns)
   val : Lazy (tm Value ns)
   
--- Promote a term or value to an `AnyDomain` type.
+-- All syntactic presheaf related bounds
 public export
-promote : {default Term 0 tm : Domain -> Ctx -> Type} ->
-  (Eval (tm Value) (tm Syntax) (tm Value),
+0 Psh : (Domain -> Ctx -> Type) -> Type
+Psh tm
+  = (Eval (tm Value) (tm Syntax) (tm Value),
     Quote (tm Value) (tm Syntax),
     Weak (tm Value),
     Vars (tm Value))
-  => Size ns => {d : Domain} -> tm d ns -> AnyDomain tm ns
+  
+-- Promote a term or value to an `AnyDomain` type.
+public export
+promote : {default Term 0 tm : Domain -> Ctx -> Type}
+  -> Psh tm
+  => Size ns
+  => {d : Domain}
+  -> tm d ns
+  -> AnyDomain tm ns
 promote {d = Syntax} tm = Choice tm (eval id tm) 
 promote {d = Value} val = Choice (quote val) val
 
 public export
 (WeakSized (tm Syntax), Weak (tm Value)) => WeakSized (AnyDomain tm) where
   weakS e (Choice syn val) = Choice (weakS e syn) (weak e val)
+
+public export
+(WeakSized (tm Syntax), Psh tm) => Vars (AnyDomain tm) where
+  here = promote {tm = tm} here
   
 -- An atom is a term and a value at the same time.
 public export
@@ -173,3 +183,42 @@ psBytesAnnot = MkAnnot (promote psBytes) (promote mtaType) Mta
 public export covering
 staBytesAnnot : Size ns => Annot ns
 staBytesAnnot = MkAnnot (promote staBytes) (promote mtaType) Mta
+
+-- Sorts
+
+-- A sort can be either static (meta-level), dynamic (object-level with a
+-- runtime size), or sized (object-level with a compile-time size).
+public export
+data SortKind : Stage -> Type where
+  Static : SortKind Mta
+  Dyn : SortKind s
+  Sized : SortKind s
+  
+-- The accompanying data for a sort at a given stage.
+public export
+data SortData : (s : Stage) -> SortKind s -> Ctx -> Type where
+  MtaSort : SortData Mta k ns
+  -- Object sorts remember their size.
+  ObjSort : (k : SortKind Obj) -> (by : Atom ns) -> SortData Obj k ns
+  
+-- Convert a `SortData` to its corresponding annotation.
+public export covering
+(.asAnnot) : Size ns => SortData s k ns -> AnnotAt s ns
+(.asAnnot) MtaSort = forgetStage mtaTypeAnnot
+(.asAnnot) (ObjSort Dyn by) = forgetStage $ dynObjTypeAnnot by
+(.asAnnot) (ObjSort Sized by) = forgetStage $ sizedObjTypeAnnot by
+  
+-- An annotation for a given sort.
+public export
+data AnnotFor : (s : Stage) -> SortKind s -> (annotTy : Ctx -> Type) -> (ns : Ctx) -> Type where
+  MkAnnotFor : SortData s k ns -> (inner : annotTy ns) -> AnnotFor s k annotTy ns
+  
+-- The actual type of the annotation.
+public export
+(.inner) : AnnotFor s k annotTy ns -> annotTy ns
+(.inner) (MkAnnotFor _ ty) = ty
+
+-- The sort information for the annotation.
+public export
+(.sortData) : AnnotFor s k annotTy ns -> SortData s k ns
+(.sortData) (MkAnnotFor d _) = d

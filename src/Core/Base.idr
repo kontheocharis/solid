@@ -247,7 +247,7 @@ wkS = weakS (Drop Id)
 -- Syntax supports variables if it supports weakenings and the zero-th deBrujin
 -- index.
 public export
-interface (Weak tm) => Vars (0 tm : Ctx -> Type) where
+interface (WeakSized tm) => Vars (0 tm : Ctx -> Type) where
   here : (sz : Size ns) => tm (ns :< n)
 
 public export
@@ -311,7 +311,7 @@ Eval over tm val => Eval over (Spine ar tm) (Spine ar val) where
 
 -- This can't be implemented with the interface cause we need the `Size` parameter..
 public export
-evalTel : (Vars over, Eval over tm val) => Size ns => Sub ns over ms -> Tel ar tm ms -> Tel ar val ns
+evalTel : (Weak over, Vars over, Eval over tm val) => Size ns => Sub ns over ms -> Tel ar tm ms -> Tel ar val ns
 evalTel env [] = []
 evalTel env (x :: xs) = eval env x :: evalTel (lift env) xs
 
