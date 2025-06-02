@@ -191,12 +191,12 @@ prim : {k : PrimitiveClass} -> {r : PrimitiveReducibility}
   -> Spine ar (Term d) ns
   -> Term d ns
 prim SyntaxIn p sp = sPrim p sp
-prim (ValueIn s) p sp = eval {over = ValTy} (id s) (sPrim p (quote s sp))
+prim (ValueIn s) p sp = eval {over = ValTy} id (sPrim p (quote sp))
 
 public export
 vPrim : {k : PrimitiveClass} -> {r : PrimitiveReducibility}
   -> Size ns
-  -> Primitive k r ar
+  => Primitive k r ar
   -> Spine ar Val ns
   -> Val ns
-vPrim s = prim (ValueIn s)
+vPrim @{s} = prim (ValueIn s)

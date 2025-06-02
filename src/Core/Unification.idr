@@ -57,15 +57,15 @@ interface (HasMetas m) => Unify m sm (0 lhs : Ctx -> Type) (0 rhs : Ctx -> Type)
 
   -- Unify two terms, given the size of the context, assuming both sides are
   -- already resolved
-  unifyImpl : Size ns -> lhs ns -> rhs ns -> m sm (Unification ns)
+  unifyImpl : Size ns => lhs ns -> rhs ns -> m sm (Unification ns)
 
 -- The actual unification function, first resolves both sides.
 public export
-unify : Unify m sm lhs rhs => Size ns -> lhs ns -> rhs ns -> m sm (Unification ns)
-unify @{u} s l r = do
+unify : Unify m sm lhs rhs => Size ns => lhs ns -> rhs ns -> m sm (Unification ns)
+unify @{u} @{s} l r = do
   l' <- resolveLhs @{u} l
   r' <- resolveRhs @{u} r
-  unifyImpl s l' r'
+  unifyImpl l' r'
 
 -- Definitively decide a unification outcome based on a decidable equality
 public export
@@ -118,12 +118,12 @@ mx \/ my = do
 
 -- Solve a unification problem if possible, and return an appropriate outcome
 solve : HasMetas m => Size ns
-  -> MetaVar
+  => MetaVar
   -> Spine ar (Term Value) ns
   -> Term Value ns
   -> m sm (Unification ns)
-solve s m sp t = canSolve >>= \case
-  Val SolvingAllowed => solveProblem s (MkFlex m sp) t >>= \case
+solve m sp t = canSolve >>= \case
+  Val SolvingAllowed => solveProblem (MkFlex m sp) t >>= \case
     Left err => pure $ Error {under = []} err
     Right () => pure AreSame
   Val SolvingNotAllowed => pure DontKnow
@@ -132,13 +132,13 @@ solve s m sp t = canSolve >>= \case
 
 public export
 HasMetas m => Unify m sm Lvl Lvl where
-  unifyImpl s l l' = ifAndOnlyIf (decEq l l') (\Refl => pure AreSame)
+  unifyImpl l l' = ifAndOnlyIf (decEq l l') (\Refl => pure AreSame)
 
 public export
 (HasMetas m, Unify m sm val val') => Unify m sm (Spine as val) (Spine as' val') where
-  unifyImpl s [] [] = pure AreSame
-  unifyImpl s (x :: xs) (y :: ys) = unify s x y /\ unify s xs ys
-  unifyImpl s _ _ = pure AreDifferent
+  unifyImpl [] [] = pure AreSame
+  unifyImpl (x :: xs) (y :: ys) = unify x y /\ unify xs ys
+  unifyImpl _ _ = pure AreDifferent
 
 -- Note: a lot of the intermediate unification implementations might return
 -- DontKnow for things that are actually the same--they do not actually
@@ -159,70 +159,70 @@ HasMetas m => Unify m sm (Term Value) (Term Value)
 --
 -- Must also be in the same stage to be unifiable.
 {r, r' : Reducibility} -> HasMetas m => Unify m sm (Binder md r Value n) (Binder md r' Value n') where
-  unifyImpl _ (BindMtaLam _) (BindMtaLam _) = pure AreSame
+  unifyImpl (BindMtaLam _) (BindMtaLam _) = pure AreSame
   -- unification presupposes same-typedness of both sides so we don't need to check the data here
-  unifyImpl _ (BindObjLam _ _ _) (BindObjLam _ _ _) = pure AreSame
-  unifyImpl s (BindMtaLet _ tyA a) (BindMtaLet _ tyB b) = noSolving ((unify s tyA tyB /\ unify s a b) \/ pure DontKnow)
+  unifyImpl (BindObjLam _ _ _) (BindObjLam _ _ _) = pure AreSame
+  unifyImpl (BindMtaLet _ tyA a) (BindMtaLet _ tyB b) = noSolving ((unify tyA tyB /\ unify a b) \/ pure DontKnow)
   -- same here
-  unifyImpl s (BindObjLet _ _ tyA a) (BindObjLet _ _ tyB b) = noSolving ((unify s tyA tyB /\ unify s a b) \/ pure DontKnow)
-  unifyImpl s (BindMtaPi _ a) (BindMtaPi _ b) = unify s a b
-  unifyImpl s (BindObjPi _ ba bb a) (BindObjPi _ ba' bb' a') = unify s ba ba' /\ unify s bb bb' /\ unify s a a'
-  unifyImpl {r = Rigid} {r' = Rigid} _ _ _ = pure AreDifferent
-  unifyImpl _ _ _ = pure DontKnow
+  unifyImpl (BindObjLet _ _ tyA a) (BindObjLet _ _ tyB b) = noSolving ((unify tyA tyB /\ unify a b) \/ pure DontKnow)
+  unifyImpl (BindMtaPi _ a) (BindMtaPi _ b) = unify a b
+  unifyImpl (BindObjPi _ ba bb a) (BindObjPi _ ba' bb' a') = unify ba ba' /\ unify bb bb' /\ unify a a'
+  unifyImpl {r = Rigid} {r' = Rigid} _ _ = pure AreDifferent
+  unifyImpl _ _ = pure DontKnow
 
 HasMetas m => Unify m SolvingNotAllowed (Variable Value) (Variable Value) where
-  unifyImpl s (Level l) (Level l') = unify s l l'
+  unifyImpl (Level l) (Level l') = unify l l'
 
 {r, r' : Reducibility} -> HasMetas m => Unify m sm (Binding md r Value) (Binding md r' Value) where
-  unifyImpl s (Bound md bindA (Closure {n = n} envA tA)) (Bound md bindB (Closure envB tB))
+  unifyImpl (Bound md bindA (Closure {n = n} envA tA)) (Bound md bindB (Closure envB tB))
     -- unify the binders
-    = unify s bindA bindB
+    = unify bindA bindB
       -- unify the bodies, retaining the name of the first binder (kind of arbirary..)
-      /\ (escapeBinder (displayIdent bindA) <$> unify {lhs = Term Value} {rhs = Term Value} (SS s)
-          (eval (lift s envA) tA)
-          (eval (lift s envB) tB))
+      /\ (escapeBinder (displayIdent bindA) <$> unify {lhs = Term Value} {rhs = Term Value}
+          (eval (lift envA) tA)
+          (eval (lift envB) tB))
 
 {hk : PrimitiveClass} -> HasMetas m =>
   Unify m sm (PrimitiveApplied hk Value Simplified) (PrimitiveApplied hk Value Simplified) where
-    unifyImpl s (SimpApplied {r = PrimIrreducible} p sp) (SimpApplied {r = PrimIrreducible} p' sp')
-      = ifAndOnlyIfHack (primEq p p') (\Refl => unify s sp sp')
-    unifyImpl s (SimpApplied p sp) (SimpApplied p' sp')
-      = noSolving (inCase (primEq p p') (\Refl => unify s sp sp') \/ pure DontKnow)
+    unifyImpl (SimpApplied {r = PrimIrreducible} p sp) (SimpApplied {r = PrimIrreducible} p' sp')
+      = ifAndOnlyIfHack (primEq p p') (\Refl => unify sp sp')
+    unifyImpl (SimpApplied p sp) (SimpApplied p' sp')
+      = noSolving (inCase (primEq p p') (\Refl => unify sp sp') \/ pure DontKnow)
 
 {hk : PrimitiveClass} -> HasMetas m =>
   Unify m SolvingNotAllowed (PrimitiveApplied hk Value Normalised) (PrimitiveApplied hk Value Normalised) where
     -- conservative
-    unifyImpl s (LazyApplied p sp gl) (LazyApplied p' sp' gl')
-      = inCase (primEq p p') (\Refl => unify s sp sp') \/ pure DontKnow
+    unifyImpl (LazyApplied p sp gl) (LazyApplied p' sp' gl')
+      = inCase (primEq p p') (\Refl => unify sp sp') \/ pure DontKnow
 
 HasMetas m => Unify m SolvingNotAllowed (Head Value Simplified) (Head Value Simplified) where
   -- conservative for meta solutions
-  unifyImpl s (ValVar v) (ValVar v') = unify s v v'
-  unifyImpl s (ValMeta m) (ValMeta m') = inCase (decToSemiDec (decEq m m')) (\Refl => pure AreSame)
-  unifyImpl s (PrimNeutral p) (PrimNeutral p') = unify s p p'
-  unifyImpl s _ _ = pure DontKnow
+  unifyImpl (ValVar v) (ValVar v') = unify v v'
+  unifyImpl (ValMeta m) (ValMeta m') = inCase (decToSemiDec (decEq m m')) (\Refl => pure AreSame)
+  unifyImpl (PrimNeutral p) (PrimNeutral p') = unify p p'
+  unifyImpl _ _ = pure DontKnow
 
 HasMetas m => Unify m sm (HeadApplied Value Simplified) (HeadApplied Value Simplified) where
   -- will never retry from this so it's fine to say DontKnow in the end
-  unifyImpl s (h $$ sp) (h' $$ sp') = (noSolving (unify s h h') /\ unify s sp sp') \/ pure DontKnow
+  unifyImpl (h $$ sp) (h' $$ sp') = (noSolving (unify h h') /\ unify sp sp') \/ pure DontKnow
 
 HasMetas m => Unify m SolvingNotAllowed (Head Value Normalised) (Head Value Normalised) where
   -- conservative
-  unifyImpl s (ObjCallable a) (ObjCallable a') = unify s a a'
-  unifyImpl s (ObjLazy a) (ObjLazy b) = unify s a b
-  unifyImpl s (ValDef v) (ValDef v') = unify s v v'
-  unifyImpl s (PrimNeutral p) (PrimNeutral p') = noSolving (unify s p p')
-  unifyImpl _ _ _ = pure DontKnow
+  unifyImpl (ObjCallable a) (ObjCallable a') = unify a a'
+  unifyImpl (ObjLazy a) (ObjLazy b) = unify a b
+  unifyImpl (ValDef v) (ValDef v') = unify v v'
+  unifyImpl (PrimNeutral p) (PrimNeutral p') = noSolving (unify p p')
+  unifyImpl _ _ = pure DontKnow
 
 HasMetas m => Unify m SolvingNotAllowed (HeadApplied Value Normalised) (HeadApplied Value Normalised) where
   -- conservative
-  unifyImpl s (h $$ sp) (h' $$ sp') = (unify s h h' /\ unify s sp sp') \/ pure DontKnow
+  unifyImpl (h $$ sp) (h' $$ sp') = (unify h h' /\ unify sp sp') \/ pure DontKnow
 
 HasMetas m => Unify m SolvingNotAllowed LazyValue LazyValue where
   -- conservative
-  unifyImpl s (LazyApps h _) (LazyApps h' _) = unify s h h' \/ pure DontKnow
-  unifyImpl s (LazyPrimNormal p) (LazyPrimNormal p') = unify s p p'
-  unifyImpl _ _ _ = pure DontKnow
+  unifyImpl (LazyApps h _) (LazyApps h' _) = unify h h' \/ pure DontKnow
+  unifyImpl (LazyPrimNormal p) (LazyPrimNormal p') = unify p p'
+  unifyImpl _ _ = pure DontKnow
 
 -- Finally, term unification
 export
@@ -230,24 +230,24 @@ export
   resolveLhs = resolveMetas
   resolveRhs = resolveMetas
 
-  unifyImpl s (MtaCallable m) (MtaCallable m') = unify s m m'
-  unifyImpl s (SimpPrimNormal p) (SimpPrimNormal p') = unify s p p'
-  unifyImpl s (SimpObjCallable o) (SimpObjCallable o') = unify s o o'
-  unifyImpl s (RigidBinding md r) (RigidBinding md' r') = ifAndOnlyIf (decEq md md') (\Refl => unify s r r')
+  unifyImpl (MtaCallable m) (MtaCallable m') = unify m m'
+  unifyImpl (SimpPrimNormal p) (SimpPrimNormal p') = unify p p'
+  unifyImpl (SimpObjCallable o) (SimpObjCallable o') = unify o o'
+  unifyImpl (RigidBinding md r) (RigidBinding md' r') = ifAndOnlyIf (decEq md md') (\Refl => unify r r')
 
   -- Solve metas
-  unifyImpl s a (SimpApps (ValMeta m' $$ sp')) = solve s m' sp' a
-  unifyImpl s (SimpApps (ValMeta m $$ sp)) b = solve s m sp b
+  unifyImpl a (SimpApps (ValMeta m' $$ sp')) = solve m' sp' a
+  unifyImpl (SimpApps (ValMeta m $$ sp)) b = solve m sp b
 
   -- glued terms can reduce further
-  unifyImpl s (Glued a) (Glued b) = noSolving (unify s a b) \/ unify s (simplified a) (simplified b)
-  unifyImpl s a (Glued b) = unify s a (simplified b)
-  unifyImpl s (Glued a) b = unify s (simplified a) b
+  unifyImpl (Glued a) (Glued b) = noSolving (unify a b) \/ unify (simplified a) (simplified b)
+  unifyImpl a (Glued b) = unify a (simplified b)
+  unifyImpl (Glued a) b = unify (simplified a) b
 
   -- simplified (rigid) applications
-  unifyImpl s (SimpApps a) (SimpApps a') = unify s a a'
-  unifyImpl _ (SimpApps _) _ = pure DontKnow
-  unifyImpl _ _ (SimpApps _) = pure DontKnow
+  unifyImpl (SimpApps a) (SimpApps a') = unify a a'
+  unifyImpl (SimpApps _) _ = pure DontKnow
+  unifyImpl _ (SimpApps _) = pure DontKnow
 
   -- everything else is different
-  unifyImpl _ _ _ = pure AreDifferent
+  unifyImpl _ _ = pure AreDifferent

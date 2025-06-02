@@ -221,11 +221,11 @@ interface Weak (0 tm : Ctx -> Type) where
 -- Weakening when knowing the size of the source context.
 public export
 interface WeakSized (0 tm : Ctx -> Type) where
-  weakS : Size ns -> Size ms -> Wk ns ms -> tm ms -> tm ns
+  weakS : Size ns => Size ms => Wk ns ms -> tm ms -> tm ns
   
 public export
 Weak tm => WeakSized tm where
-  weakS _ _ = weak
+  weakS = weak
 
 public export
 (x : Type) => Weak (const x) where
@@ -241,27 +241,27 @@ wk : Weak tm => tm ns -> tm (ns :< n)
 wk x = weak (Drop Id) x
 
 public export
-wkS : WeakSized tm => Size ns -> tm ns -> tm (ns :< n)
-wkS s x = weakS (SS s) s (Drop Id) x
+wkS : WeakSized tm => Size ns => tm ns -> tm (ns :< n)
+wkS = weakS (Drop Id)
 
 -- Syntax supports variables if it supports weakenings and the zero-th deBrujin
 -- index.
 public export
 interface (Weak tm) => Vars (0 tm : Ctx -> Type) where
-  here : Size ns -> tm (ns :< n)
+  here : (sz : Size ns) => tm (ns :< n)
 
 public export
-lift : (Weak tm, Vars tm) => Size ns -> Sub ns tm ms -> Sub (ns :< a) tm (ms :< a')
-lift s env = env . Drop Id :< here s
+lift : (Weak tm, Vars tm) => (sz : Size ns) => Sub ns tm ms -> Sub (ns :< a) tm (ms :< a')
+lift env = env . Drop Id :< here
 
 public export
-id : (Weak tm, Vars tm) => Size ns -> Sub ns tm ns
-id SZ = [<]
-id (SS k) = lift k (id k)
+id : (Weak tm, Vars tm) => (sz : Size ns) => Sub ns tm ns
+id {sz = SZ} = [<]
+id {sz = SS k} = lift {sz = k} (id {sz = k})
 
 public export
-proj : (Weak tm, Vars tm) => Size ns -> Sub (ns :< n) tm ns
-proj s = id s . Drop Id
+proj : (Weak tm, Vars tm) => Size ns => Sub (ns :< n) tm ns
+proj = id . Drop Id
 
 -- Index into a context
 namespace Con
@@ -278,11 +278,11 @@ interface Eval (0 over : Ctx -> Type) (0 tm : Ctx -> Type) (0 val : Ctx -> Type)
 
 public export
 interface Quote (0 val : Ctx -> Type) (0 tm : Ctx -> Type) where
-  quote : Size ns -> val ns -> tm ns
+  quote : (sz : Size ns) => val ns -> tm ns
 
 -- Supporting evaluation and quoting gives us normalisation
-nf : (Weak over, Vars over, Eval over tm val, Quote val tm) => Size ns -> tm ns -> tm ns
-nf @{(_, _, e, _)} s tm = quote s (eval @{e} (id s) tm)
+nf : (Weak over, Vars over, Eval over tm val, Quote val tm) => Size ns => tm ns -> tm ns
+nf @{(_, _, e, _)} @{s} tm = quote (eval @{e} id tm)
 
 -- Basic implementations for the defined types
 
@@ -295,11 +295,11 @@ Weak Lvl where
 
 public export
 Vars Lvl where
-  here s = lastLvl s
+  here {sz = s} = lastLvl s
 
 public export
 Quote Lvl Idx where
-  quote = lvlToIdx
+  quote {sz = sz} = lvlToIdx sz
 
 public export
 (Weak tm) => Weak (Spine ar tm) where
@@ -311,13 +311,13 @@ Eval over tm val => Eval over (Spine ar tm) (Spine ar val) where
 
 -- This can't be implemented with the interface cause we need the `Size` parameter..
 public export
-evalTel : (Vars over, Eval over tm val) => Size ns -> Sub ns over ms -> Tel ar tm ms -> Tel ar val ns
-evalTel s env [] = []
-evalTel s env (x :: xs) = eval env x :: evalTel (SS s) (lift s env) xs
+evalTel : (Vars over, Eval over tm val) => Size ns => Sub ns over ms -> Tel ar tm ms -> Tel ar val ns
+evalTel env [] = []
+evalTel env (x :: xs) = eval env x :: evalTel (lift env) xs
 
 public export
 Quote val tm => Quote (Spine ar val) (Spine ar tm) where
-  quote s sp = mapSpine (quote s) sp
+  quote sp = mapSpine quote sp
 
 -- Finding variables by name through auto implicits!
 

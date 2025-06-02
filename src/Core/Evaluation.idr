@@ -41,8 +41,8 @@ forceThunk (Bound _ (BindMtaLet _ _ v) (Closure env body)) = eval (env :< v) bod
 
 public export
 EvalPrims => Quote (PrimitiveApplied k Value e) (PrimitiveApplied k Syntax NA) where
-  quote s (SimpApplied h sp) = h $$ quote s sp
-  quote s (LazyApplied h sp _) = h $$ quote s sp
+  quote (SimpApplied h sp) = h $$ quote sp
+  quote (LazyApplied h sp _) = h $$ quote sp
 
 public export
 Weak (PrimitiveApplied k Value e) where
@@ -55,7 +55,7 @@ Eval over (Term d) (Term d') => Eval over (Binder md r d n) (Binder md r d' n) w
 
 public export
 Quote (Term d) (Term d') => Quote (Binder md r d n) (Binder md r d' n) where
-  quote s b = mapBinder (quote s) b
+  quote b = mapBinder (quote) b
 
 public export
 Weak (Binder md r Value n) where
@@ -69,7 +69,7 @@ Eval (Term Value) (Variable Syntax) (Term Value) where
 
 public export
 Quote (Variable Value) (Variable Syntax) where
-  quote s (Level l) = Index (quote s l)
+  quote (Level l) = Index (quote l)
 
 public export
 Weak (Variable Value) where
@@ -77,7 +77,7 @@ Weak (Variable Value) where
 
 public export
 Vars (Term Value) where
-  here s = SimpApps (ValVar (Level (lastLvl s)) $$ [])
+  here {sz = s} = SimpApps (ValVar (Level (lastLvl s)) $$ [])
 
 public export
 Eval (Term Value) (Body Syntax n) (Body Value n) where
@@ -85,7 +85,7 @@ Eval (Term Value) (Body Syntax n) (Body Value n) where
 
 public export
 EvalPrims => Quote (Body Value n) (Body Syntax n) where
-  quote s (Closure env t) = Delayed (quote {val = Term Value} (SS s) (eval (lift s env) t))
+  quote (Closure env t) = Delayed (quote {val = Term Value} (eval (lift env) t))
 
 public export
 Weak (Body Value n) where
@@ -97,7 +97,7 @@ EvalPrims => Eval (Term Value) (Binding md r Syntax) (Binding md r Value) where
 
 public export
 EvalPrims => Quote (Binding md r Value) (Binding md r Syntax) where
-  quote s (Bound {n = n} md bind body) = Bound {n = n} md (quote s bind) (quote s body)
+  quote (Bound {n = n} md bind body) = Bound {n = n} md (quote bind) (quote body)
 
 public export
 Weak (Binding md r Value) where
@@ -132,12 +132,12 @@ EvalPrims => Eval (Term Value) (Head Syntax NA) (Term Value) where
 
 public export
 EvalPrims => Quote (Head Value hk) (Head Syntax NA) where
-  quote s (ValVar v) = SynVar (quote s v)
-  quote s (ValMeta m) = SynMeta m
-  quote s (ValDef v) = SynVar (quote s v)
-  quote s (ObjCallable t) = SynBinding Obj Callable (quote s t)
-  quote s (ObjLazy t) = SynBinding Obj Thunk (quote s t)
-  quote s (PrimNeutral p) = PrimNeutral {e = NA} (quote s p)
+  quote (ValVar v) = SynVar (quote v)
+  quote (ValMeta m) = SynMeta m
+  quote (ValDef v) = SynVar (quote v)
+  quote (ObjCallable t) = SynBinding Obj Callable (quote t)
+  quote (ObjLazy t) = SynBinding Obj Thunk (quote t)
+  quote (PrimNeutral p) = PrimNeutral {e = NA} (quote p)
 
 public export
 Weak (Head Value hk) where
@@ -154,7 +154,7 @@ EvalPrims => Eval (Term Value) (HeadApplied Syntax NA) (Term Value) where
 
 public export
 EvalPrims => Quote (HeadApplied Value hk) (HeadApplied Syntax NA) where
-  quote s (($$) {ar = ar} h sp) = ($$) {ar = ar} (quote s h) (quote s sp)
+  quote (($$) {ar = ar} h sp) = ($$) {ar = ar} (quote h) (quote sp)
 
 public export
 Weak (HeadApplied Value hk) where
@@ -178,15 +178,15 @@ EvalPrims => Eval (Term Value) (Term Syntax) (Term Value) where
 
 public export
 EvalPrims => Quote (Term Value) (Term Syntax) where
-  quote s (Glued (LazyApps a _)) = SynApps (quote s a)
-  quote s (Glued (LazyPrimNormal a)) = SynPrimNormal (quote s a)
-  quote s (SimpApps a) = SynApps (quote s a)
-  quote s (MtaCallable c) = SynApps (SynBinding Mta Callable (quote s c) $$ [])
-  quote s (SimpObjCallable c) = SynApps (SynBinding Obj Callable (quote s c) $$ [])
-  quote s (RigidBinding md c) = RigidBinding md (quote s c)
-  quote s (SimpPrimNormal p) = SynPrimNormal (quote s p)
+  quote (Glued (LazyApps a _)) = SynApps (quote a)
+  quote (Glued (LazyPrimNormal a)) = SynPrimNormal (quote a)
+  quote (SimpApps a) = SynApps (quote a)
+  quote (MtaCallable c) = SynApps (SynBinding Mta Callable (quote c) $$ [])
+  quote (SimpObjCallable c) = SynApps (SynBinding Obj Callable (quote c) $$ [])
+  quote (RigidBinding md c) = RigidBinding md (quote c)
+  quote (SimpPrimNormal p) = SynPrimNormal (quote p)
   
 public export
 EvalPrims => WeakSized (Term Syntax) where
-  weakS src dest e t = quote {val = Term Value} src (weak e (eval (id dest) t))
+  weakS e t = quote {val = Term Value} (weak e (eval id t))
 

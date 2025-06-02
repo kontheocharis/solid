@@ -20,20 +20,14 @@ record AnyDomain (tm : Domain -> Ctx -> Type) (ns : Ctx) where
   syn : Lazy (tm Syntax ns)
   val : Lazy (tm Value ns)
   
--- Promote a term or value to an `AnyDomain` type.
-public export
-promote : {default Term 0 tm : Domain -> Ctx -> Type} ->
-  (Eval (tm Value) (tm Syntax) (tm Value),
-    Quote (tm Value) (tm Syntax),
-    Weak (tm Value),
-    Vars (tm Value))
-  => Size ns => {d : Domain} -> tm d ns -> AnyDomain tm ns
-promote {d = Syntax} tm = Choice tm (eval id tm) 
-promote {d = Value} val = Choice (quote val) val
+promote : (Eval (tm Value) (tm Syntax) (tm Value), Quote (tm Value) (tm Syntax))
+  => Size ns -> {d : Domain} -> tm d ns -> AnyDomain tm ns
+promote sz {d = Syntax} tm = Choice tm (evaluate ctx tm) 
+promote sz {d = Value} val = Choice (reify ctx val) val
 
 public export
 (WeakSized (tm Syntax), Weak (tm Value)) => WeakSized (AnyDomain tm) where
-  weakS e (Choice syn val) = Choice (weakS e syn) (weak e val)
+  weakS src dest e (Choice syn val) = Choice (weakS src dest e syn) (weak e val)
   
 -- An atom is a term and a value at the same time.
 public export
@@ -49,8 +43,8 @@ AtomBody : Ident -> Ctx -> Type
 AtomBody n = AnyDomain (\d => Body d n)
 
 covering
-asExt : Size ns => AtomBody n ns -> Atom (ns :< n)
-asExt (Choice (Delayed s) (Closure env v)) = Choice s (eval (lift env) v)
+asExt : Size ns -> AtomBody n ns -> Atom (ns :< n)
+asExt sz (Choice (Delayed s) (Closure env v)) = Choice s (eval (lift sz env) v)
 
 -- An annotation is a type and a stage
 public export
@@ -119,19 +113,19 @@ maybePackStage {s = Nothing} x = x
   
 public export covering
 EvalPrims => WeakSized Annot where
-  weakS e (MkAnnot t a s) = MkAnnot (weakS e t) (weakS e a) s
+  weakS src dest e (MkAnnot t a s) = MkAnnot (weakS src dest e t) (weakS src dest e a) s
 
 public export covering
 EvalPrims => WeakSized (AnnotAt s) where
-  weakS e (MkAnnotAt t a) = MkAnnotAt (weakS e t) (weakS e a)
+  weakS src dest e (MkAnnotAt t a) = MkAnnotAt (weakS src dest e t) (weakS src dest e a)
 
 public export covering
 EvalPrims => WeakSized Expr where
-  weakS e (MkExpr t a) = MkExpr (weakS e t) (weakS e a)
+  weakS src dest e (MkExpr t a) = MkExpr (weakS src dest e t) (weakS src dest e a)
 
 public export covering
 EvalPrims => WeakSized (ExprAt s) where
-  weakS e (MkExprAt t a) = MkExprAt (weakS e t) (weakS e a)
+  weakS src dest e (MkExprAt t a) = MkExprAt (weakS src dest e t) (weakS src dest e a)
 
 -- Annotation versions of syntax
   
@@ -139,37 +133,37 @@ EvalPrims => WeakSized (ExprAt s) where
 -- 
 -- For the meta level, this is TYPE
 -- For the object level, this is Type 0.
-public export covering
-typeOfTypeAnnot : Size ns => Stage -> Annot ns
-typeOfTypeAnnot stage = let t = promote $ typeOfTypesForStage stage in MkAnnot t t stage
+public export
+typeOfTypeAnnot : Context ns -> Stage -> Annot ns
+typeOfTypeAnnot ctx stage = let t = promote ctx $ typeOfTypesForStage stage in MkAnnot t t stage
 
 -- TYPE as an annotation
-public export covering
-mtaTypeAnnot : Size ns => Annot ns
-mtaTypeAnnot = let t = promote mtaType in MkAnnot t t Mta
+public export
+mtaTypeAnnot : Context ns -> Annot ns
+mtaTypeAnnot ctx = let t = promote ctx mtaType in MkAnnot t t Mta
 
 -- Dyn b as an annotation
-public export covering
-dynObjTypeAnnot : Size ns => Atom ns -> Annot ns
-dynObjTypeAnnot b = MkAnnot --@@Todo: more performant
-  (promote $ dynObjType b.syn)
-  (promote $ sizedObjType zeroBytes)
+public export
+dynObjTypeAnnot : Context ns -> Atom ns -> Annot ns
+dynObjTypeAnnot ctx b = MkAnnot --@@Todo: more performant
+  (promote ctx $ dynObjType b.syn)
+  (promote ctx $ sizedObjType zeroBytes)
   Obj
 
 -- Type b as an annotation
-public export covering
-sizedObjTypeAnnot : Size ns => Atom ns -> Annot ns
-sizedObjTypeAnnot b = MkAnnot --@@Todo: more performant
-  (promote $ sizedObjType b.syn)
-  (promote $ sizedObjType zeroBytes)
+public export
+sizedObjTypeAnnot : Context ns -> Atom ns -> Annot ns
+sizedObjTypeAnnot ctx b = MkAnnot --@@Todo: more performant
+  (promote ctx $ sizedObjType b.syn)
+  (promote ctx $ sizedObjType zeroBytes)
   Obj
 
 -- Partially static bytes, the argument to Dyn
-public export covering
-psBytesAnnot : Size ns => Annot ns
-psBytesAnnot = MkAnnot (promote psBytes) (promote mtaType) Mta
+public export
+psBytesAnnot : Context ns -> Annot ns
+psBytesAnnot ctx = MkAnnot (promote ctx psBytes) (promote ctx mtaType) Mta
 
 -- Static bytes, the argument to Type
-public export covering
-staBytesAnnot : Size ns => Annot ns
-staBytesAnnot = MkAnnot (promote staBytes) (promote mtaType) Mta
+public export
+staBytesAnnot : Context ns -> Annot ns
+staBytesAnnot ctx = MkAnnot (promote ctx staBytes) (promote ctx mtaType) Mta

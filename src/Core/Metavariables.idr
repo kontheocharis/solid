@@ -37,12 +37,12 @@ namespace PRen
     contains : Idx ms -> Maybe (Idx ns)
 
   public export
-  id : Size ns -> PRen ns ns
-  id s = MkPRen s s (\i => Just i)
+  id : Size ns => PRen ns ns
+  id @{s} = MkPRen s s (\i => Just i)
 
   public export
-  removeAll : Size ns -> PRen [<] ns
-  removeAll s = MkPRen SZ s (\i => Nothing)
+  removeAll : Size ns => PRen [<] ns
+  removeAll @{s} = MkPRen SZ s (\i => Nothing)
 
   public export
   lift : PRen ns ms -> PRen (ns :< n) (ms :< n')
@@ -53,10 +53,10 @@ namespace PRen
 -- Invert a renaming if possible (if it is an epimorphism, i.e. if it is linear).
 --
 -- This yields a partial renaming.
-invertRen : Size ns -> Sub ns Idx ms -> Maybe (PRen ms ns)
-invertRen sns [<] = Just (removeAll sns)
-invertRen sns (xs :< x) = do
-  MkPRen dom cod contains <- invertRen sns xs
+invertRen : Size ns => Sub ns Idx ms -> Maybe (PRen ms ns)
+invertRen [<] = Just removeAll
+invertRen (xs :< x) = do
+  MkPRen dom cod contains <- invertRen xs
   case contains x of
     Nothing => Nothing
     Just i => Just (MkPRen (SS dom) cod
@@ -236,13 +236,13 @@ resolveGlueAndMetas t = pure t
 -- turn it into a renaming.
 --
 -- This returns nothing if the spine contains a non-variable.
-spineToRen : (HasMetas m) => Size ns
-  -> Spine ar (Term Value) ns
+spineToRen : (HasMetas m) => (sz : Size ns)
+  => Spine ar (Term Value) ns
   -> m sm (Maybe (Sub ns Idx (arityToCtx ar)))
-spineToRen s [] = pure $ Just [<]
-spineToRen s (x :: xs) = resolveGlueAndMetas x >>= \case
+spineToRen [] = pure $ Just [<]
+spineToRen {sz = s} (x :: xs) = resolveGlueAndMetas x >>= \case
   SimpApps (ValVar (Level l) $$ []) => do
-    xs' <- spineToRen s xs
+    xs' <- spineToRen xs
     pure $ ([<lvlToIdx s l] ++) <$> xs'
   _ => pure Nothing
 
@@ -250,20 +250,20 @@ spineToRen s (x :: xs) = resolveGlueAndMetas x >>= \case
 --
 -- ?m sp =? t
 solution : (HasMetas m) => Size ns
-  -> Flex meta ns
+  => Flex meta ns
   -> Term Value ns
   -> m sm (Either (SolveError ns) (Term Value [<]))
-solution s (MkFlex m sp) t =
+solution (MkFlex m sp) t =
   -- Turn the spine into a renaming
-  spineToRen s sp >>= \case
+  spineToRen sp >>= \case
     Nothing => pure $ Left (NonVar sp)
     -- Invert to get a partial renaming
-    Just sp' => case invertRen s sp' of
+    Just sp' => case invertRen sp' of
       Nothing => pure $ Left (NonLinear sp)
       Just pren =>
         -- Apply the partial renaming to the term, and wrap it in lambdas to
         -- close it
-        let st : Term Syntax _ = quote s t in
+        let st : Term Syntax _ = quote t in
         case ren pren (differentFrom m) st of
           Left err => pure $ Left (RenamingError err)
           Right t' => pure $ Right (eval {over = Term Value} [<] $ closeWithLams pren.dom t')
@@ -271,9 +271,9 @@ solution s (MkFlex m sp) t =
 -- Solve a problem and store it in the metavariable context
 public export
 solveProblem : (HasMetas m) => Size ns
-  -> Flex meta ns
+  => Flex meta ns
   -> Term Value ns
   -> m SolvingAllowed (Either (SolveError ns) ())
-solveProblem s fl t = solution s fl t >>= \case
+solveProblem fl t = solution fl t >>= \case
   Left err => pure $ Left err
   Right t' => Right <$> setSolution fl.meta t'

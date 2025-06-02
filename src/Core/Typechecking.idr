@@ -72,6 +72,10 @@ record Context (ns : Ctx) where
   -- The bound variables in the context, in the form of a spine ready to be applied
   -- to a metavariable.
   binds : Exists (\ar => Spine ar (ValTy) ns)
+  
+%hint
+ctxSize : Context ns -> Size ns
+ctxSize = .size
 
 -- Find a name in the context
 lookup : Context ns -> Name -> Maybe (Idx ns)
@@ -165,59 +169,14 @@ evaluate : Eval Val term value => Context ns -> term ns -> value ns
 evaluate ctx t = eval ctx.defs t
 
 reify : Context ns -> Val ns -> Tm ns
-reify ctx v = quote ctx.size v
-  
-promote : Context ns -> {d : Domain} -> Term d ns -> Atom ns
-promote ctx {d = Syntax} tm = Choice tm (evaluate ctx tm) 
-promote ctx {d = Value} val = Choice (reify ctx val) val
+reify ctx v = quote v
 
 promoteWithoutDefs : Size ns -> {d : Domain} -> Term d ns -> Atom ns
-promoteWithoutDefs s {d = Syntax} tm = Choice tm (eval (id s) tm)
-promoteWithoutDefs s {d = Value} val = Choice (quote s val) val
+promoteWithoutDefs s {d = Syntax} tm = Choice tm (eval id tm)
+promoteWithoutDefs s {d = Value} val = Choice (quote val) val
 
 weaken : WeakSized value => Context ns -> value ns -> value (ns :< n)
-weaken ctx = weakS (SS ctx.size) ctx.size (Drop Id)
-
--- Annotation versions of syntax
-  
--- The type of types, for the given stage.
--- 
--- For the meta level, this is TYPE
--- For the object level, this is Type 0.
-public export
-typeOfTypeAnnot : Context ns -> Stage -> Annot ns
-typeOfTypeAnnot ctx stage = let t = promote ctx $ typeOfTypesForStage stage in MkAnnot t t stage
-
--- TYPE as an annotation
-public export
-mtaTypeAnnot : Context ns -> Annot ns
-mtaTypeAnnot ctx = let t = promote ctx mtaType in MkAnnot t t Mta
-
--- Dyn b as an annotation
-public export
-dynObjTypeAnnot : Context ns -> Atom ns -> Annot ns
-dynObjTypeAnnot ctx b = MkAnnot --@@Todo: more performant
-  (promote ctx $ dynObjType b.syn)
-  (promote ctx $ sizedObjType zeroBytes)
-  Obj
-
--- Type b as an annotation
-public export
-sizedObjTypeAnnot : Context ns -> Atom ns -> Annot ns
-sizedObjTypeAnnot ctx b = MkAnnot --@@Todo: more performant
-  (promote ctx $ sizedObjType b.syn)
-  (promote ctx $ sizedObjType zeroBytes)
-  Obj
-
--- Partially static bytes, the argument to Dyn
-public export
-psBytesAnnot : Context ns -> Annot ns
-psBytesAnnot ctx = MkAnnot (promote ctx psBytes) (promote ctx mtaType) Mta
-
--- Static bytes, the argument to Type
-public export
-staBytesAnnot : Context ns -> Annot ns
-staBytesAnnot ctx = MkAnnot (promote ctx staBytes) (promote ctx mtaType) Mta
+weaken ctx = weakS (Drop Id)
 
 -- Create a fresh metavariable
 freshMeta : HasTc m => Context ns -> Annot ns -> m (Atom ns)
@@ -226,7 +185,7 @@ freshMeta ctx (MkAnnot ty sort s) = do -- @@Todo: use type
   -- Get all the bound variables in the context, and apply them to the
   -- metavariable. This will later result in the metavariable being solved as a
   -- lambda of all these variables.
-  pure . promote ctx $ SimpApps (ValMeta m $$ snd ctx.binds)
+  pure . promote $ SimpApps (ValMeta m $$ snd ctx.binds)
 
 -- Insert all lambdas implicit lambdas in a type-directed manner, without regard
 -- for what the expression is.
@@ -270,7 +229,7 @@ coerce : (HasTc m) => Expr ns -> Annot ns -> m (Tm ns)
 --
 -- Succeeds if the unification says `AreSame`.
 unify : HasTc m => Context ns -> Atom ns -> Atom ns -> m ()
-unify ctx a b = unify {sm = SolvingAllowed} @{unifyValues @{metas}} ctx.size a.val b.val >>= \case
+unify ctx a b = unify {sm = SolvingAllowed} @{unifyValues @{metas}} a.val b.val >>= \case
   AreSame => pure ()
   failure => tcError ctx $ WhenUnifying a b failure
 
@@ -284,7 +243,7 @@ check f = \ctx, annot => do
 
 -- Evaluate a closure with a extended environment
 evalClosure : Context ns -> Body Value n ns -> Term Value (ns :< n')
-evalClosure ctx (Closure env body) = eval (lift ctx.size env) body
+evalClosure ctx (Closure env body) = eval (lift env) body
 
 -- Promote a closure to a function on atoms.
 promoteClosure : Context ns -> Body Value n ns -> (Atom (ns :< n) -> Atom (ns :< n))
@@ -294,12 +253,12 @@ promoteClosure ctx (Closure env body) v
 -- Close a syntactic term into a closure.
 public export
 close : Context ns -> Tm (ns :< n) -> Body Value n ns
-close ctx ty = Closure (id ctx.size) ty
+close ctx ty = Closure id ty
 
 -- The last variable.
 public export
 here : Context ns -> Atom (ns :< n)
-here ctx = Choice (varIdx IZ) (here {tm = Term Value} ctx.size)
+here ctx = Choice (varIdx IZ) (here {tm = Term Value})
 
 data SortKind : Stage -> Type where
   Static : SortKind Mta
@@ -311,17 +270,17 @@ data SortData : (s : Stage) -> SortKind s -> Ctx -> Type where
   ObjSort : (k : SortKind Obj) -> (by : Atom ns) -> SortData Obj k ns
   
 asAnnotAt : Context ns -> SortData s k ns -> AnnotAt s ns
-asAnnotAt ctx MtaSort = forgetStage $ mtaTypeAnnot ctx
-asAnnotAt ctx (ObjSort Dyn by) = forgetStage $ dynObjTypeAnnot ctx by
-asAnnotAt ctx (ObjSort Sized by) = forgetStage $ sizedObjTypeAnnot ctx by
+asAnnotAt ctx MtaSort = forgetStage $ mtaTypeAnnot
+asAnnotAt ctx (ObjSort Dyn by) = forgetStage $ dynObjTypeAnnot by
+asAnnotAt ctx (ObjSort Sized by) = forgetStage $ sizedObjTypeAnnot by
   
 freshSortData : HasTc m => Context ns -> (s : Stage) -> (k : SortKind s) -> m (SortData s k ns)
 freshSortData ctx Mta k = pure $ MtaSort 
 freshSortData ctx Obj Dyn = do
-  b <- freshMeta ctx (psBytesAnnot ctx)
+  b <- freshMeta ctx psBytesAnnot
   pure $ ObjSort Dyn b
 freshSortData ctx Obj Sized = do
-  b <- freshMeta ctx (staBytesAnnot ctx)
+  b <- freshMeta ctx staBytesAnnot
   pure $ ObjSort Sized b
   
 -- For a given stage and sort, this holds the data of the annotation.
@@ -362,16 +321,16 @@ lamExpr ctx piStage piIdent lamIdent bindAnnot bodyAnnot body =
       let MkAnnotFor MtaSort bindTy = bindAnnot
       let MkAnnotFor MtaSort bodyClosure = bodyAnnot
       MkExprAt
-        (promote ctx $ sMtaLam lamIdent body.syn)
-        (forgetStage $ (promote ctx $ vMtaPi piIdent bindTy.val bodyClosure)
-          `asTypeIn` mtaTypeAnnot ctx)
+        (promote $ sMtaLam lamIdent body.syn)
+        (forgetStage $ (promote $ vMtaPi piIdent bindTy.val bodyClosure)
+          `asTypeIn` mtaTypeAnnot)
     Obj => do
       let MkAnnotFor (ObjSort Sized ba) bindTy = bindAnnot
       let MkAnnotFor (ObjSort Sized bb) bodyClosure = bodyAnnot
       MkExprAt
-        (promote ctx $ sObjLam lamIdent ba.syn bb.syn body.syn)
-        (forgetStage $ (promote ctx $ vObjPi piIdent ba.val bb.val bindTy.val bodyClosure)
-          `asTypeIn` sizedObjTypeAnnot ctx (Choice ptrBytes ptrBytes))
+        (promote $ sObjLam lamIdent ba.syn bb.syn body.syn)
+        (forgetStage $ (promote $ vObjPi piIdent ba.val bb.val bindTy.val bodyClosure)
+          `asTypeIn` sizedObjTypeAnnot (Choice ptrBytes ptrBytes))
 
 -- Insert (some kind of an implicit) lambda from the given information.
 --
@@ -386,7 +345,7 @@ insertLam : HasTc m => Context ns
   -> m (ExprAt piStage ns)
 insertLam ctx piStage piIdent bindAnnot bodyAnnot subject = do
   s <- subject (bind piIdent (packStage (asAnnotAt ctx bindAnnot.sortData)) ctx)
-        (promoteClosure ctx bodyAnnot.inner (here ctx) `asTypeIn` (weaken ctx $ typeOfTypeAnnot ctx piStage))
+        (promoteClosure ctx bodyAnnot.inner (here ctx) `asTypeIn` (weaken ctx $ typeOfTypeAnnot piStage))
   pure $ lamExpr ctx piStage piIdent piIdent bindAnnot bodyAnnot s
   
 -- Infer the given object as a type, also inferring its stage in the process.
@@ -404,7 +363,7 @@ freshMetaAnnot ctx s k = do
 
 freshMetaAnnotAny : HasTc m => Context ns -> (s : Stage) -> m (AnnotAt s ns)
 freshMetaAnnotAny ctx s = do
-  let tyOfTy = typeOfTypeAnnot ctx s
+  let tyOfTy = typeOfTypeAnnot s
   tySort <- freshMeta ctx tyOfTy
   ty <- freshMeta ctx (MkAnnot tySort tyOfTy.ty s) 
   pure $ MkAnnotAt ty tySort
@@ -432,19 +391,19 @@ tcPi x a b = ensureKnownStage $ \ctx, stage => case stage of
   -- This is more annoying here because of byte metas, but also I am not
   -- convinced that it is the right thing to do. It might lead to some weird elab results.
   Mta => do
-    let aSort = mtaTypeAnnot ctx
+    let aSort = mtaTypeAnnot
     a' <- check a ctx aSort
-    b' <- b (bind x (a' `asTypeIn` aSort) ctx) (weaken ctx $ mtaTypeAnnot ctx)
-    pure $ MkExprAt (promote ctx $ sMtaPi x a'.syn b'.syn) (forgetStage $ mtaTypeAnnot ctx)
+    b' <- b (bind x (a' `asTypeIn` aSort) ctx) (weaken ctx mtaTypeAnnot)
+    pure $ MkExprAt (promote $ sMtaPi x a'.syn b'.syn) (forgetStage mtaTypeAnnot)
   Obj => do
-    ba <- freshMeta ctx (staBytesAnnot ctx)
-    bb <- freshMeta ctx (staBytesAnnot ctx)
-    let aSort = sizedObjTypeAnnot ctx ba
+    ba <- freshMeta ctx staBytesAnnot
+    bb <- freshMeta ctx staBytesAnnot
+    let aSort = sizedObjTypeAnnot ba
     a' <- check a ctx aSort
-    b' <- b (bind x (a' `asTypeIn` aSort) ctx) (weaken ctx $ sizedObjTypeAnnot ctx bb)
+    b' <- b (bind x (a' `asTypeIn` aSort) ctx) (weaken ctx $ sizedObjTypeAnnot bb)
     pure $ MkExprAt
-      (promote ctx $ sObjPi x ba.syn bb.syn a'.syn b'.syn)
-      (forgetStage $ sizedObjTypeAnnot ctx (Choice ptrBytes ptrBytes)) -- @@Todo: clean this Choice up
+      (promote $ sObjPi x ba.syn bb.syn a'.syn b'.syn)
+      (forgetStage $ sizedObjTypeAnnot (Choice ptrBytes ptrBytes)) -- @@Todo: clean this Choice up
 
 -- The type of the callback that `ifForcePi` calls when it finds a matching
 -- type.
@@ -475,24 +434,24 @@ ifForcePi ctx (mode, name) stage potentialPi ifMatching ifMismatching
             Yes Refl => ifMatching 
             _ => ifMismatching Obj
       in let
-        ba' = promote ctx ba
-        bb' = promote ctx bb
-      in res (promote ctx resolvedPi) (piMode, piName)
-          (MkAnnotFor (ObjSort Sized ba') (promote ctx a))
+        ba' = promote ba
+        bb' = promote bb
+      in res (promote resolvedPi) (piMode, piName)
+          (MkAnnotFor (ObjSort Sized ba') (promote a))
           (MkAnnotFor (ObjSort Sized bb') b)
     -- meta-level pi
     resolvedPi@(RigidBinding piStage@Mta (Bound _ (BindMtaPi (piMode, piName) a) b)) =>
       let res = case decEq (piMode, piStage) (mode, stage) of
             Yes Refl => ifMatching
             _ => ifMismatching Mta
-      in res (promote ctx resolvedPi) (piMode, piName)
-          (MkAnnotFor MtaSort (promote ctx a))
+      in res (promote resolvedPi) (piMode, piName)
+          (MkAnnotFor MtaSort (promote a))
           (MkAnnotFor MtaSort b)
     resolvedPi => do
       -- Did not get a pi, try to construct a pi based on the info we have and
       -- unify it with the potential pi.
       MkExprAt createdPi _ <- tcPi (mode, name) (tcMeta {md = Infer}) (tcMeta {md = Check}) ctx (Just stage)
-      unify ctx (promote ctx resolvedPi) createdPi
+      unify ctx (promote resolvedPi) createdPi
       ifForcePi ctx (mode, name) stage createdPi ifMatching ifMismatching
 
 -- Typechecking combinator for lambdas.
@@ -542,9 +501,9 @@ tcVar : HasTc m => Name -> Tc Infer m
 tcVar n = \ctx, stage' => case lookup ctx n of
     Nothing => tcError ctx $ UnknownName n
     Just idx => do
-      let tm = promote ctx $ varIdx idx
-      let ty = promote ctx $ ctx.con.index idx
-      let sort = promote ctx $ ctx.sorts.index idx
+      let tm = promote $ varIdx idx
+      let ty = promote $ ctx.con.index idx
+      let sort = promote $ ctx.sorts.index idx
       let stage = ctx.stages.index idx
       adjustStageIfNeeded ctx (MkExpr tm (MkAnnot ty sort stage)) stage'
 
