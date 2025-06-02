@@ -234,6 +234,8 @@ check f = \ctx, annot => do
   unify ctx annot.ty result.annot.ty
   pure result.tm
   
+-- Create a `SortData` instance for the given stage and sort kind, by instantiating metas
+-- for the unknown information (byte sizes).
 freshSortData : HasTc m => Context ns -> (s : Stage) -> (k : SortKind s) -> m (SortData s k ns)
 freshSortData ctx Mta k = pure $ MtaSort 
 freshSortData ctx Obj Dyn = do
@@ -242,6 +244,13 @@ freshSortData ctx Obj Dyn = do
 freshSortData ctx Obj Sized = do
   b <- freshMeta ctx staBytesAnnot
   pure $ ObjSort Sized b
+  
+-- Create a fresh annotation for the given stage and sort kind.
+freshMetaAnnot : HasTc m => Context ns -> (s : Stage) -> SortKind s -> m (AnnotAt s ns)
+freshMetaAnnot ctx s k = do
+  tySort <- freshSortData ctx s k <&> .asAnnot
+  ty <- freshMeta ctx (packStage tySort)
+  pure $ MkAnnotAt ty tySort.ty
   
 -- Fit the given annotation to the given kind.
 fitAnnot : HasTc m => Context ns -> (s : Stage) -> (k : SortKind s) -> (annotTy ns, AtomTy ns) -> m (AnnotFor s k annotTy ns)
@@ -288,7 +297,7 @@ insertLam : HasTc m => Context ns
   -> (subject : Tc Check m)
   -> m (ExprAt piStage ns)
 insertLam ctx piStage piIdent bindAnnot bodyAnnot subject = do
-  s <- subject (bind piIdent (packStage bindAnnot.sortData.asAnnot) ctx)
+  s <- subject (bind piIdent (packStage bindAnnot.asAnnot) ctx)
         (bodyAnnot.inner.open `asTypeIn` (wkS $ typeOfTypeAnnot piStage))
   pure $ lamExpr ctx piStage piIdent piIdent bindAnnot bodyAnnot (close ctx.defs s)
   
@@ -298,19 +307,6 @@ inferAnnot ctx kind ty = do
   MkExpr t (MkAnnot univ _ stage) <- ty ctx Nothing
   res <- fitAnnot ctx stage kind {annotTy = AtomTy} (t, univ)
   pure (stage ** res)
-  
-freshMetaAnnot : HasTc m => Context ns -> (s : Stage) -> SortKind s -> m (AnnotAt s ns)
-freshMetaAnnot ctx s k = do
-  tySort <- freshSortData ctx s k <&> .asAnnot
-  ty <- freshMeta ctx (packStage tySort)
-  pure $ MkAnnotAt ty tySort.ty
-
-freshMetaAnnotAny : HasTc m => Context ns -> (s : Stage) -> m (AnnotAt s ns)
-freshMetaAnnotAny ctx s = do
-  let tyOfTy = typeOfTypeAnnot s
-  tySort <- freshMeta ctx tyOfTy
-  ty <- freshMeta ctx (MkAnnot tySort tyOfTy.ty s) 
-  pure $ MkAnnotAt ty tySort
 
 -- Introduce a metavariable
 tcMeta : HasTc m => {md : TcMode} -> {default Nothing name : Maybe Name} -> Tc md m
@@ -319,7 +315,7 @@ tcMeta {md = Check} {name} = \ctx, annot => do
   whenJust name $ \n => addGoal n (MkExpr mta annot) ctx
   pure mta
 tcMeta {md = Infer} {name} = ensureKnownStage $ \ctx, stage => do
-  annot <- freshMetaAnnotAny ctx stage
+  annot <- freshMetaAnnot ctx stage Dyn -- remember, sized < dyn
   mta <- freshMeta ctx (packStage annot)
   whenJust name $ \n => addGoal n (MkExpr mta (packStage annot)) ctx
   pure $ MkExprAt mta annot
@@ -416,7 +412,7 @@ tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnot ty sort stage) => do
 
       -- Then check the body with the computed annotation type.
       body' <- body
-        (bind lamIdent (packStage a.sortData.asAnnot) ctx)
+        (bind lamIdent (packStage a.asAnnot) ctx)
         (packStage b.open.asAnnot)
       
       -- Produce the appropriate lambda based on the stage.
