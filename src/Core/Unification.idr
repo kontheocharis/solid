@@ -158,7 +158,7 @@ HasMetas m => Unify m sm (Term Value) (Term Value)
 -- Conservative for lets.
 --
 -- Must also be in the same stage to be unifiable.
-{r, r' : Reducibility} -> HasMetas m => Unify m sm (Binder md r Value n) (Binder md r' Value n') where
+{sm : SolvingMode} -> {r, r' : Reducibility} -> HasMetas m => Unify m sm (Binder md r Value n) (Binder md r' Value n') where
   unifyImpl (BindMtaLam _) (BindMtaLam _) = pure AreSame
   -- unification presupposes same-typedness of both sides so we don't need to check the data here
   unifyImpl (BindObjLam _ _ _) (BindObjLam _ _ _) = pure AreSame
@@ -173,7 +173,7 @@ HasMetas m => Unify m sm (Term Value) (Term Value)
 HasMetas m => Unify m SolvingNotAllowed (Variable Value) (Variable Value) where
   unifyImpl (Level l) (Level l') = unify l l'
 
-{r, r' : Reducibility} -> HasMetas m => Unify m sm (Binding md r Value) (Binding md r' Value) where
+{sm : SolvingMode} -> {r, r' : Reducibility} -> HasMetas m => Unify m sm (Binding md r Value) (Binding md r' Value) where
   unifyImpl (Bound md bindA (Closure {n = n} envA tA)) (Bound md bindB (Closure envB tB))
     -- unify the binders
     = unify bindA bindB
@@ -182,7 +182,7 @@ HasMetas m => Unify m SolvingNotAllowed (Variable Value) (Variable Value) where
           (eval (lift envA) tA)
           (eval (lift envB) tB))
 
-{hk : PrimitiveClass} -> HasMetas m =>
+{sm : SolvingMode} -> {hk : PrimitiveClass} -> HasMetas m =>
   Unify m sm (PrimitiveApplied hk Value Simplified) (PrimitiveApplied hk Value Simplified) where
     unifyImpl (SimpApplied {r = PrimIrreducible} p sp) (SimpApplied {r = PrimIrreducible} p' sp')
       = ifAndOnlyIfHack (primEq p p') (\Refl => unify sp sp')
@@ -202,7 +202,7 @@ HasMetas m => Unify m SolvingNotAllowed (Head Value Simplified) (Head Value Simp
   unifyImpl (PrimNeutral p) (PrimNeutral p') = unify p p'
   unifyImpl _ _ = pure DontKnow
 
-HasMetas m => Unify m sm (HeadApplied Value Simplified) (HeadApplied Value Simplified) where
+{sm : SolvingMode} -> HasMetas m => Unify m sm (HeadApplied Value Simplified) (HeadApplied Value Simplified) where
   -- will never retry from this so it's fine to say DontKnow in the end
   unifyImpl (h $$ sp) (h' $$ sp') = (noSolving (unify h h') /\ unify sp sp') \/ pure DontKnow
 
@@ -226,7 +226,7 @@ HasMetas m => Unify m SolvingNotAllowed LazyValue LazyValue where
 
 -- Finally, term unification
 export
-[unifyValues] (HasMetas m) => Unify m sm (Term Value) (Term Value) where
+[unifyValues] {sm : SolvingMode} -> (HasMetas m) => Unify m sm (Term Value) (Term Value) where
   resolveLhs = resolveMetas
   resolveRhs = resolveMetas
 

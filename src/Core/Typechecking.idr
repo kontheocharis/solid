@@ -197,9 +197,9 @@ promoteWithoutDefs s {d = Syntax} tm = Choice tm (eval id tm)
 promoteWithoutDefs s {d = Value} val = Choice (quote val) val
 
 -- Create a fresh metavariable
-freshMeta : HasTc m => Context ns -> AnnotAt s ns -> m (ExprAt s ns)
-freshMeta ctx annot = do -- @@Todo: use type
-  m <- newMeta {sm = SolvingAllowed} @{metas}
+freshMeta : HasTc m => Context ns -> Maybe Name -> AnnotAt s ns -> m (ExprAt s ns)
+freshMeta ctx n annot = do -- @@Todo: use type
+  m <- newMeta {sm = SolvingAllowed} @{metas} n
   -- Get all the bound variables in the context, and apply them to the
   -- metavariable. This will later result in the metavariable being solved as a
   -- lambda of all these variables.
@@ -266,17 +266,17 @@ switch f {md = Check} = \ctx, annot => do
 freshSortData : HasTc m => Context ns -> (s : Stage) -> (k : SortKind s) -> m (SortData s k ns)
 freshSortData ctx Mta k = pure $ MtaSort 
 freshSortData ctx Obj Dyn = do
-  b <- freshMeta ctx psBytesAnnot
+  b <- freshMeta ctx Nothing psBytesAnnot
   pure $ ObjSort Dyn b.tm
 freshSortData ctx Obj Sized = do
-  b <- freshMeta ctx staBytesAnnot
+  b <- freshMeta ctx Nothing staBytesAnnot
   pure $ ObjSort Sized b.tm
   
 -- Create a fresh annotation for the given stage and sort kind.
 freshMetaAnnot : HasTc m => Context ns -> (s : Stage) -> SortKind s -> m (AnnotAt s ns)
 freshMetaAnnot ctx s k = do
   tySort <- freshSortData ctx s k <&> .asAnnot
-  ty <- freshMeta ctx tySort
+  ty <- freshMeta ctx Nothing tySort
   pure $ MkAnnotAt ty.tm tySort.ty
   
 -- Fit the given annotation to the given kind.
@@ -313,12 +313,12 @@ inferAnnot ctx kind ty = do
 public export
 tcMeta : HasTc m => {default Nothing name : Maybe Name} -> TcAll m
 tcMeta {md = Check} {name = name} = \ctx, annot => do
-  mta <- freshMeta ctx annot
+  mta <- freshMeta ctx name annot
   whenJust name $ \n => addGoal (MkGoal (Just n) (packStage mta) ctx)
   pure mta.tm
 tcMeta {md = Infer} {name = name} = ensureKnownStage $ \ctx, stage => do
   annot <- freshMetaAnnot ctx stage Dyn -- remember, sized < dyn
-  mta <- freshMeta ctx annot
+  mta <- freshMeta ctx name annot
   whenJust name $ \n => addGoal (MkGoal (Just n) (packStage mta) ctx)
   pure mta
 
@@ -339,8 +339,8 @@ tcPi x a b = switch $ ensureKnownStage $ \ctx, stage => case stage of
     b' <- b {md = Check} (bind x (a' `asTypeIn` aSort) ctx) (wkS mtaTypeAnnot)
     pure $ pi Mta x (MkAnnotFor MtaSort a') (MkAnnotFor MtaSort (close ctx.defs b'))
   Obj => do
-    ba <- freshMeta ctx staBytesAnnot
-    bb <- freshMeta ctx staBytesAnnot
+    ba <- freshMeta ctx Nothing staBytesAnnot
+    bb <- freshMeta ctx Nothing staBytesAnnot
     let aSort = sizedObjTypeAnnot ba.tm
     a' <- a {md = Check} ctx aSort
     b' <- b {md = Check} (bind x (a' `asTypeIn` aSort) ctx) (wkS $ sizedObjTypeAnnot bb.tm)

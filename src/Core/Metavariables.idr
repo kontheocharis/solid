@@ -181,7 +181,7 @@ interface (forall sm . Monad (m sm)) => HasMetas (0 m : SolvingMode -> Type -> T
   getMeta : MetaVar -> m sm (Maybe (Term Value [<]))
 
   -- Create a new metavariable without a solution.
-  newMeta : m sm MetaVar
+  newMeta : Maybe Name -> m sm MetaVar
 
   -- Check if we are allowed to solve metavariables.
   canSolve : m sm (Singleton sm)
@@ -190,7 +190,7 @@ interface (forall sm . Monad (m sm)) => HasMetas (0 m : SolvingMode -> Type -> T
   setSolution : MetaVar -> Term Value [<] -> m SolvingAllowed ()
 
   -- Switch to a context where we are not allowed to solve metavariables.
-  noSolving : m SolvingNotAllowed a -> m sm a
+  noSolving : {sm : SolvingMode} -> m SolvingNotAllowed a -> m sm a
 
 public export
 data SolveError : Ctx -> Type where

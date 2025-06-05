@@ -232,23 +232,23 @@ data Term where
 -- Some convenient shorthands
 
 public export
-0 Tm : Ctx -> Type
+Tm : Ctx -> Type
 Tm = Term Syntax
 
 public export
-0 Ty : Ctx -> Type
+Ty : Ctx -> Type
 Ty = Tm
 
 public export
-0 Val : Ctx -> Type
+Val : Ctx -> Type
 Val = Term Value
 
 public export
-0 ValTy : Ctx -> Type
+ValTy : Ctx -> Type
 ValTy = Val
 
 public export
-0 Env : Ctx -> Ctx -> Type
+Env : Ctx -> Ctx -> Type
 Env ms ns = Sub ms Val ns
 
 -- Helpers to create syntax
