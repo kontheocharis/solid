@@ -83,9 +83,15 @@ data Count : Arity -> Type where
   CS : Count ar -> Count (a :: ar)
   
 public export
+(.count) : (a : Arity) -> Count a
+[] .count = CZ
+(a :: as) .count = CS (as .count)
+  
+public export
 (+) : Size ns -> Count ar -> Size (ns ::< ar)
 s + CZ = s
 s + (CS c) = SS s + c
+
 
 -- Some de-Brujin helpers:
 
@@ -132,6 +138,12 @@ namespace Tel
   data Tel : Arity -> (Ctx -> Type) -> Ctx -> Type where
     Nil : Tel [] f ms
     (::) : f ms -> Tel ar f (ms :< a) -> Tel (a :: ar) f ms
+    
+  public export
+  %hint
+  (.count) : Tel ar f ns -> Count ar
+  (.count) [] = CZ
+  (.count) (x :: xs) = CS xs.count
 
 
 namespace Spine
@@ -146,6 +158,7 @@ namespace Spine
   (x :: sp) ++ sp' = x :: (sp ++ sp')
 
   public export
+  %hint
   (.count) : Spine ar f ns -> Count ar
   (.count) [] = CZ
   (.count) (x :: xs) = CS xs.count
@@ -288,6 +301,11 @@ public export
 id : (Weak tm, Vars tm) => (sz : Size ns) => Sub ns tm ns
 id {sz = SZ} = [<]
 id {sz = SS k} = lift {sz = k} (id {sz = k})
+
+public export
+idS : (WeakSized tm, Vars tm) => (sz : Size ns) => Sub ns tm ns
+idS {sz = SZ} = [<]
+idS {sz = SS k} = liftS {sz = k} (idS {sz = k})
 
 public export
 proj : (Weak tm, Vars tm) => Size ns => Sub (ns :< n) tm ns

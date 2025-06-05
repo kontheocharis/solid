@@ -25,6 +25,15 @@ Atom = AnyDomain Term
 public export
 AtomTy : Ctx -> Type
 AtomTy = AnyDomain Term
+
+namespace ValSpine
+  public export
+  (.val) : Spine ar (AnyDomain tm) ns -> Spine ar (tm Value) ns
+  (.val) sp = mapSpine (force . (.val)) sp
+
+  public export
+  (.syn) : Spine ar (AnyDomain tm) ns -> Spine ar (tm Syntax) ns
+  (.syn) sp = mapSpine (force . (.syn)) sp
   
 -- All syntactic presheaf related bounds
 public export
@@ -133,6 +142,11 @@ namespace Expr
   public export
   asTypeIn : Atom ns -> Annot ns -> Annot ns
   asTypeIn ty (MkAnnot sort _ s) = MkAnnot ty sort s
+  
+namespace ExprAt
+  public export
+  asTypeIn : Atom ns -> AnnotAt s ns -> AnnotAt s ns
+  asTypeIn ty (MkAnnotAt sort _) = MkAnnotAt ty sort
 
 -- Helper to decide which `Expr` to pick based on an optional stage
 public export
@@ -185,39 +199,37 @@ EvalSized Atom (ExprAt s) (ExprAt s) where
 -- For the meta level, this is TYPE
 -- For the object level, this is Type 0.
 public export covering
-typeOfTypeAnnot : Size ns => Stage -> Annot ns
-typeOfTypeAnnot stage = let t = promote $ typeOfTypesForStage stage in MkAnnot t t stage
+typeOfTypeAnnot : Size ns => (s : Stage) -> AnnotAt s ns
+typeOfTypeAnnot stage = let t = promote $ typeOfTypesForStage stage in MkAnnotAt t t
 
 -- TYPE as an annotation
 public export covering
-mtaTypeAnnot : Size ns => Annot ns
-mtaTypeAnnot = let t = promote {tm = Term} mtaType in MkAnnot t t Mta
+mtaTypeAnnot : Size ns => AnnotAt Mta ns
+mtaTypeAnnot = let t = promote {tm = Term} mtaType in MkAnnotAt t t
 
 -- Dyn b as an annotation
 public export covering
-dynObjTypeAnnot : Size ns => Atom ns -> Annot ns
-dynObjTypeAnnot b = MkAnnot --@@Todo: more performant
+dynObjTypeAnnot : Size ns => Atom ns -> AnnotAt Obj ns
+dynObjTypeAnnot b = MkAnnotAt --@@Todo: more performant
   (promote $ dynObjType b.syn)
   (promote $ sizedObjType zeroBytes)
-  Obj
 
 -- Type b as an annotation
 public export covering
-sizedObjTypeAnnot : Size ns => Atom ns -> Annot ns
-sizedObjTypeAnnot b = MkAnnot --@@Todo: more performant
+sizedObjTypeAnnot : Size ns => Atom ns -> AnnotAt Obj ns
+sizedObjTypeAnnot b = MkAnnotAt --@@Todo: more performant
   (promote $ sizedObjType b.syn)
   (promote $ sizedObjType zeroBytes)
-  Obj
 
 -- Partially static bytes, the argument to Dyn
 public export covering
-psBytesAnnot : Size ns => Annot ns
-psBytesAnnot = MkAnnot (promote psBytes) (promote mtaType) Mta
+psBytesAnnot : Size ns => AnnotAt Mta ns
+psBytesAnnot = MkAnnotAt (promote psBytes) (promote mtaType)
 
 -- Static bytes, the argument to Type
 public export covering
-staBytesAnnot : Size ns => Annot ns
-staBytesAnnot = MkAnnot (promote staBytes) (promote mtaType) Mta
+staBytesAnnot : Size ns => AnnotAt Mta ns
+staBytesAnnot = MkAnnotAt (promote staBytes) (promote mtaType)
 
 -- Sorts
 
@@ -244,9 +256,9 @@ WeakSized (SortData s k) where
 -- Convert a `SortData` to its corresponding annotation.
 public export covering
 (.asAnnot) : Size ns => SortData s k ns -> AnnotAt s ns
-(.asAnnot) MtaSort = forgetStage mtaTypeAnnot
-(.asAnnot) (ObjSort Dyn by) = forgetStage $ dynObjTypeAnnot by
-(.asAnnot) (ObjSort Sized by) = forgetStage $ sizedObjTypeAnnot by
+(.asAnnot) MtaSort = mtaTypeAnnot
+(.asAnnot) (ObjSort Dyn by) = dynObjTypeAnnot by
+(.asAnnot) (ObjSort Sized by) = sizedObjTypeAnnot by
 
 namespace AnnotFor
     
@@ -285,9 +297,10 @@ public export covering
 glued : {d : Domain} -> Size ns => Variable d (ns :< n) -> Atom (ns :< n) -> Atom (ns :< n)
 glued v t = Choice (here) (Glued (LazyApps (ValDef (Level here) $$ []) t.val))
 
+-- Make a metavariable expression with the given data.
 public export covering
-meta : Size ns => MetaVar -> Spine ar Atom ns -> Atom ns
-meta m sp = promote $ SimpApps (ValMeta m $$ mapSpine (force . (.val)) sp)
+meta : Size ns => MetaVar -> Spine ar Atom ns -> AnnotAt s ns -> ExprAt s ns
+meta m sp annot = MkExprAt (promote $ SimpApps (ValMeta m $$ mapSpine (force . (.val)) sp)) annot
       
 -- Create a lambda expression with the given data.
 public export covering
@@ -306,16 +319,26 @@ lam piStage piIdent lamIdent bindAnnot bodyAnnot body =
       let MkAnnotFor MtaSort bodyClosure = bodyAnnot
       MkExprAt
         (promote $ sMtaLam lamIdent body.open.syn)
-        (forgetStage $ (promote $ vMtaPi piIdent bindTy.val bodyClosure.val)
+        ((promote $ vMtaPi piIdent bindTy.val bodyClosure.val)
           `asTypeIn` mtaTypeAnnot)
     Obj => do
       let MkAnnotFor (ObjSort Sized ba) bindTy = bindAnnot
       let MkAnnotFor (ObjSort Sized bb) bodyClosure = bodyAnnot
       MkExprAt
         (promote $ sObjLam lamIdent ba.syn bb.syn body.open.syn)
-        (forgetStage $ (promote $ vObjPi piIdent ba.val bb.val bindTy.val bodyClosure.val)
+        ((promote $ vObjPi piIdent ba.val bb.val bindTy.val bodyClosure.val)
           `asTypeIn` sizedObjTypeAnnot (Choice ptrBytes ptrBytes))
           
+-- Create a variable expression with the given index and annotation.
 public export covering
-varIdx : Size ns => Idx ns -> Atom ns
-varIdx idx = promote (varIdx idx)
+var : Size ns => Idx ns -> AnnotAt s ns -> ExprAt s ns
+var idx annot = MkExprAt (promote (varIdx idx)) annot
+
+-- Create a primitive expression with the given data.
+public export covering
+prim : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility} -> Primitive k r ar -> Spine ar Atom ns -> Expr ns
+prim @{s} p sp =
+  let (_, pRet) = primAnnot {ns = ns} p in
+  let ret = sub {sms = s + sp.count} (idS ::< sp) pRet.ty in
+  let retSort = sub {sms = s + sp.count} (idS ::< sp) pRet.sort in
+  MkExpr (Choice (sPrim p sp.syn) (vPrim p sp.val)) (MkAnnot ret retSort pRet.stage)
