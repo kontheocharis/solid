@@ -37,6 +37,19 @@ data TcErrorAt : Ctx -> Type where
   -- Too many applications
   TooManyApps : Expr ns -> Spine ar Atom ns -> TcErrorAt ns
 
+-- A goal is a hole in a context.
+record Goal where
+  constructor MkGoal
+
+  -- The context in which the goal exists
+  {0 conNs : Ctx}
+  ctx : Con ValTy conNs
+
+  -- The actual hole term and its type
+  hole : Expr conNs
+
+  -- The name of the goal hole, if given
+  name : Maybe Name
 
 -- Context for typechecking
 record Context (ns : Ctx) where
@@ -44,35 +57,21 @@ record Context (ns : Ctx) where
   -- All the identifiers in scope
   idents : Singleton ns
   -- The current context of types
-  con : Con AtomTy ns
+  con : Con ValTy ns
   -- The current context of sorts
-  sorts : Con AtomTy ns
+  sorts : Con ValTy ns
   -- The definitions in the context
   --
   -- This is an endomorphism of `con`; bindings are mapped to their level, and
   -- definitions are mapped to their value.
-  defs : Sub ns Atom ns
+  defs : Sub ns Val ns
   -- The stages of the definitions in the context
   stages : Con (const Stage) ns
   -- The size of the context, for quick access
   size : Size ns
   -- The bound variables in the context, in the form of a spine ready to be applied
   -- to a metavariable.
-  binds : Exists (\ar => Spine ar AtomTy ns)
-
--- A goal is a hole in a context.
-record Goal where
-  constructor MkGoal
-  {0 conNs : Ctx}
-
-  -- The name of the goal hole, if given
-  name : Maybe Name
-
-  -- The actual hole term and its type
-  hole : Expr conNs
-
-  -- The context in which the goal exists
-  ctx : Context conNs
+  binds : Exists (\ar => Spine ar ValTy ns)
   
 %hint
 ctxSize : Context ns -> Size ns
@@ -102,20 +101,20 @@ record TcError where
   err : TcErrorAt conNs
 
 -- Add a potentially self-referencing definition to the context.
-addToContext : (isBound : Bool) -> (n : Ident) -> Annot ns -> Atom (ns :< n) -> Context ns -> Context (ns :< n)
+addToContext : (isBound : Bool) -> (n : Ident) -> Annot ns -> Val (ns :< n) -> Context ns -> Context (ns :< n)
 addToContext isBound n (MkAnnot ty sort stage) tm (MkContext (Val idents) con sorts defs stages size (Evidence ar bounds)) =
   MkContext
-    (Val (idents :< n)) (con :< ty) (sorts :< sort) (defs `o` Drop Id :< tm) (stages :< stage) (SS size)
-    (if isBound then (Evidence (ar ++ [n]) $ wkS bounds ++ [tm]) else (Evidence ar $ wkS bounds))
+    (Val (idents :< n)) (con :< ty.val) (sorts :< sort.val) (defs . Drop Id :< tm) (stages :< stage) (SS size)
+    (if isBound then (Evidence (ar ++ [n]) $ wk bounds ++ [tm]) else (Evidence ar $ wk bounds))
 
 -- Add a definition to the context that lazily evaluates to its value.
 define : (n : Ident) -> Expr ns -> Context ns -> Context (ns :< n)
 define n rhs ctx =
-  addToContext False n rhs.annot (promote $ Glued (LazyApps (ValDef (Level here) $$ []) (wk rhs.tm.val))) ctx
+  addToContext False n rhs.annot (Glued (LazyApps (ValDef (Level (lastLvl ctx.size)) $$ []) (wk rhs.tm.val))) ctx
 
 -- Add a binding with no value to the context.
 bind : (n : Ident) -> Annot ns -> Context ns -> Context (ns :< n)
-bind n annot ctx = addToContext True n annot here ctx
+bind n annot ctx = addToContext True n annot (varLvl (lastLvl ctx.size)) ctx
 
 -- Typechecking has access to metas
 interface (Monad m) => HasTc m where
@@ -129,7 +128,7 @@ interface (Monad m) => HasTc m where
   enterLoc : Loc -> m a -> m a
 
   -- Add a user goal
-  addGoal : Goal -> m ()
+  addGoal : Name -> Expr ns -> Context ns -> m ()
 
   -- Get all the goals that have been seen
   getGoals : m (SnocList Goal)
@@ -165,6 +164,9 @@ intercept f {md = Infer} x = \ctx, s => f (x ctx s)
 resolve : HasTc m => Val ns -> m (Val ns)
 resolve x = resolveGlueAndMetas {sm = SolvingAllowed} @{metas} x
 
+evaluate : Eval Val term value => Context ns -> term ns -> value ns
+evaluate ctx t = eval ctx.defs t
+
 promoteWithoutDefs : Size ns -> {d : Domain} -> Term d ns -> Atom ns
 promoteWithoutDefs s {d = Syntax} tm = Choice tm (eval id tm)
 promoteWithoutDefs s {d = Value} val = Choice (quote val) val
@@ -176,7 +178,7 @@ freshMeta ctx (MkAnnot ty sort s) = do -- @@Todo: use type
   -- Get all the bound variables in the context, and apply them to the
   -- metavariable. This will later result in the metavariable being solved as a
   -- lambda of all these variables.
-  pure $ meta m (snd ctx.binds)
+  pure . promote $ SimpApps (ValMeta m $$ snd ctx.binds)
 
 -- Insert all lambdas implicit lambdas in a type-directed manner, without regard
 -- for what the expression is.
@@ -256,6 +258,32 @@ fitAnnot ctx s k (vty, univ) = do
   d <- freshSortData ctx s k
   unify ctx univ d.asAnnot.ty
   pure $ MkAnnotFor d vty
+      
+-- Create a lambda expression with the given data.
+lamExpr : Context ns
+  -> (piStage : Stage)
+  -> (piIdent : Ident)
+  -> (lamIdent : Ident)
+  -> (bindAnnot : AnnotFor piStage Sized AtomTy ns)
+  -> (bodyAnnot : AnnotFor piStage Sized (AtomBody piIdent) ns)
+  -> (body : AtomBody lamIdent ns)
+  -> (ExprAt piStage ns)
+lamExpr ctx piStage piIdent lamIdent bindAnnot bodyAnnot body =
+  case piStage of
+    Mta => do
+      let MkAnnotFor MtaSort bindTy = bindAnnot
+      let MkAnnotFor MtaSort bodyClosure = bodyAnnot
+      MkExprAt
+        (promote $ sMtaLam lamIdent body.open.syn)
+        (forgetStage $ (promote $ vMtaPi piIdent bindTy.val bodyClosure.val)
+          `asTypeIn` mtaTypeAnnot)
+    Obj => do
+      let MkAnnotFor (ObjSort Sized ba) bindTy = bindAnnot
+      let MkAnnotFor (ObjSort Sized bb) bodyClosure = bodyAnnot
+      MkExprAt
+        (promote $ sObjLam lamIdent ba.syn bb.syn body.open.syn)
+        (forgetStage $ (promote $ vObjPi piIdent ba.val bb.val bindTy.val bodyClosure.val)
+          `asTypeIn` sizedObjTypeAnnot (Choice ptrBytes ptrBytes))
 
 -- Insert (some kind of an implicit) lambda from the given information.
 --
@@ -271,7 +299,7 @@ insertLam : HasTc m => Context ns
 insertLam ctx piStage piIdent bindAnnot bodyAnnot subject = do
   s <- subject (bind piIdent (packStage bindAnnot.asAnnot) ctx)
         (bodyAnnot.inner.open `asTypeIn` (wkS $ typeOfTypeAnnot piStage))
-  pure $ lam piStage piIdent piIdent bindAnnot bodyAnnot (close ctx.defs s)
+  pure $ lamExpr ctx piStage piIdent piIdent bindAnnot bodyAnnot (close ctx.defs s)
   
 -- Infer the given object as a type, also inferring its stage in the process.
 inferAnnot : HasTc m => Context ns -> (k : forall s . SortKind s) -> Tc Infer m -> m (s ** AnnotFor s k Atom ns)
@@ -284,12 +312,12 @@ inferAnnot ctx kind ty = do
 tcMeta : HasTc m => {md : TcMode} -> {default Nothing name : Maybe Name} -> Tc md m
 tcMeta {md = Check} {name} = \ctx, annot => do
   mta <- freshMeta ctx annot
-  whenJust name $ \n => addGoal (MkGoal (Just n) (MkExpr mta annot) ctx)
+  whenJust name $ \n => addGoal n (MkExpr mta annot) ctx
   pure mta
 tcMeta {md = Infer} {name} = ensureKnownStage $ \ctx, stage => do
   annot <- freshMetaAnnot ctx stage Dyn -- remember, sized < dyn
   mta <- freshMeta ctx (packStage annot)
-  whenJust name $ \n => addGoal (MkGoal (Just n) (MkExpr mta (packStage annot)) ctx)
+  whenJust name $ \n => addGoal n (MkExpr mta (packStage annot)) ctx
   pure $ MkExprAt mta annot
 
 -- Form a pi type
@@ -388,7 +416,7 @@ tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnot ty sort stage) => do
         (packStage b.open.asAnnot)
       
       -- Produce the appropriate lambda based on the stage.
-      pure $ (lam stage piIdent lamIdent a b (close ctx.defs body')).tm
+      pure $ (lamExpr ctx stage piIdent lamIdent a b (close ctx.defs body')).tm
     )
     (\piStage, resolvedPi, piIdent, a, b => case fst piIdent of
       -- It wasn't the right kind of pi; if it was implicit, insert a lambda
@@ -413,10 +441,10 @@ tcVar : HasTc m => Name -> Tc Infer m
 tcVar n = \ctx, stage' => case lookup ctx n of
     Nothing => tcError ctx $ UnknownName n
     Just idx => do
-      let tm = varIdx idx
-      let ty = ctx.con.indexS idx
-      let sort = ctx.sorts.indexS idx
-      let stage = ctx.stages.indexS idx
+      let tm = promote $ varIdx idx
+      let ty = promote $ ctx.con.index idx
+      let sort = promote $ ctx.sorts.index idx
+      let stage = ctx.stages.index idx
       adjustStageIfNeeded ctx (MkExpr tm (MkAnnot ty sort stage)) stage'
 
 -- Infer or check a user-supplied hole
@@ -438,28 +466,28 @@ checkSpine ctx tms [] = pure ([], tms)
 checkSpine ctx [] annots = ?gaga
 checkSpine ctx ((name, tm) :: tms) (annot :: annots) = do
   tm' <- tm ctx annot 
-  (tms', rest) <- checkSpine ctx tms (sub (ctx.defs :< tm') annots)
+  (tms', rest) <- checkSpine ctx tms (sub (ctx.defs :< tm'.val) annots)
   pure (tm' :: tms', rest)
 
--- tcApp : HasTc m
---   => (subject : Expr ns)
---   -> List (Ident, Tc Check m)
---   -> Tc Infer m
+tcApp : HasTc m
+  => (subject : Expr ns)
+  -> List (Ident, Tc Check m)
+  -> Tc Infer m
 
--- tcPrim : HasTc m
---   => Count ar
---   => {r : PrimitiveReducibility}
---   -> {k : PrimitiveClass}
---   -> Primitive k r ar
---   -> List (Ident, Tc Check m)
---   -> Tc Infer m
--- tcPrim p args = \ctx, stage => do
---   let (pParams, pRet) = primAnnot p
---   (sp, rest) <- checkSpine ctx args pParams
---   let ret = sub {sms = ?fa} (ctx.defs ::< mapSpine (force . (.val)) sp) pRet.ty
+tcPrim : HasTc m
+  => Count ar
+  => {r : PrimitiveReducibility}
+  -> {k : PrimitiveClass}
+  -> Primitive k r ar
+  -> List (Ident, Tc Check m)
+  -> Tc Infer m
+tcPrim p args = \ctx, stage => do
+  let (pParams, pRet) = primAnnot p
+  (sp, rest) <- checkSpine ctx args pParams
+  let ret = sub {sms = ?fa} (ctx.defs ::< mapSpine (force . .val) sp) pRet.ty
 
---   let retSort = sub {sms = ?fab} (ctx.defs ::< mapSpine (force . (.val)) sp) pRet.sort
---   tcApp (MkExpr (promote $ sPrim p (mapSpine (.val) sp)) (MkAnnot ret retSort pRet.stage)) rest ctx stage
+  let retSort = sub {sms = ?fab} (ctx.defs ::< mapSpine (.val) sp) pRet.sort
+  tcApp (MkExpr (promote $ sPrim p (mapSpine (.val) sp)) (MkAnnot ret retSort pRet.stage)) rest ctx stage
 
 
 -- @@TODO:

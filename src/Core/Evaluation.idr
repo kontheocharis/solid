@@ -190,3 +190,6 @@ public export
 EvalPrims => WeakSized (Term Syntax) where
   weakS e t = quote {val = Term Value} (weak e (eval id t))
 
+public export
+EvalPrims => Vars (Term Syntax) where
+  here = SynApps ((SynVar (Index here)) $$ [])

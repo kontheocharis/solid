@@ -39,7 +39,7 @@ public export covering
 promote : Psh tm
   => Size ns
   => {d : Domain}
-  -> tm d ns
+  -> Lazy (tm d ns)
   -> AnyDomain tm ns
 promote {d = Syntax} tm = Choice tm (eval id tm) 
 promote {d = Value} val = Choice (quote val) val
@@ -52,25 +52,10 @@ public export covering
 (WeakSized (tm Syntax), Vars (tm Value), Psh tm) => Vars (AnyDomain tm) where
   here = promote {tm = tm} here
 
--- Substitutions for atoms
-public export covering
-sub : Psh tm => Size ns => Sub ns Val ms -> AnyDomain tm ms -> AnyDomain tm ns
-sub env t = promote {tm = tm} $ eval env t.syn
-
--- Atom spines
--- @@Reconsider: this is kind of ugly
-namespace AtomSpine
-  public export
-  AtomSpine : Arity -> Ctx -> Type
-  AtomSpine ar = AnyDomain (\d => Spine ar (Term d))
-  
-  public export covering
-  Nil : AtomSpine [] ns
-  Nil = Choice [] []
-  
-  public export covering
-  (::) : Atom ns -> AtomSpine ar ns -> AtomSpine (n :: ar) ns
-  x :: xs = Choice (x.syn :: xs.syn) (x.val :: xs.val)
+public export
+(EvalSized (over Value) (tm Syntax) (tm Value), Quote (tm Value) (tm Syntax))
+  => EvalSized (AnyDomain over) (AnyDomain tm) (AnyDomain tm) where
+  evalS env (Choice syn val) = let ev = delay (evalS (mapSub (force . (.val)) env) syn) in Choice (quote ev) ev
 
 -- Atom bodies
 namespace AtomBody
@@ -85,8 +70,8 @@ namespace AtomBody
   (.open) (Choice (Delayed s) (Closure env v)) = Choice (weakS Relabel s) (eval (lift env) v)
 
   public export covering
-  close : Env ns ns -> Atom (ns :< n) -> AtomBody n ns
-  close env t = Choice (Delayed t.syn) (Closure env t.syn)
+  close : Sub ns Atom ns -> Atom (ns :< n) -> AtomBody n ns
+  close env t = Choice (Delayed t.syn) (Closure (mapSub (force . (.val)) env) t.syn)
 
   -- Promote a syntactical body to an `AtomBody`.
   public export covering
@@ -103,7 +88,7 @@ record Annot (ns : Ctx) where
   ty : AtomTy ns
   sort : AtomTy ns
   stage : Stage
-
+  
 -- An annotation at a given stage, which is a type and a sort.
 public export
 record AnnotAt (s : Stage) (ns : Ctx) where
@@ -162,20 +147,36 @@ maybePackStage {s = Just s} (MkExprAt tm (MkAnnotAt ty sort)) = MkExpr tm (MkAnn
 maybePackStage {s = Nothing} x = x
   
 public export covering
-EvalPrims => WeakSized Annot where
+WeakSized Annot where
   weakS e (MkAnnot t a s) = MkAnnot (weakS e t) (weakS e a) s
 
 public export covering
-EvalPrims => WeakSized (AnnotAt s) where
+EvalSized Atom Annot Annot where
+  evalS env (MkAnnot ty sort s) = MkAnnot (evalS env ty) (evalS env sort) s
+
+public export covering
+WeakSized (AnnotAt s) where
   weakS e (MkAnnotAt t a) = MkAnnotAt (weakS e t) (weakS e a)
 
 public export covering
-EvalPrims => WeakSized Expr where
+EvalSized Atom (AnnotAt s) (AnnotAt s) where
+  evalS env (MkAnnotAt ty sort) = MkAnnotAt (evalS env ty) (evalS env sort)
+
+public export covering
+WeakSized Expr where
   weakS e (MkExpr t a) = MkExpr (weakS e t) (weakS e a)
 
 public export covering
-EvalPrims => WeakSized (ExprAt s) where
+EvalSized Atom Expr Expr where
+  evalS env (MkExpr tm a) = MkExpr (evalS env tm) (evalS env a)
+
+public export covering
+WeakSized (ExprAt s) where
   weakS e (MkExprAt t a) = MkExprAt (weakS e t) (weakS e a)
+
+public export covering
+EvalSized Atom (ExprAt s) (ExprAt s) where
+  evalS env (MkExprAt tm a) = MkExprAt (evalS env tm) (evalS env a)
 
 -- Annotation versions of syntax
   
@@ -273,3 +274,48 @@ namespace AnnotFor
   public export covering
   (.open) : Size ns => AnnotFor s k (AtomBody n) ns -> AnnotFor s k Atom (ns :< n')
   (.open) (MkAnnotFor d i) = MkAnnotFor (wkS d) i.open
+  
+-- Primitives
+  
+public export
+primAnnot : (p : Primitive k r ar) -> (Tel ar Annot ns, Annot (ns ::< ar))
+primAnnot = ?primAnnotImpl
+
+public export covering
+glued : {d : Domain} -> Size ns => Variable d (ns :< n) -> Atom (ns :< n) -> Atom (ns :< n)
+glued v t = Choice (here) (Glued (LazyApps (ValDef (Level here) $$ []) t.val))
+
+public export covering
+meta : Size ns => MetaVar -> Spine ar Atom ns -> Atom ns
+meta m sp = promote $ SimpApps (ValMeta m $$ mapSpine (force . (.val)) sp)
+      
+-- Create a lambda expression with the given data.
+public export covering
+lam : Size ns
+  => (piStage : Stage)
+  -> (piIdent : Ident)
+  -> (lamIdent : Ident)
+  -> (bindAnnot : AnnotFor piStage Sized AtomTy ns)
+  -> (bodyAnnot : AnnotFor piStage Sized (AtomBody piIdent) ns)
+  -> (body : AtomBody lamIdent ns)
+  -> ExprAt piStage ns
+lam piStage piIdent lamIdent bindAnnot bodyAnnot body =
+  case piStage of
+    Mta => do
+      let MkAnnotFor MtaSort bindTy = bindAnnot
+      let MkAnnotFor MtaSort bodyClosure = bodyAnnot
+      MkExprAt
+        (promote $ sMtaLam lamIdent body.open.syn)
+        (forgetStage $ (promote $ vMtaPi piIdent bindTy.val bodyClosure.val)
+          `asTypeIn` mtaTypeAnnot)
+    Obj => do
+      let MkAnnotFor (ObjSort Sized ba) bindTy = bindAnnot
+      let MkAnnotFor (ObjSort Sized bb) bodyClosure = bodyAnnot
+      MkExprAt
+        (promote $ sObjLam lamIdent ba.syn bb.syn body.open.syn)
+        (forgetStage $ (promote $ vObjPi piIdent ba.val bb.val bindTy.val bodyClosure.val)
+          `asTypeIn` sizedObjTypeAnnot (Choice ptrBytes ptrBytes))
+          
+public export covering
+varIdx : Size ns => Idx ns -> Atom ns
+varIdx idx = promote (varIdx idx)
