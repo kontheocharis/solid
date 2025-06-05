@@ -18,6 +18,7 @@ import Core.Atoms
 %default covering
 
 -- Typechecking modes
+public export
 data TcMode : Type where
   -- Check against a type, produce an elaborated term
   Check : TcMode
@@ -25,6 +26,7 @@ data TcMode : Type where
   Infer : TcMode
 
 -- Typechecking errors, context-aware
+public export
 data TcErrorAt : Ctx -> Type where
   -- An error arising from unification
   WhenUnifying : Atom ns -> Atom ns -> Unification ns -> TcErrorAt ns
@@ -93,6 +95,7 @@ lookup ctx n = findIdx ctx.idents n
         pure $ IS idx
 
 -- Packaging an error with its context
+public export
 record TcError where
   constructor MkTcError
   {0 conNs : Ctx}
@@ -120,6 +123,7 @@ bind : {s : Stage} -> (n : Ident) -> AnnotAt s ns -> Context ns -> Context (ns :
 bind n annot ctx = addToContext True n annot here ctx
 
 -- Typechecking has access to metas
+public export
 interface (Monad m) => HasTc m where
   -- Explicit instance of metas so that the resolution doesn't die..
   metas : HasMetas (const m)
@@ -141,18 +145,21 @@ interface (Monad m) => HasTc m where
 -- `TcOp m md ns` is a typechecking operation in mode md.
 --
 -- It can be executed to produce an elaborated expression, depending on what `md` is.
+export
 0 TcOp : (md : TcMode) -> (0 m : Type -> Type) -> Ctx -> Type
 TcOp Check m ms = {s : Stage} -> AnnotAt s ms -> m (Atom ms)
 TcOp Infer m ms = (s : Maybe Stage) -> m (ExprAtMaybe s ms)
 
 -- Typechecking in a specific context
+export
 0 TcAt : (md : TcMode) -> (0 m : Type -> Type) -> Ctx -> Type
 TcAt md m ns = Context ns -> TcOp md m ns
 
 -- Typechecking in any context
 --
 -- This is what is mostly used to work with, since a lot of the time we don't know which
--- context we will check in ahead of time (due to things like inserted lambdas).
+-- context we will switch in ahead of time (due to things like inserted lambdas).
+export
 0 Tc : (md : TcMode) -> (0 m : Type -> Type) -> Type
 Tc md m = forall ns . TcAt md m ns
 
@@ -230,8 +237,10 @@ unify ctx a b = unify {sm = SolvingAllowed} @{unifyValues @{metas}} a.val b.val 
 
 -- Force a typechecking operation to be in checking mode. This might involve unifying with an
 -- inferred type.
-check : HasTc m => Tc Infer m -> Tc Check m
-check f = \ctx, annot => do
+public export
+switch : HasTc m => {md : TcMode} -> Tc Infer m -> Tc md m
+switch {md = Infer} f = f
+switch {md = Check} f = \ctx, annot => do
   result <- insertAt ctx $ f ctx (Just (packStage annot).stage)
   unify ctx annot.ty result.annot.ty
   pure result.tm
@@ -285,6 +294,7 @@ inferAnnot ctx kind ty = do
   pure (stage ** res)
 
 -- Introduce a metavariable
+public export
 tcMeta : HasTc m => {md : TcMode} -> {default Nothing name : Maybe Name} -> Tc md m
 tcMeta {md = Check} {name} = \ctx, annot => do
   mta <- freshMeta ctx annot
@@ -297,6 +307,7 @@ tcMeta {md = Infer} {name} = ensureKnownStage $ \ctx, stage => do
   pure mta
 
 -- Form a pi type
+public export
 tcPi : HasTc m
   => Ident
   -> Tc Infer m
@@ -308,26 +319,27 @@ tcPi x a b = ensureKnownStage $ \ctx, stage => case stage of
   -- convinced that it is the right thing to do. It might lead to some weird elab results.
   Mta => do
     let aSort = mtaTypeAnnot
-    a' <- check a ctx aSort
+    a' <- switch {md = Check} a ctx aSort
     b' <- b (bind x (a' `asTypeIn` aSort) ctx) (wkS mtaTypeAnnot)
     pure $ pi Mta x (MkAnnotFor MtaSort a') (MkAnnotFor MtaSort (close ctx.defs b'))
   Obj => do
     ba <- freshMeta ctx staBytesAnnot
     bb <- freshMeta ctx staBytesAnnot
     let aSort = sizedObjTypeAnnot ba.tm
-    a' <- check a ctx aSort
+    a' <- switch {md = Check} a ctx aSort
     b' <- b (bind x (a' `asTypeIn` aSort) ctx) (wkS $ sizedObjTypeAnnot bb.tm)
     pure $ pi Obj x (MkAnnotFor (ObjSort Sized ba.tm) a') (MkAnnotFor (ObjSort Sized bb.tm) (close ctx.defs b'))
 
 -- Typechecking combinator for lambdas.
-tcLam : HasTc m => (md : TcMode)
+public export
+tcLam : HasTc m => {md : TcMode}
   -> (n : Ident)
   -> (bindTy : Maybe (Tc Infer m))
   -> (body : Tc md m)
   -> Tc md m
-tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnotAt ty sort) => do
+tcLam {md = Check} lamIdent bindTy body = \ctx, annot@(MkAnnotAt ty sort) => do
   let stage = (packStage annot).stage
-  -- We must check that the type we have is a pi
+  -- We must switch that the type we have is a pi
   resolve ty >>= \ty' => ifForcePi stage lamIdent ty'
     (\resolvedPi, piIdent, a, b => do
       -- Great, it is a pi. Now first reconcile this with the annotation type
@@ -336,7 +348,7 @@ tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnotAt ty sort) => do
         MkExprAt bindPi _ <- tcPi lamIdent bindTy' (tcMeta {md = Check}) ctx (Just stage)
         unify ctx resolvedPi bindPi
 
-      -- Then check the body with the computed annotation type.
+      -- Then switch the body with the computed annotation type.
       body' <- body
         (bind lamIdent (a.asAnnot) ctx)
         (b.open.asAnnot)
@@ -347,7 +359,7 @@ tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnotAt ty sort) => do
     (\piStage, resolvedPi, piIdent, a, b => case fst piIdent of
       -- It wasn't the right kind of pi; if it was implicit, insert a lambda
       Implicit => do
-        MkExprAt tm _ <- insertLam ctx piStage piIdent a b (tcLam Check lamIdent bindTy body)
+        MkExprAt tm _ <- insertLam ctx piStage piIdent a b (tcLam {md = Check} lamIdent bindTy body)
         pure tm
       -- Otherwise, we have the wrong kind of pi.
       _ => tcError ctx (WrongPiMode (fst piIdent) resolvedPi)
@@ -356,19 +368,21 @@ tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnotAt ty sort) => do
       -- Otherwise try unify with a constructed pi
       createdPi <- tcPi lamIdent (tcMeta {md = Infer}) (tcMeta {md = Check}) ctx (Just stage)
       unify ctx other createdPi.tm
-      tcLam Check lamIdent bindTy body ctx {s = stage} createdPi.toAnnot
+      tcLam {md = Check} lamIdent bindTy body ctx {s = stage} createdPi.toAnnot
     )
-tcLam Infer lamIdent bindTy body = ensureKnownStage $ \ctx, stage => do
+tcLam {md = Infer} lamIdent bindTy body = ensureKnownStage $ \ctx, stage => do
   -- @@Reconsider: Same remark as for pis.
   -- We have a stage, but no type, so just instantiate a meta..
   annot <- freshMetaAnnot ctx stage Sized
-  res <- tcLam Check lamIdent bindTy (check body) ctx annot
+  res <- tcLam {md = Check} lamIdent bindTy (switch {md = Check} body) ctx annot
   pure $ MkExprAt res annot
 
 -- Infer a tuple, given by a list of named terms
+public export
 tcTuple : HasTc m => List (Ident, Tc Check m) -> Tc Check m
 
 -- Infer a variable, by looking up in the context
+public export
 tcVar : HasTc m => Name -> Tc Infer m
 tcVar n = \ctx, stage' => case lookup ctx n of
     Nothing => tcError ctx $ UnknownName n
@@ -376,10 +390,11 @@ tcVar n = \ctx, stage' => case lookup ctx n of
       let tm = var idx (MkAnnotAt {s = ctx.stages.indexS idx} (ctx.con.indexS idx) (ctx.sorts.indexS idx))
       adjustStageIfNeeded ctx (packStage tm) stage'
 
--- Infer or check a user-supplied hole
+-- Infer or switch a user-supplied hole
 --
 -- We should at least know the stage of the hole. User holes are added to the
 -- list of goals, which can be displayed after typechecking.
+public export
 tcHole : HasTc m => {md : TcMode} -> Maybe Name -> Tc md m
 tcHole {md} name = tcMeta {md} {name = name}
 
@@ -398,11 +413,13 @@ checkSpine ctx ((name, tm) :: tms) (annot :: annots) = do
   tms' <- checkSpine ctx tms (sub (ctx.defs :< tm') annots)
   pure (tm' :: tms')
 
+public export
 tcApp : HasTc m
-  => (subject : Expr ns)
+  => (subject : Tc Infer m)
   -> List (Ident, Tc Check m)
   -> Tc Infer m
 
+public export
 tcPrim : HasTc m
   => Count ar
   => {r : PrimitiveReducibility}
