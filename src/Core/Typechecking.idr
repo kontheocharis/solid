@@ -164,8 +164,10 @@ intercept f {md = Infer} x = \ctx, s => f (x ctx s)
 
 -- Some useful shorthands
 
-resolve : HasTc m => Val ns -> m (Val ns)
-resolve x = resolveGlueAndMetas {sm = SolvingAllowed} @{metas} x
+resolve : HasTc m => Size ns => Atom ns -> m (Atom ns)
+resolve x = do
+  t <- resolveGlueAndMetas {sm = SolvingAllowed} @{metas} x.val
+  pure $ promote t
 
 promoteWithoutDefs : Size ns -> {d : Domain} -> Term d ns -> Atom ns
 promoteWithoutDefs s {d = Syntax} tm = Choice tm (eval id tm)
@@ -308,65 +310,14 @@ tcPi x a b = ensureKnownStage $ \ctx, stage => case stage of
     let aSort = mtaTypeAnnot
     a' <- check a ctx aSort
     b' <- b (bind x (a' `asTypeIn` aSort) ctx) (wkS mtaTypeAnnot)
-    pure $ MkExprAt (promote $ sMtaPi x a'.syn b'.syn) (mtaTypeAnnot)
+    pure $ pi Mta x (MkAnnotFor MtaSort a') (MkAnnotFor MtaSort (close ctx.defs b'))
   Obj => do
     ba <- freshMeta ctx staBytesAnnot
     bb <- freshMeta ctx staBytesAnnot
     let aSort = sizedObjTypeAnnot ba.tm
     a' <- check a ctx aSort
     b' <- b (bind x (a' `asTypeIn` aSort) ctx) (wkS $ sizedObjTypeAnnot bb.tm)
-    pure $ MkExprAt
-      (promote $ sObjPi x ba.tm.syn bb.tm.syn a'.syn b'.syn)
-      (sizedObjTypeAnnot (Choice ptrBytes ptrBytes)) -- @@Todo: clean this Choice up
-
--- The type of the callback that `ifForcePi` calls when it finds a matching
--- type.
-0 ForcePiCallback : (r : Type) -> Stage -> Ctx -> Type
-ForcePiCallback r stage ns = (resolvedPi : AtomTy ns)
-  -> (piIdent : Ident)
-  -> (a : AnnotFor stage Sized Atom ns)
-  -> (b : AnnotFor stage Sized (AtomBody piIdent) ns)
-  -> r
-
--- Given a `potentialPi`, try to match it given that we expect something in
--- `mode` and `stage`.
---
--- If it matches, call `ifMatching` with the appropriate information, otherwise
--- call `ifMismatching` with the appropriate information.
-ifForcePi : (HasTc m) => Context ns
-  -> (ident : Ident)
-  -> (stage : Stage)
-  -> (potentialPi : AtomTy ns)
-  -> (ifMatching : ForcePiCallback (m r) stage ns)
-  -> (ifMismatching : (stage' : Stage) -> ForcePiCallback (m r) stage' ns)
-  -> m r
-ifForcePi ctx (mode, name) stage potentialPi ifMatching ifMismatching
-  = resolve potentialPi.val >>= \case
-    -- object-level pi
-    resolvedPi@(RigidBinding piStage@Obj (Bound _ (BindObjPi (piMode, piName) ba bb a) b)) => 
-      let res = case decEq (piMode, piStage) (mode, stage) of
-            Yes Refl => ifMatching 
-            _ => ifMismatching Obj
-      in let
-        ba' = promote ba
-        bb' = promote bb
-      in res (promote resolvedPi) (piMode, piName)
-          (MkAnnotFor (ObjSort Sized ba') (promote a))
-          (MkAnnotFor (ObjSort Sized bb') (promoteBody b))
-    -- meta-level pi
-    resolvedPi@(RigidBinding piStage@Mta (Bound _ (BindMtaPi (piMode, piName) a) b)) =>
-      let res = case decEq (piMode, piStage) (mode, stage) of
-            Yes Refl => ifMatching
-            _ => ifMismatching Mta
-      in res (promote resolvedPi) (piMode, piName)
-          (MkAnnotFor MtaSort (promote a))
-          (MkAnnotFor MtaSort (promoteBody b))
-    resolvedPi => do
-      -- Did not get a pi, try to construct a pi based on the info we have and
-      -- unify it with the potential pi.
-      MkExprAt createdPi _ <- tcPi (mode, name) (tcMeta {md = Infer}) (tcMeta {md = Check}) ctx (Just stage)
-      unify ctx (promote resolvedPi) createdPi
-      ifForcePi ctx (mode, name) stage createdPi ifMatching ifMismatching
+    pure $ pi Obj x (MkAnnotFor (ObjSort Sized ba.tm) a') (MkAnnotFor (ObjSort Sized bb.tm) (close ctx.defs b'))
 
 -- Typechecking combinator for lambdas.
 tcLam : HasTc m => (md : TcMode)
@@ -374,9 +325,10 @@ tcLam : HasTc m => (md : TcMode)
   -> (bindTy : Maybe (Tc Infer m))
   -> (body : Tc md m)
   -> Tc md m
-tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnot ty sort stage) => do
+tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnotAt ty sort) => do
+  let stage = (packStage annot).stage
   -- We must check that the type we have is a pi
-  ifForcePi ctx lamIdent stage ty
+  resolve ty >>= \ty' => ifForcePi stage lamIdent ty'
     (\resolvedPi, piIdent, a, b => do
       -- Great, it is a pi. Now first reconcile this with the annotation type
       -- of the lambda.
@@ -386,8 +338,8 @@ tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnot ty sort stage) => do
 
       -- Then check the body with the computed annotation type.
       body' <- body
-        (bind lamIdent (packStage a.asAnnot) ctx)
-        (packStage b.open.asAnnot)
+        (bind lamIdent (a.asAnnot) ctx)
+        (b.open.asAnnot)
       
       -- Produce the appropriate lambda based on the stage.
       pure $ (lam stage piIdent lamIdent a b (close ctx.defs body')).tm
@@ -400,11 +352,17 @@ tcLam Check lamIdent bindTy body = \ctx, annot@(MkAnnot ty sort stage) => do
       -- Otherwise, we have the wrong kind of pi.
       _ => tcError ctx (WrongPiMode (fst piIdent) resolvedPi)
     )
+    (\other => do
+      -- Otherwise try unify with a constructed pi
+      createdPi <- tcPi lamIdent (tcMeta {md = Infer}) (tcMeta {md = Check}) ctx (Just stage)
+      unify ctx other createdPi.tm
+      tcLam Check lamIdent bindTy body ctx {s = stage} createdPi.toAnnot
+    )
 tcLam Infer lamIdent bindTy body = ensureKnownStage $ \ctx, stage => do
   -- @@Reconsider: Same remark as for pis.
   -- We have a stage, but no type, so just instantiate a meta..
   annot <- freshMetaAnnot ctx stage Sized
-  res <- tcLam Check lamIdent bindTy (check body) ctx (packStage annot)
+  res <- tcLam Check lamIdent bindTy (check body) ctx annot
   pure $ MkExprAt res annot
 
 -- Infer a tuple, given by a list of named terms

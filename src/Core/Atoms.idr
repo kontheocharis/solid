@@ -3,6 +3,7 @@ module Core.Atoms
 
 import Data.DPair
 import Common
+import Decidable.Equality
 import Core.Base
 import Core.Primitives
 import Core.Syntax
@@ -147,6 +148,11 @@ namespace ExprAt
   public export
   asTypeIn : Atom ns -> AnnotAt s ns -> AnnotAt s ns
   asTypeIn ty (MkAnnotAt sort _) = MkAnnotAt ty sort
+  
+  public export
+  (.toAnnot) : ExprAt s ns -> AnnotAt s ns
+  (.toAnnot) (MkExprAt ty (MkAnnotAt sort s)) = MkAnnotAt ty sort
+
 
 -- Helper to decide which `Expr` to pick based on an optional stage
 public export
@@ -287,7 +293,7 @@ namespace AnnotFor
   (.open) : Size ns => AnnotFor s k (AtomBody n) ns -> AnnotFor s k Atom (ns :< n')
   (.open) (MkAnnotFor d i) = MkAnnotFor (wkS d) i.open
   
--- Primitives
+-- Language items
   
 public export
 primAnnot : (p : Primitive k r ar) -> (Tel ar Annot ns, Annot (ns ::< ar))
@@ -328,6 +334,74 @@ lam piStage piIdent lamIdent bindAnnot bodyAnnot body =
         (promote $ sObjLam lamIdent ba.syn bb.syn body.open.syn)
         ((promote $ vObjPi piIdent ba.val bb.val bindTy.val bodyClosure.val)
           `asTypeIn` sizedObjTypeAnnot (Choice ptrBytes ptrBytes))
+          
+-- Create a pi expression
+public export covering
+pi : Size ns
+  => (piStage : Stage)
+  -> (piIdent : Ident)
+  -> (bindAnnot : AnnotFor piStage Sized AtomTy ns)
+  -> (bodyAnnot : AnnotFor piStage Sized (AtomBody piIdent) ns)
+  -> ExprAt piStage ns
+pi piStage piIdent bindAnnot bodyAnnot = case piStage of
+  Mta =>
+    let MkAnnotFor MtaSort bindTy = bindAnnot in
+    let MkAnnotFor MtaSort bodyClosure = bodyAnnot in
+    MkExprAt (promote $ sMtaPi piIdent bindTy.syn bodyClosure.open.syn) (mtaTypeAnnot)
+  Obj =>
+    let MkAnnotFor (ObjSort Sized ba) bindTy = bindAnnot in
+    let MkAnnotFor (ObjSort Sized bb) bodyClosure = bodyAnnot in
+    MkExprAt
+      (promote $ sObjPi piIdent ba.syn bb.syn bindTy.syn bodyClosure.open.syn)
+      (sizedObjTypeAnnot (Choice ptrBytes ptrBytes)) -- @@Todo: clean this Choice up
+
+-- The type of the callback that `ifForcePi` calls when it finds a matching
+-- type.
+public export
+0 ForcePiCallback : (r : Type) -> Stage -> Ctx -> Type
+ForcePiCallback r stage ns = (resolvedPi : AtomTy ns)
+  -> (piIdent : Ident)
+  -> (a : AnnotFor stage Sized Atom ns)
+  -> (b : AnnotFor stage Sized (AtomBody piIdent) ns)
+  -> r
+
+-- Given a `potentialPi`, try to match it given that we expect something in
+-- `mode` and `stage`.
+--
+-- If it matches, call `ifMatching` with the appropriate information, otherwise
+-- call `ifMismatching` with the appropriate information.
+public export covering
+ifForcePi : Size ns
+  => (stage : Stage)
+  -> (ident : Ident)
+  -> (potentialPi : AtomTy ns)
+  -> (ifMatching : ForcePiCallback r stage ns)
+  -> (ifMismatching : (stage' : Stage) -> ForcePiCallback r stage' ns)
+  -> (otherwise : AtomTy ns -> r)
+  -> r
+ifForcePi stage (mode, name) potentialPi ifMatching ifMismatching otherwise
+  = case potentialPi.val of
+    -- object-level pi
+    resolvedPi@(RigidBinding piStage@Obj (Bound _ (BindObjPi (piMode, piName) ba bb a) b)) => 
+      let res = case decEq (piMode, piStage) (mode, stage) of
+            Yes Refl => ifMatching 
+            _ => ifMismatching Obj
+      in let
+        ba' = promote ba
+        bb' = promote bb
+      in res (promote resolvedPi) (piMode, piName)
+          (MkAnnotFor (ObjSort Sized ba') (promote a))
+          (MkAnnotFor (ObjSort Sized bb') (promoteBody b))
+    -- meta-level pi
+    resolvedPi@(RigidBinding piStage@Mta (Bound _ (BindMtaPi (piMode, piName) a) b)) =>
+      let res = case decEq (piMode, piStage) (mode, stage) of
+            Yes Refl => ifMatching
+            _ => ifMismatching Mta
+      in res (promote resolvedPi) (piMode, piName)
+          (MkAnnotFor MtaSort (promote a))
+          (MkAnnotFor MtaSort (promoteBody b))
+    -- fail
+    resolvedPi => otherwise (promote resolvedPi)
           
 -- Create a variable expression with the given index and annotation.
 public export covering
