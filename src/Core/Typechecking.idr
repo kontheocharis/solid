@@ -163,11 +163,27 @@ export
 0 Tc : (md : TcMode) -> (0 m : Type -> Type) -> Type
 Tc md m = forall ns . TcAt md m ns
 
+-- Typechecking at any mode and context.
+export
+0 TcAll : (m : Type -> Type) -> Type
+TcAll m = {md : TcMode} -> Tc md m
+
 -- Map a parametric monadic operation over Tc.
 public export
 intercept : HasTc m => (forall a . m a -> m a) -> {md : TcMode} -> Tc md m -> Tc md m
 intercept f {md = Check} x = \ctx, as => f (x ctx as)
 intercept f {md = Infer} x = \ctx, s => f (x ctx s)
+
+-- Map a parametric monadic operation over TcAll.
+public export
+interceptAll : HasTc m => (forall a . m a -> m a) -> TcAll m -> TcAll m
+interceptAll f x {md = Check} = \ctx, as => f (x {md = Check} ctx as)
+interceptAll f x {md = Infer} = \ctx, s => f (x {md = Infer} ctx s)
+
+public export
+mightKnowStage : HasTc m => (s : Maybe Stage) -> TcAll m -> TcAll m
+-- mightKnowStage Nothing f = f
+-- mightKnowStage (Just s) f {md = Check} = 
 
 -- Some useful shorthands
 
@@ -238,9 +254,9 @@ unify ctx a b = unify {sm = SolvingAllowed} @{unifyValues @{metas}} a.val b.val 
 -- Force a typechecking operation to be in checking mode. This might involve unifying with an
 -- inferred type.
 public export
-switch : HasTc m => {md : TcMode} -> Tc Infer m -> Tc md m
-switch {md = Infer} f = f
-switch {md = Check} f = \ctx, annot => do
+switch : HasTc m => Tc Infer m -> TcAll m
+switch f {md = Infer} = f
+switch f {md = Check} = \ctx, annot => do
   result <- insertAt ctx $ f ctx (Just (packStage annot).stage)
   unify ctx annot.ty result.annot.ty
   pure result.tm
@@ -295,12 +311,12 @@ inferAnnot ctx kind ty = do
 
 -- Introduce a metavariable
 public export
-tcMeta : HasTc m => {md : TcMode} -> {default Nothing name : Maybe Name} -> Tc md m
-tcMeta {md = Check} {name} = \ctx, annot => do
+tcMeta : HasTc m => {default Nothing name : Maybe Name} -> TcAll m
+tcMeta {md = Check} {name = name} = \ctx, annot => do
   mta <- freshMeta ctx annot
   whenJust name $ \n => addGoal (MkGoal (Just n) (packStage mta) ctx)
   pure mta.tm
-tcMeta {md = Infer} {name} = ensureKnownStage $ \ctx, stage => do
+tcMeta {md = Infer} {name = name} = ensureKnownStage $ \ctx, stage => do
   annot <- freshMetaAnnot ctx stage Dyn -- remember, sized < dyn
   mta <- freshMeta ctx annot
   whenJust name $ \n => addGoal (MkGoal (Just n) (packStage mta) ctx)
@@ -310,34 +326,34 @@ tcMeta {md = Infer} {name} = ensureKnownStage $ \ctx, stage => do
 public export
 tcPi : HasTc m
   => Ident
-  -> Tc Infer m
-  -> Tc Check m
-  -> Tc Infer m
-tcPi x a b = ensureKnownStage $ \ctx, stage => case stage of
+  -> TcAll m
+  -> TcAll m
+  -> TcAll m
+tcPi x a b = switch $ ensureKnownStage $ \ctx, stage => case stage of
   -- @@Reconsider: Kovacs infers the stage from the domain if it is not given..
   -- This is more annoying here because of byte metas, but also I am not
   -- convinced that it is the right thing to do. It might lead to some weird elab results.
   Mta => do
     let aSort = mtaTypeAnnot
-    a' <- switch {md = Check} a ctx aSort
-    b' <- b (bind x (a' `asTypeIn` aSort) ctx) (wkS mtaTypeAnnot)
+    a' <- a {md = Check} ctx aSort
+    b' <- b {md = Check} (bind x (a' `asTypeIn` aSort) ctx) (wkS mtaTypeAnnot)
     pure $ pi Mta x (MkAnnotFor MtaSort a') (MkAnnotFor MtaSort (close ctx.defs b'))
   Obj => do
     ba <- freshMeta ctx staBytesAnnot
     bb <- freshMeta ctx staBytesAnnot
     let aSort = sizedObjTypeAnnot ba.tm
-    a' <- switch {md = Check} a ctx aSort
-    b' <- b (bind x (a' `asTypeIn` aSort) ctx) (wkS $ sizedObjTypeAnnot bb.tm)
+    a' <- a {md = Check} ctx aSort
+    b' <- b {md = Check} (bind x (a' `asTypeIn` aSort) ctx) (wkS $ sizedObjTypeAnnot bb.tm)
     pure $ pi Obj x (MkAnnotFor (ObjSort Sized ba.tm) a') (MkAnnotFor (ObjSort Sized bb.tm) (close ctx.defs b'))
 
 -- Typechecking combinator for lambdas.
 public export
-tcLam : HasTc m => {md : TcMode}
-  -> (n : Ident)
-  -> (bindTy : Maybe (Tc Infer m))
-  -> (body : Tc md m)
-  -> Tc md m
-tcLam {md = Check} lamIdent bindTy body = \ctx, annot@(MkAnnotAt ty sort) => do
+tcLam : HasTc m
+  => (n : Ident)
+  -> (bindTy : Maybe (TcAll m))
+  -> (body : TcAll m)
+  -> TcAll m
+tcLam lamIdent bindTy body {md = Check} = \ctx, annot@(MkAnnotAt ty sort) => do
   let stage = (packStage annot).stage
   -- We must switch that the type we have is a pi
   resolve ty >>= \ty' => ifForcePi stage lamIdent ty'
@@ -345,11 +361,11 @@ tcLam {md = Check} lamIdent bindTy body = \ctx, annot@(MkAnnotAt ty sort) => do
       -- Great, it is a pi. Now first reconcile this with the annotation type
       -- of the lambda.
       whenJust bindTy $ \bindTy' => do
-        MkExprAt bindPi _ <- tcPi lamIdent bindTy' (tcMeta {md = Check}) ctx (Just stage)
+        MkExprAt bindPi _ <- tcPi lamIdent bindTy' tcMeta {md = Infer} ctx (Just stage)
         unify ctx resolvedPi bindPi
 
       -- Then switch the body with the computed annotation type.
-      body' <- body
+      body' <- body {md = Check}
         (bind lamIdent (a.asAnnot) ctx)
         (b.open.asAnnot)
       
@@ -366,15 +382,15 @@ tcLam {md = Check} lamIdent bindTy body = \ctx, annot@(MkAnnotAt ty sort) => do
     )
     (\other => do
       -- Otherwise try unify with a constructed pi
-      createdPi <- tcPi lamIdent (tcMeta {md = Infer}) (tcMeta {md = Check}) ctx (Just stage)
+      createdPi <- tcPi lamIdent tcMeta tcMeta {md = Infer} ctx (Just stage)
       unify ctx other createdPi.tm
       tcLam {md = Check} lamIdent bindTy body ctx {s = stage} createdPi.toAnnot
     )
-tcLam {md = Infer} lamIdent bindTy body = ensureKnownStage $ \ctx, stage => do
+tcLam lamIdent bindTy body {md = Infer} = ensureKnownStage $ \ctx, stage => do
   -- @@Reconsider: Same remark as for pis.
   -- We have a stage, but no type, so just instantiate a meta..
   annot <- freshMetaAnnot ctx stage Sized
-  res <- tcLam {md = Check} lamIdent bindTy (switch {md = Check} body) ctx annot
+  res <- tcLam {md = Check} lamIdent bindTy body ctx annot
   pure $ MkExprAt res annot
 
 -- Infer a tuple, given by a list of named terms
@@ -383,8 +399,8 @@ tcTuple : HasTc m => List (Ident, Tc Check m) -> Tc Check m
 
 -- Infer a variable, by looking up in the context
 public export
-tcVar : HasTc m => Name -> Tc Infer m
-tcVar n = \ctx, stage' => case lookup ctx n of
+tcVar : HasTc m => Name -> TcAll m
+tcVar n = switch $ \ctx, stage' => case lookup ctx n of
     Nothing => tcError ctx $ UnknownName n
     Just idx => do
       let tm = var idx (MkAnnotAt {s = ctx.stages.indexS idx} (ctx.con.indexS idx) (ctx.sorts.indexS idx))
@@ -395,29 +411,29 @@ tcVar n = \ctx, stage' => case lookup ctx n of
 -- We should at least know the stage of the hole. User holes are added to the
 -- list of goals, which can be displayed after typechecking.
 public export
-tcHole : HasTc m => {md : TcMode} -> Maybe Name -> Tc md m
-tcHole {md} name = tcMeta {md} {name = name}
+tcHole : HasTc m => Maybe Name -> TcAll m
+tcHole n = tcMeta {name = n}
 
 -- Check a spine against a telescope.
 --
 -- Returns the checked spine and the remaining terms in the input.
 checkSpine : HasTc m
   => Context ns
-  -> List (Ident, Tc Check m)
+  -> List (Ident, TcAll m)
   -> Tel ar Annot ns
   -> m (Spine ar Atom ns)
 checkSpine ctx tms [] = tcError ctx (TooManyApps (map fst tms).count)
 checkSpine ctx [] annots = tcError ctx (TooFewApps annots.count)
 checkSpine ctx ((name, tm) :: tms) (annot :: annots) = do
-  tm' <- tm ctx (forgetStage annot)
+  tm' <- tm {md = Check} ctx (forgetStage annot)
   tms' <- checkSpine ctx tms (sub (ctx.defs :< tm') annots)
   pure (tm' :: tms')
 
 public export
 tcApp : HasTc m
-  => (subject : Tc Infer m)
-  -> List (Ident, Tc Check m)
-  -> Tc Infer m
+  => (subject : TcAll m)
+  -> List (Ident, TcAll m)
+  -> TcAll m
 
 public export
 tcPrim : HasTc m
@@ -425,13 +441,57 @@ tcPrim : HasTc m
   => {r : PrimitiveReducibility}
   -> {k : PrimitiveClass}
   -> Primitive k r ar
-  -> List (Ident, Tc Check m)
-  -> Tc Infer m
-tcPrim p args = \ctx, stage => do
+  -> List (Ident, TcAll m)
+  -> TcAll m
+tcPrim p args = switch $ \ctx, stage => do
   let (pParams, _) = primAnnot p
   sp <- checkSpine ctx args pParams
   adjustStageIfNeeded ctx (prim p sp) stage
+  
+public export
+tcUnit : HasTc m => TcAll m
+tcUnit {md = Check} = \ctx, annot => do
+  ?fa
+tcUnit {md = Infer} = \ctx, annot => do
+  ?fb
+  -- let stage = (packStage annot).stage
+  -- adjustStageIfNeeded ctx (unitForStage stage) stage
+  
+public export
+tcSigma : HasTc m
+  => Ident
+  -> TcAll m
+  -> TcAll m
+  -> TcAll m
 
+public export
+tcPairs : HasTc m
+  => List (Ident, TcAll m)
+  -> TcAll m
+
+public export
+tcProj : HasTc m
+  => (subject : TcAll m)
+  -> (member : Name)
+  -> TcAll m
+  
+public export
+tcLet : HasTc m
+  => Name
+  -> Maybe Stage
+  -> (Maybe (TcAll m))
+  -> TcAll m
+  -> TcAll m
+  -> TcAll m
+  
+public export
+tcLetRec : HasTc m
+  => Name
+  -> Maybe Stage
+  -> TcAll m
+  -> TcAll m
+  -> TcAll m
+  -> TcAll m
 
 -- @@TODO:
 --
