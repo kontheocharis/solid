@@ -1,3 +1,4 @@
+-- Entry point for the compiler
 module Main
 
 import System
@@ -7,43 +8,13 @@ import Common
 import Utils
 import Surface.Presyntax
 import Surface.Parsing
+import Core.Atoms
+import Core.Syntax
+import Pipeline.Core
+import Pipeline.Compiler
+import Control.Monad.State
 
 %default covering
-
-processProgram : String -> IO ()
-processProgram s = do
-  Right parsed <- pure $ parse topLevelBlock s
-    | Left err => do
-        putStrLn "Parse error:"
-        putStrLn $ "  " ++ show err
-        exitWith (ExitFailure 1)
-  -- (Evidence _ sig) <- evalStateT dummyLoc $ elabSig parsed
-  putStrLn $ "-- Raw program:\n" ++ show parsed
-  -- putStrLn $ "-- Checked program:\n" ++ show sig
-
--- evalTerm : (bs : Names) => Context gs ns bs -> String -> IO ()
--- evalTerm ctx s = do
---   Right parsed <- pure $ parse tm s
---     | Left err => do
---         putStrLn "Parse error:"
---         putStrLn $ "  " ++ show err
---         exitWith (ExitFailure 1)
---   (tm, ty) <- evalStateT dummyLoc $ infer (elab Infer parsed) ctx
---   let val = eval ctx.globEnv ctx.local.env tm
---   putStrLn $ "Raw: " ++ show parsed
---   putStrLn $ "Type: " ++ show ty
---   putStrLn $ "Value: " ++ show val
-
--- processTerm : String -> IO ()
--- processTerm input = evalTerm (MkContext [<] [<]) input
-
-processFile : String -> IO ()
-processFile filename = do
-  Right content <- readFile filename
-    | Left err => do
-        putStrLn $ "Error reading file: " ++ show err
-        exitWith (ExitFailure 1)
-  processProgram content
 
 showUsage : IO ()
 showUsage = do
@@ -57,8 +28,18 @@ main = do
   args <- getArgs
   case args of
     [_, "-h"] => showUsage
-    -- [_, "-e", expr] => processTerm expr
-    [_, filename] => processFile filename
+    [_, filename, "--until", expr] => do
+      case fromString expr of
+        Just (_ ** _ ** stage) => do
+          result <- compileUntil (FileInput filename) stage
+          putStrLn $ "Executed until " ++ expr
+        Nothing => do
+          putStrLn "Invalid stage name"
+          showUsage
+          exitWith (ExitFailure 1)
+    [_, filename] => do
+      result <- compileUntil (FileInput filename) (get Code)
+      putStrLn $ "Done"
     _ => do
       putStrLn "Invalid arguments"
       showUsage

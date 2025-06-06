@@ -43,6 +43,7 @@ data TcErrorAt : Ctx -> Type where
 
 
 -- Context for typechecking
+public export
 record Context (ns : Ctx) where
   constructor MkContext
   -- All the identifiers in scope
@@ -63,8 +64,14 @@ record Context (ns : Ctx) where
   -- The bound variables in the context, in the form of a spine ready to be applied
   -- to a metavariable.
   binds : Exists (\ar => Spine ar AtomTy ns)
+  
+public export
+emptyContext : Context [<]
+emptyContext =
+  MkContext (Val [<]) [<] [<] [<] [<] SZ (Evidence [] [])
 
 -- A goal is a hole in a context.
+public export
 record Goal where
   constructor MkGoal
   {0 conNs : Ctx}
@@ -105,6 +112,10 @@ record TcError where
   loc : Loc
   -- The error itself
   err : TcErrorAt conNs
+  
+export
+Show TcError where
+  show = ?showTcError
 
 -- Add a potentially self-referencing definition to the context.
 addToContext : {s : Stage} -> (isBound : Bool) -> (n : Ident) -> AnnotAt s ns -> Atom (ns :< n) -> Context ns -> Context (ns :< n)
@@ -125,8 +136,11 @@ bind n annot ctx = addToContext True n annot here ctx
 -- Typechecking has access to metas
 public export
 interface (Monad m) => HasTc m where
+  
   -- Explicit instance of metas so that the resolution doesn't die..
-  metas : HasMetas (const m)
+  0 metasM : SolvingMode -> Type -> Type
+  enterMetas : {sm : SolvingMode} -> metasM sm t -> m t
+  metas : HasMetas metasM
 
   -- Throw a typechecking error
   tcError : Context ns -> TcErrorAt ns -> m a
@@ -145,13 +159,13 @@ interface (Monad m) => HasTc m where
 -- `TcOp m md ns` is a typechecking operation in mode md.
 --
 -- It can be executed to produce an elaborated expression, depending on what `md` is.
-export
+public export
 0 TcOp : (md : TcMode) -> (0 m : Type -> Type) -> Ctx -> Type
 TcOp Check m ms = {s : Stage} -> AnnotAt s ms -> m (Atom ms)
 TcOp Infer m ms = (s : Maybe Stage) -> m (ExprAtMaybe s ms)
 
 -- Typechecking in a specific context
-export
+public export
 0 TcAt : (md : TcMode) -> (0 m : Type -> Type) -> Ctx -> Type
 TcAt md m ns = Context ns -> TcOp md m ns
 
@@ -159,7 +173,7 @@ TcAt md m ns = Context ns -> TcOp md m ns
 --
 -- This is what is mostly used to work with, since a lot of the time we don't know which
 -- context we will switch in ahead of time (due to things like inserted lambdas).
-export
+public export
 0 Tc : (md : TcMode) -> (0 m : Type -> Type) -> Type
 Tc md m = forall ns . TcAt md m ns
 
@@ -167,6 +181,10 @@ Tc md m = forall ns . TcAt md m ns
 export
 0 TcAll : (m : Type -> Type) -> Type
 TcAll m = {md : TcMode} -> Tc md m
+
+export
+runAt : (md : TcMode) -> TcAll m -> Tc md m
+runAt md f = f {md = md}
 
 -- Map a parametric monadic operation over Tc.
 public export
@@ -189,7 +207,7 @@ mightKnowStage : HasTc m => (s : Maybe Stage) -> TcAll m -> TcAll m
 
 resolve : HasTc m => Size ns => Atom ns -> m (Atom ns)
 resolve x = do
-  t <- resolveGlueAndMetas {sm = SolvingAllowed} @{metas} x.val
+  t <- enterMetas $ resolveGlueAndMetas {sm = SolvingAllowed} @{metas} x.val
   pure $ promote t
 
 promoteWithoutDefs : Size ns -> {d : Domain} -> Term d ns -> Atom ns
@@ -199,7 +217,7 @@ promoteWithoutDefs s {d = Value} val = Choice (quote val) val
 -- Create a fresh metavariable
 freshMeta : HasTc m => Context ns -> Maybe Name -> AnnotAt s ns -> m (ExprAt s ns)
 freshMeta ctx n annot = do -- @@Todo: use type
-  m <- newMeta {sm = SolvingAllowed} @{metas} n
+  m <- enterMetas $ newMeta {sm = SolvingAllowed} @{metas} n
   -- Get all the bound variables in the context, and apply them to the
   -- metavariable. This will later result in the metavariable being solved as a
   -- lambda of all these variables.
@@ -247,9 +265,11 @@ coerce : (HasTc m) => Expr ns -> Annot ns -> m (Tm ns)
 --
 -- Succeeds if the unification says `AreSame`.
 unify : HasTc m => Context ns -> Atom ns -> Atom ns -> m ()
-unify ctx a b = unify {sm = SolvingAllowed} @{unifyValues @{metas}} a.val b.val >>= \case
-  AreSame => pure ()
-  failure => tcError ctx $ WhenUnifying a b failure
+unify ctx a b = do
+  val : Unification _ <- enterMetas (unify {sm = SolvingAllowed} @{unifyValues @{metas}} a.val b.val)
+  case val of
+    AreSame => pure ()
+    failure => tcError ctx $ WhenUnifying a b failure
 
 -- Force a typechecking operation to be in checking mode. This might involve unifying with an
 -- inferred type.
@@ -309,6 +329,23 @@ inferAnnot ctx kind ty = do
   res <- fitAnnot ctx stage kind {annotTy = AtomTy} (t, univ)
   pure (stage ** res)
 
+-- Check a spine against a telescope.
+--
+-- Returns the checked spine and the remaining terms in the input.
+checkSpine : HasTc m
+  => Context ns
+  -> List (Ident, TcAll m)
+  -> Tel ar Annot ns
+  -> m (Spine ar Atom ns)
+checkSpine ctx tms [] = tcError ctx (TooManyApps (map fst tms).count)
+checkSpine ctx [] annots = tcError ctx (TooFewApps annots.count)
+checkSpine ctx ((name, tm) :: tms) (annot :: annots) = do
+  tm' <- tm {md = Check} ctx (forgetStage annot)
+  tms' <- checkSpine ctx tms (sub (ctx.defs :< tm') annots)
+  pure (tm' :: tms')
+  
+-- Main combinators:
+
 -- Introduce a metavariable
 public export
 tcMeta : HasTc m => {default Nothing name : Maybe Name} -> TcAll m
@@ -322,7 +359,7 @@ tcMeta {md = Infer} {name = name} = ensureKnownStage $ \ctx, stage => do
   whenJust name $ \n => addGoal (MkGoal (Just n) (packStage mta) ctx)
   pure mta
 
--- Form a pi type
+-- Check a function type.
 public export
 tcPi : HasTc m
   => Ident
@@ -346,7 +383,7 @@ tcPi x a b = switch $ ensureKnownStage $ \ctx, stage => case stage of
     b' <- b {md = Check} (bind x (a' `asTypeIn` aSort) ctx) (wkS $ sizedObjTypeAnnot bb.tm)
     pure $ pi Obj x (MkAnnotFor (ObjSort Sized ba.tm) a') (MkAnnotFor (ObjSort Sized bb.tm) (close ctx.defs b'))
 
--- Typechecking combinator for lambdas.
+-- Check a lambda abstraction.
 public export
 tcLam : HasTc m
   => (n : Ident)
@@ -393,11 +430,7 @@ tcLam lamIdent bindTy body {md = Infer} = ensureKnownStage $ \ctx, stage => do
   res <- tcLam {md = Check} lamIdent bindTy body ctx annot
   pure $ MkExprAt res annot
 
--- Infer a tuple, given by a list of named terms
-public export
-tcTuple : HasTc m => List (Ident, Tc Check m) -> Tc Check m
-
--- Infer a variable, by looking up in the context
+-- Check a variable, by looking up in the context
 public export
 tcVar : HasTc m => Name -> TcAll m
 tcVar n = switch $ \ctx, stage' => case lookup ctx n of
@@ -414,27 +447,14 @@ public export
 tcHole : HasTc m => Maybe Name -> TcAll m
 tcHole n = tcMeta {name = n}
 
--- Check a spine against a telescope.
---
--- Returns the checked spine and the remaining terms in the input.
-checkSpine : HasTc m
-  => Context ns
-  -> List (Ident, TcAll m)
-  -> Tel ar Annot ns
-  -> m (Spine ar Atom ns)
-checkSpine ctx tms [] = tcError ctx (TooManyApps (map fst tms).count)
-checkSpine ctx [] annots = tcError ctx (TooFewApps annots.count)
-checkSpine ctx ((name, tm) :: tms) (annot :: annots) = do
-  tm' <- tm {md = Check} ctx (forgetStage annot)
-  tms' <- checkSpine ctx tms (sub (ctx.defs :< tm') annots)
-  pure (tm' :: tms')
-
+-- Check an application
 public export
 tcApp : HasTc m
   => (subject : TcAll m)
   -> List (Ident, TcAll m)
   -> TcAll m
 
+-- Check a primitive
 public export
 tcPrim : HasTc m
   => Count ar
@@ -448,6 +468,7 @@ tcPrim p args = switch $ \ctx, stage => do
   sp <- checkSpine ctx args pParams
   adjustStageIfNeeded ctx (prim p sp) stage
   
+-- Check the unit type or term.
 public export
 tcUnit : HasTc m => TcAll m
 tcUnit {md = Check} = \ctx, annot => do
@@ -457,6 +478,7 @@ tcUnit {md = Infer} = \ctx, annot => do
   -- let stage = (packStage annot).stage
   -- adjustStageIfNeeded ctx (unitForStage stage) stage
   
+-- Check a sigma type
 public export
 tcSigma : HasTc m
   => Ident
@@ -464,17 +486,20 @@ tcSigma : HasTc m
   -> TcAll m
   -> TcAll m
 
+-- Check an iterated pair
 public export
 tcPairs : HasTc m
   => List (Ident, TcAll m)
   -> TcAll m
 
+-- Check a named pair projection
 public export
 tcProj : HasTc m
   => (subject : TcAll m)
   -> (member : Name)
   -> TcAll m
   
+-- Check a let statement.
 public export
 tcLet : HasTc m
   => Name
@@ -484,6 +509,7 @@ tcLet : HasTc m
   -> TcAll m
   -> TcAll m
   
+-- Check a let-rec statement.
 public export
 tcLetRec : HasTc m
   => Name
@@ -492,15 +518,3 @@ tcLetRec : HasTc m
   -> TcAll m
   -> TcAll m
   -> TcAll m
-
--- @@TODO:
---
--- fix lambdas
--- Let
--- Let rec
--- Universe
--- Sigma
--- Pairs
--- Projection
--- Literals
--- Coercion

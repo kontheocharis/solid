@@ -1,4 +1,6 @@
--- Elaboration of surface syntax to core syntax.
+-- Elaboration of surface syntax to typechecking operations.
+--
+-- These can be run in an existing context to produce a core term.
 module Surface.Elaboration
 
 import Utils
@@ -6,17 +8,24 @@ import Common
 import Decidable.Equality
 import Data.Singleton
 import Data.DPair
+import Core.Base
 import Core.Atoms
 import Core.Typechecking
 import Surface.Presyntax
 import Data.Maybe
 
-covering
+-- Elaborate a presyntax term into a typechecking operation.
+export covering
 elab : (HasTc m) => PTm -> TcAll m
+
+-- The annotation of the entry point of the program
+--
+-- @@Todo: This should be IO
+export
+mainAnnot : AnnotAt Obj [<]
 
 covering
 elabSpine : (HasTc m) => PSpine k -> List (Ident, TcAll m)
-
 elabSpine (MkPSpine []) = []
 elabSpine (MkPSpine (MkPArg l n v :: xs))
   = (fromMaybe (Explicit, "_") n, interceptAll (enterLoc l) $ elab v) :: elabSpine (MkPSpine xs)
