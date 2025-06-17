@@ -4,6 +4,7 @@ module Surface.Unelaboration
 import Utils
 import Common
 import Decidable.Equality
+import Control.Monad.State
 import Data.Singleton
 import Data.DPair
 import Core.Base
@@ -25,24 +26,36 @@ interface Monad m => HasUnelab (0 m : Type -> Type) where
 
 -- Implemented for each syntactic construct that can be unelaborated to surface syntax.
 public export 
-interface HasUnelab m => Unelab m (0 t : Ctx -> Type) (0 p : Type) | m, t where
-  unelab : {ns : Ctx} -> t ns -> m p
-
-HasUnelab m => Unelab m Tm PTm
+interface Unelab (0 t : Ctx -> Type) (0 p : Type) | t where
+  unelab : HasUnelab m => {ns : Ctx} -> t ns -> m p
   
-{n : Ident} -> HasUnelab m => Unelab m (Body Syntax n) PTm where
+public export
+[stateUnelab] HasUnelab (State Int) where
+  fresh = do
+    n <- get
+    put (n + 1)
+    pure (Explicit, "x" ++ show n)
+  
+-- Unelaborate a term locally (the fresh names will vary across invocations!).
+export
+localUnelab : (forall m . (HasUnelab m) => m t) -> t
+localUnelab op = evalState 0 (op @{stateUnelab})
+
+Unelab Tm PTm
+  
+{n : Ident} -> Unelab (Body Syntax n) PTm where
   unelab (Delayed t) = unelab t
   
-{t : Target} -> (HasUnelab m, Unelab m term PTm) => Unelab m (Spine ar term) (PSpine t) where
+{t : Target} -> Unelab term PTm => Unelab (Spine ar term) (PSpine t) where
   unelab [] = pure $ MkPSpine []
   unelab ((Val n, x) :: xs) = case !(unelab xs) of
     MkPSpine xs' => pure $ MkPSpine (MkPArg dummyLoc (Just n) !(unelab x) :: xs')
 
 -- We could special case some primitives to make the output nicer.
-HasUnelab m => Unelab m (PrimitiveApplied k Syntax NA) PTm where
+Unelab (PrimitiveApplied k Syntax NA) PTm where
   unelab (p $$ sp) = pure $ pApps (PName (primName p)) !(unelab sp)
     
-HasUnelab m => Unelab m (Binding s r Syntax) PTm where
+Unelab (Binding s r Syntax) PTm where
   unelab (Bound s InternalLam y) = do
     n <- fresh
     pure $ pLam (MkPParam dummyLoc n Nothing) !(unelab (relabelBody n y))
@@ -59,7 +72,7 @@ HasUnelab m => Unelab m (Binding s r Syntax) PTm where
   unelab (Bound Obj (BindObjPi n domBytes codBytes dom) y) =
     pure $ pPi (MkPParam dummyLoc n Nothing) !(unelab y)
   
-HasUnelab m => Unelab m (Head Syntax NA) PTm where
+Unelab (Head Syntax NA) PTm where
   unelab {ns} (SynVar (Index i)) =
     pure $ let (_, n) = getIdx ns i in PName n
   unelab (SynMeta (UserGiven (_, n))) =
@@ -69,10 +82,13 @@ HasUnelab m => Unelab m (Head Syntax NA) PTm where
   unelab (SynBinding _ _ b) = unelab b
   unelab (PrimNeutral p) = unelab p
   
-HasUnelab m => Unelab m (HeadApplied Syntax NA) PTm where
+Unelab (HeadApplied Syntax NA) PTm where
   unelab (x $$ sp) = pure $ pApps !(unelab x) !(unelab sp)
   
-HasUnelab m => Unelab m Tm PTm where
+Unelab Tm PTm where
   unelab (SynApps x) = unelab x
   unelab (RigidBinding _ b) = unelab b
   unelab (SynPrimNormal x) = unelab x
+  
+-- We can thus implement show for anything that can be unelaborated.
+-- (Unelab m Show p)
