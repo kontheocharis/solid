@@ -130,6 +130,26 @@ data PTm : Type where
 public export
 Show PTm
 
+-- Smart constructors for binders and spined terms
+export
+pLam : PParam Functions -> PTm -> PTm
+pLam p (PLam (MkPTel ps) y) = PLam (MkPTel (p :: ps)) y
+pLam p t = PLam (MkPTel [p]) t
+
+export
+pPi : PParam Functions -> PTy -> PTy
+pPi p (PPi (MkPTel ps) y) = PPi (MkPTel (p :: ps)) y
+pPi p t = PPi (MkPTel [p]) t
+
+export
+pApp : PTm -> PArg Functions -> PTm
+pApp (PApp s (MkPSpine xs)) a = PApp s (MkPSpine (xs ++ [a]))
+pApp s a = PApp s (MkPSpine [a])
+
+export
+pPair : PArg Pairs -> PArg Pairs -> PTm
+pPair a b = PPairs (MkPSpine [a, b])
+
 -- Whether the term can always be unambiguously printed without parentheses
 public export total
 isAtomic : PTm -> Bool

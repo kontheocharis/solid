@@ -211,7 +211,6 @@ compileUntil input o
       putStrLn $ "Error: " ++ show err
       primIO $ exitWith (ExitFailure 1)
 
-    export covering
     execCompiler : Comp a -> IO a
     execCompiler c = run
       (handle

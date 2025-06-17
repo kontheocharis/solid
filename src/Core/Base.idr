@@ -93,6 +93,10 @@ public export
 s + CZ = s
 s + (CS c) = SS s + c
 
+public export
+getIdx : (ns : Ctx) -> Idx ns -> Ident
+getIdx (xs :< x) IZ = x
+getIdx (xs :< x) (IS i) = getIdx xs i
 
 -- Some de-Brujin helpers:
 
@@ -346,12 +350,48 @@ Eval over tm val => EvalSized over tm val where
 public export
 interface Quote (0 val : Ctx -> Type) (0 tm : Ctx -> Type) where
   quote : (sz : Size ns) => val ns -> tm ns
+  
 
 -- Supporting evaluation and quoting gives us normalisation
 nf : (Weak over, Vars over, EvalSized over tm val, Quote val tm) => Size ns => tm ns -> tm ns
 nf @{(_, _, e, _)} @{s} tm = quote (evalS @{e} id tm)
 
+-- Relabeling should always be the identity
+
+public export
+data Relab : Ctx -> Ctx -> Type where
+  Id : Relab ns ns
+  Keep : Relab ns ms -> Relab (ns :< n) (ms :< n)
+  Change : (0 n' : Ident) -> Relab ns ms -> Relab (ns :< n) (ms :< n')
+  
+public export
+interface Relabel (0 tm : Ctx -> Type) where
+  relabel : Relab ns ms -> tm ms -> tm ns
+  
+namespace Relabel
+  public export
+  (.) : Relabel tm => Relab ns ms -> Sub ms tm qs -> Sub ns tm qs
+  r . [<] = [<]
+  r . (xs :< x) = r . xs :< relabel r x
+
 -- Basic implementations for the defined types
+
+
+public export
+Relabel Idx where
+  relabel Id i = i
+  relabel (Change _ x) (IS i) = IS (relabel x i)
+  relabel (Change _ x) IZ = IZ
+  relabel (Keep x) (IS i) = IS (relabel x i)
+  relabel (Keep x) IZ = IZ
+  
+public export
+Relabel Lvl where
+  relabel Id i = i
+  relabel (Change _ x) (LS i) = LS (relabel x i)
+  relabel (Change _ x) LZ = LZ
+  relabel (Keep x) (LS i) = LS (relabel x i)
+  relabel (Keep x) LZ = LZ
 
 public export
 Weak Lvl where
@@ -380,6 +420,10 @@ Vars Idx where
 public export
 Quote Lvl Idx where
   quote {sz = sz} = lvlToIdx sz
+  
+public export
+Relabel tm => Relabel (Spine ar tm) where
+  relabel r sp = mapSpine (relabel r) sp
 
 public export
 (Weak tm) => Weak (Spine ar tm) where

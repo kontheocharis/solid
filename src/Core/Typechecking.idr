@@ -114,8 +114,17 @@ record TcError where
   err : TcErrorAt conNs
   
 export
+Show (TcErrorAt ns) where
+  show (WhenUnifying x y z) = ?fafa_0
+  show (WrongPiMode x y) = ?fafa_1
+  show CannotInferStage = ?fafa_2
+  show (UnknownName str) = ?fafa_3
+  show (TooManyApps less) = ?fafa_4
+  show (TooFewApps more) = ?fafa_5
+  
+export
 Show TcError where
-  show = ?showTcError
+  show (MkTcError con loc err) = ?showTcError_0
 
 -- Add a potentially self-referencing definition to the context.
 addToContext : {s : Stage} -> (isBound : Bool) -> (n : Ident) -> AnnotAt s ns -> Atom (ns :< n) -> Context ns -> Context (ns :< n)

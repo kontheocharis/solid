@@ -308,3 +308,63 @@ var n {prf = prf} = SynApps (SynVar (Index (idx @{prf})) $$ [])
 public export
 varApp : (n : String) -> {auto prf : In n ns} -> Ident -> Term Syntax ns -> Tm ns
 varApp n {prf = prf} a v = SynApps (SynVar (Index (idx @{prf})) $$ ((::) {a = a} v []))
+
+-- Relabeling
+covering
+Relabel (Term d)
+
+covering
+Relabel (Binder s r d n) where
+  relabel r b = mapBinder (relabel r) b
+
+covering
+Relabel (Body d n) where
+  relabel r (Delayed x) = Delayed (relabel (Change _ r) x)
+  relabel r (Closure x y) = Closure (r . x) (relabel (Change _ Id) y)
+
+covering
+Relabel (Binding s r d) where
+  relabel r (Bound md b body) = Bound md (relabel r b) (relabel r body)
+  
+covering
+Relabel (PrimitiveApplied c d k) where
+  relabel r (p $$ sp) = p $$ relabel r sp
+  relabel r (SimpApplied p sp) = SimpApplied p (relabel r sp)
+  relabel r (LazyApplied p sp f) = LazyApplied p (relabel r sp) (relabel r f)
+
+covering
+Relabel (Variable d) where
+  relabel r (Level l) = Level (relabel r l)
+  relabel r (Index i) = Index (relabel r i)
+
+covering
+Relabel (Head d hk) where
+  relabel r (SynVar x) = SynVar (relabel r x)
+  relabel r (ValVar x) = ValVar (relabel r x)
+  relabel r (SynMeta x) = SynMeta x
+  relabel r (ValMeta x) = ValMeta x
+  relabel r (ValDef x) = ValDef (relabel r x)
+  relabel r (SynBinding s x y) = SynBinding s x (relabel r y)
+  relabel r (ObjCallable x) = ObjCallable (relabel r x)
+  relabel r (ObjLazy x) = ObjLazy (relabel r x)
+  relabel r (PrimNeutral x) = PrimNeutral (relabel r x)
+
+covering
+Relabel (HeadApplied d hk) where
+  relabel r (x $$ y) = relabel r x $$ relabel r y
+
+covering
+Relabel LazyValue where
+  relabel r (LazyApps x y) = LazyApps (relabel r x) (relabel r y)
+  relabel r (LazyPrimNormal x) = LazyPrimNormal (relabel r x)
+
+covering
+Relabel (Term d) where
+  relabel r (SynApps x) = SynApps (relabel r x)
+  relabel r (Glued x) = Glued (relabel r x)
+  relabel r (SimpApps x) = SimpApps (relabel r x)
+  relabel r (MtaCallable x) = MtaCallable (relabel r x)
+  relabel r (SimpObjCallable x) = SimpObjCallable (relabel r x)
+  relabel r (RigidBinding md x) = RigidBinding md (relabel r x)
+  relabel r (SynPrimNormal x) = SynPrimNormal (relabel r x)
+  relabel r (SimpPrimNormal x) = SimpPrimNormal (relabel r x)
