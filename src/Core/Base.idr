@@ -142,7 +142,7 @@ namespace Tel
   public export
   data Tel : Arity -> (Ctx -> Type) -> Ctx -> Type where
     Nil : Tel [] f ms
-    (::) : f ms -> Tel ar f (ms :< a) -> Tel (a :: ar) f ms
+    (::) : (Singleton a, f ms)  -> Tel ar f (ms :< a) -> Tel (a :: ar) f ms
     
   public export
   %hint
@@ -155,7 +155,7 @@ namespace Spine
   public export
   data Spine : Arity -> (Ctx -> Type) -> Ctx -> Type where
     Nil : Spine [] f ns
-    (::) : f ns -> Spine ar f ns -> Spine (a :: ar) f ns
+    (::) : (Singleton a, f ns) -> Spine ar f ns -> Spine (a :: ar) f ns
 
   public export
   (++) : Spine ar f ns -> Spine bs f ns -> Spine (ar ++ bs) f ns
@@ -171,7 +171,7 @@ namespace Spine
   public export
   traverseSpine : Applicative m => (f ns -> m (g ns')) -> Spine ar f ns -> m (Spine ar g ns')
   traverseSpine f [] = pure []
-  traverseSpine f (x :: xs) = [| f x :: traverseSpine f xs |]
+  traverseSpine f ((n, x) :: xs) = [| ((n, ) <$> f x) :: traverseSpine f xs |]
 
   public export
   mapSpine : (f ns -> g ns') -> Spine ar f ns -> Spine ar g ns'
@@ -198,7 +198,7 @@ namespace Sub
   public export
   (::<) : Sub ns f ms -> Spine ar f ns -> Sub ns f (ms ::< ar)
   s ::< [] = s
-  s ::< (x :: xs) = s :< x ::< xs
+  s ::< ((_, x) :: xs) = s :< x ::< xs
 
   public export
   (.size) : Sub ns f ms -> Size ms
@@ -219,7 +219,7 @@ namespace Sub
 public export
 subFromSpine : Spine ar f ns -> Sub ns f (arityToCtx ar)
 subFromSpine [] = [<]
-subFromSpine (x :: xs) = [< x] ++ subFromSpine xs
+subFromSpine ((_, x) :: xs) = [< x] ++ subFromSpine xs
 
 -- Weakenings
 --
@@ -362,7 +362,7 @@ public export
 data Relab : Ctx -> Ctx -> Type where
   Id : Relab ns ns
   Keep : Relab ns ms -> Relab (ns :< n) (ms :< n)
-  Change : (0 n' : Ident) -> Relab ns ms -> Relab (ns :< n) (ms :< n')
+  Change : (0 n : Ident) -> Relab ns ms -> Relab (ns :< n) (ms :< n')
   
 public export
 interface Relabel (0 tm : Ctx -> Type) where
@@ -440,11 +440,16 @@ Eval over tm val => Eval over (Spine ar tm) (Spine ar val) where
 public export
 (WeakSized over, Vars over, EvalSized over tm val) => EvalSized over (Tel ar tm) (Tel ar val) where
   evalS env [] = []
-  evalS env (x :: xs) = evalS env x :: evalS (liftS env) xs
+  evalS env ((n, x) :: xs) = (n, evalS env x) :: evalS (liftS env) xs
 
 public export
 Quote val tm => Quote (Spine ar val) (Spine ar tm) where
   quote sp = mapSpine quote sp
+  
+public export
+Relabel tm => Relabel (Tel ar tm) where
+  relabel r [] = []
+  relabel r ((n, x) :: xs) = (n, relabel r x) :: relabel (Keep r) xs
 
 -- Finding variables by name through auto implicits!
 

@@ -131,7 +131,7 @@ addToContext : {s : Stage} -> (isBound : Bool) -> (n : Ident) -> AnnotAt s ns ->
 addToContext {s = stage} isBound n (MkAnnotAt ty sort) tm (MkContext (Val idents) con sorts defs stages size (Evidence ar bounds)) =
   MkContext
     (Val (idents :< n)) (con :< ty) (sorts :< sort) (defs `o` Drop Id :< tm) (stages :< stage) (SS size)
-    (if isBound then (Evidence (ar ++ [n]) $ wkS bounds ++ [tm]) else (Evidence ar $ wkS bounds))
+    (if isBound then (Evidence (ar ++ [n]) $ wkS bounds ++ [(Val _, tm)]) else (Evidence ar $ wkS bounds))
 
 -- Add a definition to the context that lazily evaluates to its value.
 define : {s : Stage} -> (n : Ident) -> ExprAt s ns -> Context ns -> Context (ns :< n)
@@ -348,10 +348,10 @@ checkSpine : HasTc m
   -> m (Spine ar Atom ns)
 checkSpine ctx tms [] = tcError ctx (TooManyApps (map fst tms).count)
 checkSpine ctx [] annots = tcError ctx (TooFewApps annots.count)
-checkSpine ctx ((name, tm) :: tms) (annot :: annots) = do
+checkSpine ctx ((_, tm) :: tms) ((Val _, annot) :: annots) = do -- @@Todo: spine name
   tm' <- tm {md = Check} ctx (forgetStage annot)
   tms' <- checkSpine ctx tms (sub (ctx.defs :< tm') annots)
-  pure (tm' :: tms')
+  pure ((Val _, tm') :: tms')
   
 -- Main combinators:
 

@@ -1,6 +1,7 @@
 -- All the declarative typing and reduction rules for primitives.
 module Core.Rules
 
+import Data.Singleton
 import Common
 import Core.Base
 import Core.Primitives
@@ -13,20 +14,20 @@ import Core.Evaluation
 
 public export
 sCode : Tm ns -> Tm ns -> Tm ns
-sCode by ty = sPrim PrimCode [by, ty]
+sCode by ty = sPrim PrimCode [(Val _, by), (Val _, ty)]
 
 public export
 sQuote : Tm ns -> Tm ns -> Tm ns -> Tm ns
-sQuote by ty val = sPrim PrimQuote [by, ty, val]
+sQuote by ty val = sPrim PrimQuote [(Val _, by), (Val _, ty), (Val _, val)]
 
 public export
 sSplice : Tm ns -> Tm ns -> Tm ns -> Tm ns
-sSplice by ty val = SynPrimNormal (PrimSplice $$ [by, ty, val])
+sSplice by ty val = SynPrimNormal (PrimSplice $$ [(Val _, by), (Val _, ty), (Val _, val)])
 
 -- Compile-time bytes as partially-static
 public export
 embedBytes : Tm ns -> Tm ns
-embedBytes b = SynPrimNormal (PrimEmbedBYTES $$ [b])
+embedBytes b = SynPrimNormal (PrimEmbedBYTES $$ [(Val _, b)])
 
 public export
 staBytes : Ty ns
@@ -39,11 +40,11 @@ psBytes = SynPrimNormal (PrimBytes $$ [])
 -- `Type b` for some *compile-time* byte size `b`, object-level type of types.
 public export
 sizedObjType : (b : Tm ns) -> Ty ns
-sizedObjType b = SynPrimNormal (PrimDyn $$ [embedBytes b])
+sizedObjType b = SynPrimNormal (PrimDyn $$ [(Val _, embedBytes b)])
 
 public export
 dynObjType : Tm ns -> Ty ns
-dynObjType b = SynPrimNormal (PrimDyn $$ [b])
+dynObjType b = SynPrimNormal (PrimDyn $$ [(Val _, b)])
 
 -- The `0` bytes value.
 public export
@@ -76,7 +77,7 @@ mtaUnit = SynPrimNormal (PrimUNIT $$ [])
 
 public export
 psBytesAdd : Tm ns -> Tm ns -> Tm ns
-psBytesAdd a b = SynPrimNormal (PrimAddBytes $$ [a, b])
+psBytesAdd a b = SynPrimNormal (PrimAddBytes $$ [(Val _, a), (Val _, b)])
 
 public export
 primN : PrimitiveApplied PrimNorm Syntax NA ns -> Term Syntax ns
@@ -85,12 +86,12 @@ primN = SynPrimNormal
 public export
 unitForStage : Stage -> Ty ns
 unitForStage Mta = primN $ (PrimUNIT $$ [])
-unitForStage Obj = primN $ (PrimPadTy $$ [embedBytes zeroBytes])
+unitForStage Obj = primN $ (PrimPadTy $$ [(Val _, embedBytes zeroBytes)])
 
 public export
 ttForStage : Stage -> Ty ns
 ttForStage Mta = primN $ (PrimTT $$ [])
-ttForStage Obj = primN $ (PrimPad $$ [embedBytes zeroBytes])
+ttForStage Obj = primN $ (PrimPad $$ [(Val _, embedBytes zeroBytes)])
 
 -- Typing rules:
 
@@ -153,25 +154,25 @@ primTy : (p : Primitive k r ar) -> (Tel ar ValTy ns, ValTy (ns ::< ar))
 primAddBYTES : Term Value ns -> Term Value ns -> Term Value ns
 primAddBYTES (SimpPrimNormal (SimpApplied PrimZeroBYTES [])) b = b
 primAddBYTES a (SimpPrimNormal (SimpApplied PrimZeroBYTES [])) = a
-primAddBYTES a@(Glued a') b = Glued (LazyPrimNormal (LazyApplied PrimAddBYTES [a, b] (primAddBYTES (simplified a') b)))
-primAddBYTES a b@(Glued b') = Glued (LazyPrimNormal (LazyApplied PrimAddBYTES [a, b] (primAddBYTES a (simplified b'))))
-primAddBYTES a b = SimpPrimNormal (SimpApplied PrimAddBYTES [a, b])
+primAddBYTES a@(Glued a') b = Glued (LazyPrimNormal (LazyApplied PrimAddBYTES [(Val _, a), (Val _, b)] (primAddBYTES (simplified a') b)))
+primAddBYTES a b@(Glued b') = Glued (LazyPrimNormal (LazyApplied PrimAddBYTES [(Val _, a), (Val _, b)] (primAddBYTES a (simplified b'))))
+primAddBYTES a b = SimpPrimNormal (SimpApplied PrimAddBYTES [(Val _, a), (Val _, b)])
 
 primAddBytes : Term Value ns -> Term Value ns -> Term Value ns
-primAddBytes (SimpPrimNormal (SimpApplied PrimEmbedBYTES [a])) (SimpPrimNormal (SimpApplied PrimEmbedBYTES [b]))
-  = SimpPrimNormal (SimpApplied PrimEmbedBYTES [primAddBYTES a b])
-primAddBytes (SimpPrimNormal (SimpApplied PrimEmbedBYTES [SimpPrimNormal (SimpApplied PrimZeroBYTES [])])) b = b
-primAddBytes a (SimpPrimNormal (SimpApplied PrimEmbedBYTES [SimpPrimNormal (SimpApplied PrimZeroBYTES [])])) = a
-primAddBytes a@(Glued a') b = Glued (LazyPrimNormal (LazyApplied PrimAddBytes [a, b] (primAddBytes (simplified a') b)))
-primAddBytes a b@(Glued b') = Glued (LazyPrimNormal (LazyApplied PrimAddBytes [a, b] (primAddBytes a (simplified b'))))
-primAddBytes a b = SimpPrimNormal (SimpApplied PrimAddBytes [a, b])
+primAddBytes (SimpPrimNormal (SimpApplied PrimEmbedBYTES [(_, a)])) (SimpPrimNormal (SimpApplied PrimEmbedBYTES [(_, b)]))
+  = SimpPrimNormal (SimpApplied PrimEmbedBYTES [(Val _, primAddBYTES a b)])
+primAddBytes (SimpPrimNormal (SimpApplied PrimEmbedBYTES [(_, SimpPrimNormal (SimpApplied PrimZeroBYTES []))])) b = b
+primAddBytes a (SimpPrimNormal (SimpApplied PrimEmbedBYTES [(_, SimpPrimNormal (SimpApplied PrimZeroBYTES []))])) = a
+primAddBytes a@(Glued a') b = Glued (LazyPrimNormal (LazyApplied PrimAddBytes [(Val _, a), (Val _, b)] (primAddBytes (simplified a') b)))
+primAddBytes a b@(Glued b') = Glued (LazyPrimNormal (LazyApplied PrimAddBytes [(Val _, a), (Val _, b)] (primAddBytes a (simplified b'))))
+primAddBytes a b = SimpPrimNormal (SimpApplied PrimAddBytes [(Val _, a), (Val _, b)])
 
 public export
 Eval (Term Value) (PrimitiveApplied k Syntax e) (Term Value) where
   eval env (($$) {r = PrimIrreducible} {k = PrimNorm} p sp) = SimpPrimNormal (SimpApplied p (eval env sp))
   eval env (($$) {r = PrimIrreducible} {k = PrimNeu} p sp) = SimpApps (PrimNeutral (SimpApplied p (eval env sp)) $$ [])
-  eval env (PrimAddBYTES $$ [a, b]) = primAddBYTES (eval env a) (eval env b)
-  eval env (PrimAddBytes $$ [a, b]) = primAddBytes (eval env a) (eval env b)
+  eval env (PrimAddBYTES $$ [(_, a), (_, b)]) = primAddBYTES (eval env a) (eval env b)
+  eval env (PrimAddBytes $$ [(_, a), (_, b)]) = primAddBytes (eval env a) (eval env b)
 
 -- Context-aware domain
 -- 

@@ -307,37 +307,37 @@ var n {prf = prf} = SynApps (SynVar (Index (idx @{prf})) $$ [])
 
 public export
 varApp : (n : String) -> {auto prf : In n ns} -> Ident -> Term Syntax ns -> Tm ns
-varApp n {prf = prf} a v = SynApps (SynVar (Index (idx @{prf})) $$ ((::) {a = a} v []))
+varApp n {prf = prf} a v = SynApps (SynVar (Index (idx @{prf})) $$ ((::) (Val a, v) []))
 
 -- Relabeling
-covering
+export covering
 Relabel (Term d)
 
-covering
+export covering
 Relabel (Binder s r d n) where
   relabel r b = mapBinder (relabel r) b
 
-covering
+export covering
 Relabel (Body d n) where
   relabel r (Delayed x) = Delayed (relabel (Change _ r) x)
   relabel r (Closure x y) = Closure (r . x) (relabel (Change _ Id) y)
 
-covering
+export covering
 Relabel (Binding s r d) where
   relabel r (Bound md b body) = Bound md (relabel r b) (relabel r body)
   
-covering
+export covering
 Relabel (PrimitiveApplied c d k) where
   relabel r (p $$ sp) = p $$ relabel r sp
   relabel r (SimpApplied p sp) = SimpApplied p (relabel r sp)
   relabel r (LazyApplied p sp f) = LazyApplied p (relabel r sp) (relabel r f)
 
-covering
+export covering
 Relabel (Variable d) where
   relabel r (Level l) = Level (relabel r l)
   relabel r (Index i) = Index (relabel r i)
 
-covering
+export covering
 Relabel (Head d hk) where
   relabel r (SynVar x) = SynVar (relabel r x)
   relabel r (ValVar x) = ValVar (relabel r x)
@@ -349,16 +349,16 @@ Relabel (Head d hk) where
   relabel r (ObjLazy x) = ObjLazy (relabel r x)
   relabel r (PrimNeutral x) = PrimNeutral (relabel r x)
 
-covering
+export covering
 Relabel (HeadApplied d hk) where
   relabel r (x $$ y) = relabel r x $$ relabel r y
 
-covering
+export covering
 Relabel LazyValue where
   relabel r (LazyApps x y) = LazyApps (relabel r x) (relabel r y)
   relabel r (LazyPrimNormal x) = LazyPrimNormal (relabel r x)
 
-covering
+export covering
 Relabel (Term d) where
   relabel r (SynApps x) = SynApps (relabel r x)
   relabel r (Glued x) = Glued (relabel r x)
@@ -368,3 +368,8 @@ Relabel (Term d) where
   relabel r (RigidBinding md x) = RigidBinding md (relabel r x)
   relabel r (SynPrimNormal x) = SynPrimNormal (relabel r x)
   relabel r (SimpPrimNormal x) = SimpPrimNormal (relabel r x)
+  
+export covering
+relabelBody : (0 n' : Ident) -> Body d n ns -> Body d n' ns
+relabelBody n' (Delayed t) = Delayed (relabel (Change n' Id) t)
+relabelBody n' (Closure sub t) = Closure sub (relabel (Change n' Id) t)

@@ -12,11 +12,11 @@ public export
 data PTm : Type
 
 public export
-0 PTy : Type
+PTy : Type
 PTy = PTm
 
 public export
-0 PPat : Type
+PPat : Type
 PPat = PTm
 
 -- We use PTel/PParam and PSpine/PArg for both function domains and arguments,
@@ -147,8 +147,18 @@ pApp (PApp s (MkPSpine xs)) a = PApp s (MkPSpine (xs ++ [a]))
 pApp s a = PApp s (MkPSpine [a])
 
 export
+pApps : PTm -> PSpine Functions -> PTm
+pApps (PApp s (MkPSpine sp)) (MkPSpine sp') = PApp s (MkPSpine (sp ++ sp'))
+pApps s sp' = PApp s sp'
+
+export
 pPair : PArg Pairs -> PArg Pairs -> PTm
 pPair a b = PPairs (MkPSpine [a, b])
+
+export
+pLet : Loc -> LetFlags -> (name : String) -> Maybe PTy -> PTm -> PTm -> PTm
+pLet l fl n ty tm (PBlock t bs) = PBlock t (bs ++ [PLet l fl n ty tm])
+pLet l fl n ty tm u = PBlock True [PLet l fl n ty tm, PBlockTm dummyLoc u]
 
 -- Whether the term can always be unambiguously printed without parentheses
 public export total

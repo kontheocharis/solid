@@ -240,7 +240,7 @@ spineToRen : (HasMetas m) => (sz : Size ns)
   => Spine ar (Term Value) ns
   -> m sm (Maybe (Sub ns Idx (arityToCtx ar)))
 spineToRen [] = pure $ Just [<]
-spineToRen {sz = s} (x :: xs) = resolveGlueAndMetas x >>= \case
+spineToRen {sz = s} ((_, x) :: xs) = resolveGlueAndMetas x >>= \case
   SimpApps (ValVar (Level l) $$ []) => do
     xs' <- spineToRen xs
     pure $ ([<lvlToIdx s l] ++) <$> xs'

@@ -1,6 +1,7 @@
 -- Defining NbE for the core language
 module Core.Evaluation
 
+import Data.Singleton
 import Utils
 import Common
 import Core.Base
@@ -112,9 +113,9 @@ apps : EvalPrims => Term Value ns -> Spine ar (Term Value) ns -> Term Value ns
 apps (Glued (LazyApps (v $$ sp) gl)) sp' = Glued (LazyApps (v $$ sp ++ sp') (apps gl sp'))
 apps (SimpApps (v $$ sp)) sp' = SimpApps (v $$ sp ++ sp')
 apps (MtaCallable t) [] = MtaCallable t
-apps (MtaCallable t) (x :: sp') = apps (callBinding t x) sp'
+apps (MtaCallable t) ((_, x) :: sp') = apps (callBinding t x) sp'
 apps (SimpObjCallable t) [] = SimpObjCallable t
-apps (SimpObjCallable t) (x :: sp') = apps (callBinding t x) sp'
+apps (SimpObjCallable t) ((_, x) :: sp') = apps (callBinding t x) sp'
 apps (RigidBinding _ _) _ = error "impossible"
 apps (SimpPrimNormal _) sp' = error "impossible"
 apps (Glued (LazyPrimNormal _)) sp' = error "impossible"

@@ -66,6 +66,10 @@ public export
 (EvalSized (over Value) (tm Syntax) (tm Value), Quote (tm Value) (tm Syntax))
   => EvalSized (AnyDomain over) (AnyDomain tm) (AnyDomain tm) where
   evalS env (Choice syn val) = let ev = delay (evalS (mapSub (force . (.val)) env) syn) in Choice (quote ev) ev
+  
+public export
+(Relabel (tm Value), Relabel (tm Syntax)) => Relabel (AnyDomain tm) where
+  relabel r (Choice syn val) = Choice (relabel r syn) (relabel r val)
 
 -- Atom bodies
 namespace AtomBody
@@ -167,12 +171,20 @@ maybePackStage {s = Just s} (MkExprAt tm (MkAnnotAt ty sort)) = MkExpr tm (MkAnn
 maybePackStage {s = Nothing} x = x
   
 public export covering
+Relabel Annot where
+  relabel r (MkAnnot ty sort s) = MkAnnot (relabel r ty) (relabel r sort) s
+
+public export covering
 WeakSized Annot where
   weakS e (MkAnnot t a s) = MkAnnot (weakS e t) (weakS e a) s
 
 public export covering
 EvalSized Atom Annot Annot where
   evalS env (MkAnnot ty sort s) = MkAnnot (evalS env ty) (evalS env sort) s
+
+public export covering
+Relabel (AnnotAt s) where
+  relabel r (MkAnnotAt ty sort) = MkAnnotAt (relabel r ty) (relabel r sort)
 
 public export covering
 WeakSized (AnnotAt s) where
@@ -183,12 +195,20 @@ EvalSized Atom (AnnotAt s) (AnnotAt s) where
   evalS env (MkAnnotAt ty sort) = MkAnnotAt (evalS env ty) (evalS env sort)
 
 public export covering
+Relabel Expr where
+  relabel r (MkExpr t a) = MkExpr (relabel r t) (relabel r a)
+
+public export covering
 WeakSized Expr where
   weakS e (MkExpr t a) = MkExpr (weakS e t) (weakS e a)
 
 public export covering
 EvalSized Atom Expr Expr where
   evalS env (MkExpr tm a) = MkExpr (evalS env tm) (evalS env a)
+
+public export covering
+Relabel (ExprAt s) where
+  relabel r (MkExprAt t a) = MkExprAt (relabel r t) (relabel r a)
 
 public export covering
 WeakSized (ExprAt s) where

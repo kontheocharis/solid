@@ -87,3 +87,31 @@ primEq PrimDyn PrimDyn = Just Refl
 primEq PrimAddBYTES PrimAddBYTES = Just Refl
 primEq PrimAddBytes PrimAddBytes = Just Refl
 primEq _ _ = Nothing
+
+export
+primName : Primitive k r ar -> String
+primName PrimTYPE = "TYPE"
+primName PrimCode = "Code"
+primName PrimQuote = "quote"
+primName PrimSplice = "splice"
+primName PrimBYTES = "BYTES"
+primName PrimZeroBYTES = "zero"
+primName PrimSizeBYTES = "size"
+primName PrimPtrBYTES = "ptr"
+primName PrimBytes = "Bytes"
+primName PrimUNIT = "UNIT"
+primName PrimTT = "TT"
+primName PrimPadTy = "PadTy"
+primName PrimPad = "Pad"
+primName PrimIrrTy = "IrrTy"
+primName PrimIrr = "Irr"
+primName PrimEmbedBYTES = "embedBYTES"
+primName PrimDyn = "Dyn"
+primName PrimAddBYTES = "addBYTES"
+primName PrimAddBytes = "addBytes"
+primName (PrimSIGMA a) = "SIGMA(" ++ a ++ ")"
+primName (PrimPAIR a) = "PAIR(" ++ a ++ ")"
+primName (PrimSigma a) = "Sigma(" ++ a ++ ")"
+primName (PrimPair a) = "Pair(" ++ a ++ ")"
+
+

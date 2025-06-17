@@ -137,7 +137,7 @@ HasMetas m => Unify m sm Lvl Lvl where
 public export
 (HasMetas m, Unify m sm val val') => Unify m sm (Spine as val) (Spine as' val') where
   unifyImpl [] [] = pure AreSame
-  unifyImpl (x :: xs) (y :: ys) = unify x y /\ unify xs ys
+  unifyImpl ((_, x) :: xs) ((_, y) :: ys) = unify x y /\ unify xs ys
   unifyImpl _ _ = pure AreDifferent
 
 -- Note: a lot of the intermediate unification implementations might return
