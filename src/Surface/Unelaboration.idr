@@ -90,5 +90,9 @@ Unelab Tm PTm where
   unelab (RigidBinding _ b) = unelab b
   unelab (SynPrimNormal x) = unelab x
   
+Unelab Val PTm where
+  unelab {ns = ns} v = unelab (quote {tm = Tm} {sz = ns.size} v)
+  
 -- We can thus implement show for anything that can be unelaborated.
--- (Unelab m Show p)
+{ns : Ctx} -> Unelab t p => Show p => Show (t ns) where
+  show x = show (localUnelab (unelab x))

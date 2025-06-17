@@ -77,6 +77,11 @@ public export
 data Size : Ctx -> Type where
   SZ : Size [<]
   SS : Size ns -> Size (ns :< n)
+  
+public export
+(.size) : (ns : Ctx) -> Size ns
+[<] .size = SZ
+(ns :< n) .size = SS (ns.size)
 
 public export
 data Count : Arity -> Type where
