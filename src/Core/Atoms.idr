@@ -81,7 +81,7 @@ namespace AtomBody
   -- Turn a body into a term in an extended context.
   public export covering
   (.open) : Size ns => AtomBody n ns -> Atom (ns :< n')
-  (.open) (Choice (Delayed s) (Closure env v)) = Choice (weakS Relabel s) (eval (lift env) v)
+  (.open) (Choice (Delayed s) (Closure env v)) = Choice (relabel (Change _ Id) s) (eval (lift env) v)
 
   public export covering
   close : Sub ns Atom ns -> Atom (ns :< n) -> AtomBody n ns
