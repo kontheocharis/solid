@@ -41,20 +41,25 @@ export
 localUnelab : (forall m . (HasUnelab m) => m t) -> t
 localUnelab op = evalState 0 (op @{stateUnelab})
 
+export
 Unelab Tm PTm
   
+export
 {n : Ident} -> Unelab (Body Syntax n) PTm where
   unelab (Delayed t) = unelab t
   
+export
 {t : Target} -> Unelab term PTm => Unelab (Spine ar term) (PSpine t) where
   unelab [] = pure $ MkPSpine []
   unelab ((Val n, x) :: xs) = case !(unelab xs) of
     MkPSpine xs' => pure $ MkPSpine (MkPArg dummyLoc (Just n) !(unelab x) :: xs')
 
 -- We could special case some primitives to make the output nicer.
+export
 Unelab (PrimitiveApplied k Syntax NA) PTm where
   unelab (p $$ sp) = pure $ pApps (PName (primName p)) !(unelab sp)
     
+export
 Unelab (Binding s r Syntax) PTm where
   unelab (Bound s InternalLam y) = do
     n <- fresh
@@ -72,6 +77,7 @@ Unelab (Binding s r Syntax) PTm where
   unelab (Bound Obj (BindObjPi n domBytes codBytes dom) y) =
     pure $ pPi (MkPParam dummyLoc n Nothing) !(unelab y)
   
+export
 Unelab (Head Syntax NA) PTm where
   unelab {ns} (SynVar (Index i)) =
     pure $ let (_, n) = getIdx ns i in PName n
@@ -82,17 +88,35 @@ Unelab (Head Syntax NA) PTm where
   unelab (SynBinding _ _ b) = unelab b
   unelab (PrimNeutral p) = unelab p
   
+export
 Unelab (HeadApplied Syntax NA) PTm where
   unelab (x $$ sp) = pure $ pApps !(unelab x) !(unelab sp)
   
+public export
 Unelab Tm PTm where
   unelab (SynApps x) = unelab x
   unelab (RigidBinding _ b) = unelab b
   unelab (SynPrimNormal x) = unelab x
   
+export
 Unelab Val PTm where
   unelab {ns = ns} v = unelab (quote {tm = Tm} {sz = ns.size} v)
   
+public export
+Unelab Atom PTm where
+  unelab (Choice a b) = unelab a
+  
 -- We can thus implement show for anything that can be unelaborated.
-{ns : Ctx} -> Unelab t p => Show p => Show (t ns) where
+public export
+[showUnelab] (ns : Ctx) => Unelab t p => Show p => Show (t ns) where
   show x = show (localUnelab (unelab x))
+  
+public export
+%hint
+showUnelabAtom : Show (Atom [<])
+showUnelabAtom = showUnelab
+
+public export
+%hint
+showUnelabVal : Show (Val [<])
+showUnelabVal = showUnelab

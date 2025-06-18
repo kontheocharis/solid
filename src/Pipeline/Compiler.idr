@@ -4,6 +4,7 @@ module Pipeline.Compiler
 import Pipeline.Core
 import Surface.Presyntax
 import Surface.Parsing
+import Surface.Unelaboration
 import Surface.Elaboration
 import Common
 import Utils
@@ -136,16 +137,28 @@ liftIO i = lift $ Control.App.primIO i
 public export
 data Input : Type where
   FileInput : (filename : String) -> Input
+  
+Show Input where
+  show (FileInput filename) = "File input: " ++ filename
 
 -- Outputs vary depending on how far we go!
 public export
-data CompilerOutput : Type -> Type where
+data CompilerOutput : (a : Type) -> Type where
   Start : CompilerOutput Input
   Contents : CompilerOutput String
   Parsed : CompilerOutput PTm
   Elaborated : CompilerOutput (Atom [<])
   Staged : CompilerOutput (Val [<])
   Code : CompilerOutput String
+  
+public export covering
+showCompilerOutput : CompilerOutput a -> Show a
+showCompilerOutput Start = %search
+showCompilerOutput Contents = %search
+showCompilerOutput Parsed = %search
+showCompilerOutput Elaborated = %search
+showCompilerOutput Staged = %search
+showCompilerOutput Code = %search
   
 -- All the stages are the outputs in order
 public export covering
@@ -154,16 +167,15 @@ CompilerStages = [Start, Contents, Parsed, Elaborated, Staged, Code]
 
 public export
 CompilerStageElem : (o : Type) -> (k : CompilerOutput o) -> Type
-CompilerStageElem o k = Elem CompilerOutput o k CompilerStages
+CompilerStageElem o k = (Singleton k, Elem CompilerOutput o k CompilerStages)
 
-public export
-toString : CompilerOutput k -> String
-toString Start = "start"
-toString Contents = "contents"
-toString Parsed = "parsed"
-toString Elaborated = "elaborated"
-toString Staged = "staged"
-toString Code = "code"
+Show (CompilerOutput k) where
+  show Start = "start"
+  show Contents = "contents"
+  show Parsed = "parsed"
+  show Elaborated = "elaborated"
+  show Staged = "staged"
+  show Code = "code"
 
 public export
 allOptions : List String
@@ -171,11 +183,11 @@ allOptions = go CompilerStages
   where
     go : Stages CompilerOutput n -> List String
     go [] = []
-    go (x :: xs) = toString x :: go xs
+    go (x :: xs) = show x :: go xs
 
 -- Parse a stage from a string.
 public export
-fromString : String -> Maybe (t ** c ** Elem CompilerOutput t c CompilerStages)
+fromString : String -> Maybe (t ** c ** CompilerStageElem t c)
 fromString "contents" = Just (_ ** Contents ** %search)
 fromString "parsed" = Just (_ ** Parsed ** %search)
 fromString "elaborated" = Just (_ ** Elaborated ** %search)
@@ -219,9 +231,9 @@ compiler = (read, parse, elaborate, stage, codegen)
   
 -- Main compilation function: compile until a certain stage.
 export covering
-compileUntil : Input -> CompilerStageElem o k -> IO o
-compileUntil input o
-  = execCompiler $ runPipelineUntil {m = Comp} compiler o input
+compileUntil : Input -> CompilerStageElem o k -> (Show o, IO o)
+compileUntil input (Val k, o)
+  = (showCompilerOutput k, execCompiler $ runPipelineUntil {m = Comp} compiler o input)
   where
     exitError : PrimIO es => Show a => a -> App es r
     exitError err = do
