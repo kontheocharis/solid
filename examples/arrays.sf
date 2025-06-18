@@ -1,0 +1,9 @@
+
+
+Array : (n : Nat) {t} (T : Type t) -> Type
+Array n {t} T = {
+  rec-Nat n
+    (\x => Type (times x t))
+    (Unit null)
+    (\A => (t : T, A))
+}

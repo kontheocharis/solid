@@ -19,9 +19,13 @@ import Control.Monad.State
 showUsage : IO ()
 showUsage = do
   putStrLn "Usage:"
-  putStrLn "  compiler <filename>     Process a source file"
-  putStrLn "  compiler -e <expr>      Evaluate an expression"
-  putStrLn "  compiler -h             Show this help message"
+  putStrLn "  compiler <filename> [--until <stage>]     Process a source file"
+  putStrLn "  compiler -e <expr>                        Evaluate an expression"
+  putStrLn "  compiler -h                               Show this help message"
+  putStrLn ""
+  putStrLn "Stages:"
+  for_ allOptions \opt => putStrLn $ "  - " ++ opt
+  
 
 main : IO ()
 main = do

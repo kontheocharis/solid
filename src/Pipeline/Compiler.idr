@@ -156,6 +156,23 @@ public export
 CompilerStageElem : (o : Type) -> (k : CompilerOutput o) -> Type
 CompilerStageElem o k = Elem CompilerOutput o k CompilerStages
 
+public export
+toString : CompilerOutput k -> String
+toString Start = "start"
+toString Contents = "contents"
+toString Parsed = "parsed"
+toString Elaborated = "elaborated"
+toString Staged = "staged"
+toString Code = "code"
+
+public export
+allOptions : List String
+allOptions = go CompilerStages
+  where
+    go : Stages CompilerOutput n -> List String
+    go [] = []
+    go (x :: xs) = toString x :: go xs
+
 -- Parse a stage from a string.
 public export
 fromString : String -> Maybe (t ** c ** Elem CompilerOutput t c CompilerStages)
