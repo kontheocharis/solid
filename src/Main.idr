@@ -42,7 +42,7 @@ main = do
             let (showOutput, compile) = compileUntil (FileInput filename) stage
             result <- compile
             putStrLn $ "Executed until " ++ expr
-            putStrLn $ "Result: " ++ show @{showOutput} result
+            putStrLn $ "Result:\n" ++ show @{showOutput} result
           Nothing => do
             putStrLn "Invalid stage name"
             showUsage

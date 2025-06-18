@@ -226,7 +226,7 @@ reserved = []
 identifier : Parser String
 identifier = atom $ do
   c <- satisfy isAlpha
-  cs <- many $ satisfy (\c => isAlphaNum c || c == '-' || c == '_')
+  cs <- many $ satisfy (\c => isAlphaNum c || c == '-' || c == '_' || c == '?')
   let n = pack (c :: cs)
   if n `elem` reserved
     then fail $ ReservedWord n

@@ -1,10 +1,16 @@
 
 
-Array : (n : Nat) {t} (T : Type+ t) -> Type+ (n * t)
-Array n {t} T = {
+seq : (n : Nat) (t : Layout) -> Layout?
+seq = ?fa
+
+Array : (n : Nat) [t] (T : Type t) -> Type (seq n t)
+Array n [t] T = {
   rec-Nat n
-    (\n => Type+ (n * t))
+    (\n => Type (seq n t))
     (())
-    (\A => (T, A))
+    (\A => (el : T, rest : A))
 }
 
+{
+  print "Hello, world!"
+}
