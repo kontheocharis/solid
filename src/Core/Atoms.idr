@@ -148,6 +148,10 @@ namespace Expr
   asTypeIn : Atom ns -> Annot ns -> Annot ns
   asTypeIn ty (MkAnnot sort _ s) = MkAnnot ty sort s
   
+  public export
+  (.toAnnot) : Expr ns -> Annot ns
+  (.toAnnot) (MkExpr ty (MkAnnot sort s st)) = MkAnnot ty sort st
+  
 namespace ExprAt
   public export
   asTypeIn : Atom ns -> AnnotAt s ns -> AnnotAt s ns
@@ -327,6 +331,14 @@ glued v t = Choice (here) (Glued (LazyApps (ValDef (Level here) $$ []) t.val))
 public export covering
 meta : Size ns => MetaVar -> Spine ar Atom ns -> AnnotAt s ns -> ExprAt s ns
 meta m sp annot = MkExprAt (promote $ SimpApps (ValMeta m $$ mapSpine (force . (.val)) sp)) annot
+  
+public export
+unitTy : Size ns => (s : Stage) -> ExprAt s ns
+unitTy = ?unitTyImpl
+  
+public export
+ioTy : Size ns => ExprAt Obj ns -> ExprAt Obj ns
+ioTy = ?ioTyImpl
       
 -- Create a lambda expression with the given data.
 public export covering

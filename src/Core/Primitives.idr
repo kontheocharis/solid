@@ -59,6 +59,9 @@ data Primitive : PrimitiveClass -> PrimitiveReducibility -> Arity -> Type where
     [(Implicit, "ba"), (Implicit, "bRest"), (Explicit, a), (Explicit, "rest")]
   PrimPair : (a : Name) -> Primitive PrimNorm PrimIrreducible
     [(Implicit, "ba"), (Implicit, "bRest"), (Implicit, a), (Implicit, "rest"), (Explicit, "va"), (Explicit, "vrest")]
+  PrimIOTy : Primitive PrimNorm PrimIrreducible [(Explicit, "t")]
+  PrimIOBind : Primitive PrimNorm PrimIrreducible [(Explicit, "x"), (Explicit, "f")]
+  PrimIORet : Primitive PrimNorm PrimIrreducible [(Explicit, "t")]
 
 
 -- Can't be DecEq without writing out all cases smh
@@ -86,6 +89,9 @@ primEq (PrimSigma x) (PrimSigma x') = case decEq x x' of
 primEq PrimDyn PrimDyn = Just Refl
 primEq PrimAddBYTES PrimAddBYTES = Just Refl
 primEq PrimAddBytes PrimAddBytes = Just Refl
+primEq PrimIOTy PrimIOTy = Just Refl
+primEq PrimIOBind PrimIOBind = Just Refl
+primEq PrimIORet PrimIORet = Just Refl
 primEq _ _ = Nothing
 
 export
@@ -105,13 +111,16 @@ primName PrimPadTy = "PadTy"
 primName PrimPad = "Pad"
 primName PrimIrrTy = "IrrTy"
 primName PrimIrr = "Irr"
-primName PrimEmbedBYTES = "embedBYTES"
+primName PrimEmbedBYTES = "embed-BYTES"
 primName PrimDyn = "Dyn"
-primName PrimAddBYTES = "addBYTES"
-primName PrimAddBytes = "addBytes"
+primName PrimAddBYTES = "add-bytes"
+primName PrimAddBytes = "add-bytes"
 primName (PrimSIGMA a) = "SIGMA(" ++ a ++ ")"
 primName (PrimPAIR a) = "PAIR(" ++ a ++ ")"
 primName (PrimSigma a) = "Sigma(" ++ a ++ ")"
 primName (PrimPair a) = "Pair(" ++ a ++ ")"
+primName PrimIOTy = "IO"
+primName PrimIOBind = "io-bind"
+primName PrimIORet = "io-ret"
 
 

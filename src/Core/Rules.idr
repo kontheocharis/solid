@@ -84,6 +84,11 @@ primN : PrimitiveApplied PrimNorm Syntax NA ns -> Term Syntax ns
 primN = SynPrimNormal
 
 public export
+unitSortForStage : Stage -> Ty ns
+unitSortForStage Mta = primN $ (PrimUNIT $$ [])
+unitSortForStage Obj = primN $ (PrimPadTy $$ [(Val _, embedBytes zeroBytes)])
+
+public export
 unitForStage : Stage -> Ty ns
 unitForStage Mta = primN $ (PrimUNIT $$ [])
 unitForStage Obj = primN $ (PrimPadTy $$ [(Val _, embedBytes zeroBytes)])

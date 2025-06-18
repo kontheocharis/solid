@@ -11,7 +11,10 @@ import Data.DPair
 import Core.Base
 import Core.Atoms
 import Core.Typechecking
+import Core.Primitives
+import Core.Rules
 import Surface.Presyntax
+import Core.Syntax
 import Data.Maybe
 
 -- Elaborate a presyntax term into a typechecking operation.
@@ -19,10 +22,9 @@ export covering
 elab : (HasTc m) => PTm -> TcAll m
 
 -- The annotation of the entry point of the program
---
--- @@Todo: This should be IO
 export
 mainAnnot : AnnotAt Obj [<]
+mainAnnot = (ioTy (unitTy Obj)).toAnnot
 
 covering
 elabSpine : (HasTc m) => PSpine k -> List (Ident, TcAll m)
