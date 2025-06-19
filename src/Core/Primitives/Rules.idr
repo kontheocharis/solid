@@ -78,25 +78,6 @@ public export
 layoutDynAdd : Tm ns -> Tm ns -> Tm ns
 layoutDynAdd a b = SynPrimNormal (PrimSeqLayoutDyn $$ [(Val _, a), (Val _, b)])
 
-public export
-primN : PrimitiveApplied PrimNorm Syntax NA ns -> Term Syntax ns
-primN = SynPrimNormal
-
-public export
-unitSortForStage : Stage -> Ty ns
-unitSortForStage Mta = primN $ (PrimUNIT $$ [])
-unitSortForStage Obj = primN $ (PrimUnit $$ [(Val _, staLayoutDyn zeroLayout)])
-
-public export
-unitForStage : Stage -> Ty ns
-unitForStage Mta = primN $ (PrimUNIT $$ [])
-unitForStage Obj = primN $ (PrimUnit $$ [(Val _, staLayoutDyn zeroLayout)])
-
-public export
-ttForStage : Stage -> Ty ns
-ttForStage Mta = primN $ (PrimTT $$ [])
-ttForStage Obj = primN $ (PrimTt $$ [(Val _, staLayoutDyn zeroLayout)])
-
 -- Reduction rules:
 
 -- Note: for every primitive that might reduce on an argument, in addition to
@@ -137,21 +118,3 @@ public export
 data DomainIn : Domain -> Ctx -> Type where
   SyntaxIn : DomainIn Syntax ns
   ValueIn : Size ns -> DomainIn Value ns
-
--- Create a primitive in the given domain
-public export
-prim : {k : PrimitiveClass} -> {r : PrimitiveReducibility}
-  -> DomainIn d ns
-  -> Primitive k r ar
-  -> Spine ar (Term d) ns
-  -> Term d ns
-prim SyntaxIn p sp = sPrim p sp
-prim (ValueIn s) p sp = eval {over = ValTy} id (sPrim p (quote sp))
-
-public export
-vPrim : {k : PrimitiveClass} -> {r : PrimitiveReducibility}
-  -> Size ns
-  => Primitive k r ar
-  -> Spine ar Val ns
-  -> Val ns
-vPrim @{s} = prim (ValueIn s)

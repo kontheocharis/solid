@@ -262,6 +262,34 @@ public export covering
 layoutAnnot : Size ns => AnnotAt Mta ns
 layoutAnnot = MkAnnotAt (promote layout) (promote mtaType)
 
+public export
+unitTy : Size ns => (s : Stage) -> ExprAt s ns
+unitTy = ?unitTyImpl
+  
+public export
+objUnitTy : Size ns => Atom ns -> ExprAt Obj ns
+objUnitTy = ?unitTyImpli
+  
+public export
+irrTy : Size ns => Atom ns -> AtomTy ns -> ExprAt Obj ns
+irrTy = ?irrTyImpl
+  
+public export
+ioTy : Size ns => ExprAt Obj ns -> ExprAt Obj ns
+ioTy = ?ioTyImpl
+  
+public export covering
+code : Size ns => Atom ns -> Atom ns -> AnnotAt Mta ns
+code by ty = MkAnnotAt (promote $ sCode by.syn ty.syn) mtaTypeAnnot.ty
+
+public export covering
+app : Size ns => Atom ns -> Ident -> Atom ns -> Atom ns
+app f a x = promote $ apps f.val [(Val a, x.val)]
+
+public export covering
+mtaSigma : Size ns => (n : Ident) -> AtomTy ns -> Atom ns -> ExprAt Mta ns
+mtaSigma piIdent bindTy bodyTy = ?ajajajaj
+
 -- Sorts
 
 -- A sort can be either static (meta-level), dynamic (object-level with a
@@ -320,32 +348,17 @@ namespace AnnotFor
   
 -- Language items
 
+-- Create a glued application expression.
 public export covering
 glued : {d : Domain} -> Size ns => Variable d (ns :< n) -> Atom (ns :< n) -> Atom (ns :< n)
 glued v t = Choice (here) (Glued (LazyApps (ValDef (Level here) $$ []) t.val))
 
--- Make a metavariable expression with the given data.
+-- Create a metavariable expression.
 public export covering
 meta : Size ns => MetaVar -> Spine ar Atom ns -> AnnotAt s ns -> ExprAt s ns
 meta m sp annot = MkExprAt (promote $ SimpApps (ValMeta m $$ mapSpine (force . (.val)) sp)) annot
-  
-public export
-unitTy : Size ns => (s : Stage) -> ExprAt s ns
-unitTy = ?unitTyImpl
-  
-public export
-objUnitTy : Size ns => Atom ns -> ExprAt Obj ns
-objUnitTy = ?unitTyImpli
-  
-public export
-irrTy : Size ns => Atom ns -> AtomTy ns -> ExprAt Obj ns
-irrTy = ?irrTyImpl
-  
-public export
-ioTy : Size ns => ExprAt Obj ns -> ExprAt Obj ns
-ioTy = ?ioTyImpl
       
--- Create a lambda expression with the given data.
+-- Create a lambda expression
 public export covering
 lam : Size ns
   => (piStage : Stage)
@@ -439,29 +452,19 @@ ifForcePi stage (mode, name) potentialPi ifMatching ifMismatching otherwise
           (MkAnnotFor MtaSort (promoteBody b))
     -- fail
     resolvedPi => otherwise (promote resolvedPi)
+
+-- Shorthand for meta-level pis.
+public export covering
+mtaPi : Size ns => (n : Ident) -> AtomTy ns -> AtomTy (ns :< n) -> ExprAt Mta ns
+mtaPi piIdent bindTy bodyTy = pi Mta piIdent (MkAnnotFor MtaSort bindTy) (MkAnnotFor MtaSort (close idS bodyTy))
           
 -- Create a variable expression with the given index and annotation.
 public export covering
 var : Size ns => Idx ns -> AnnotAt s ns -> ExprAt s ns
 var idx annot = MkExprAt (promote (varIdx idx)) annot
 
+-- Find a variable by its name in the context.
 public export covering
 v : Size ns => (n : String) -> {auto prf : In n ns} -> Atom ns
 v n = promote (var n)
-  
-public export covering
-code : Size ns => Atom ns -> Atom ns -> AnnotAt Mta ns
-code by ty = MkAnnotAt (promote $ sCode by.syn ty.syn) mtaTypeAnnot.ty
-
-public export covering
-app : Size ns => Atom ns -> Ident -> Atom ns -> Atom ns
-app f a x = promote $ apps f.val [(Val a, x.val)]
-
-public export covering
-mtaPi : Size ns => (n : Ident) -> AtomTy ns -> AtomTy (ns :< n) -> ExprAt Mta ns
-mtaPi piIdent bindTy bodyTy = pi Mta piIdent (MkAnnotFor MtaSort bindTy) (MkAnnotFor MtaSort (close idS bodyTy))
-
-public export covering
-mtaSigma : Size ns => (n : Ident) -> AtomTy ns -> Atom ns -> ExprAt Mta ns
-mtaSigma piIdent bindTy bodyTy = ?ajajajaj
   

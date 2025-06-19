@@ -15,15 +15,33 @@ import Core.Unification
 import Core.Primitives.Rules
 import Core.Atoms
 
--- All the primitive types
+
+public export covering
+($>) : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility}
+    -> Primitive k r ar
+    -> Spine ar Atom ns
+    -> Atom ns
+($>) p sp = ?ffa -- promote $ SynPrimNormal x
+
+mta : Size ns => Atom ns -> Annot ns
+mta x = MkAnnot x (PrimTYPE $> []) Mta
+
+obj : Size ns => Atom ns -> Atom ns -> Annot ns
+obj bx x = MkAnnot x (PrimType $> [(Val _, bx)]) Obj
+
+-- objSizedTy : Atom ns -> Annot ns
+-- objSizedTy = ?fafa
+
+-- Typing rules for all the primitives
 public export covering
 primAnnot : Size ns => (p : Primitive k r ar) -> (Tel ar Annot ns, Annot (ns ::< ar))
-primAnnot PrimTYPE = ([], mtaTypeAnnot.p)
+primAnnot PrimTYPE = ([], mta (PrimTYPE $> []))
+
 primAnnot PrimCode = ([
-      (Val _, layoutDynAnnot.p),
-      (Val _, (dynObjTypeAnnot (v "bytes")).p)
+      (Val _, mta (PrimLayoutDyn $> [])),
+      (Val _, obj (PrimZeroLayout $> []) (PrimType $> [(Val _, v "bytes")]))
     ],
-    mtaTypeAnnot.p
+    mta (PrimTYPE $> [])
   )
 primAnnot PrimQuote = ([
       (Val _, layoutDynAnnot.p),
@@ -111,4 +129,5 @@ prim @{s} p sp =
   let (_, pRet) = primAnnot {ns = ns} p in
   let ret = sub {sms = s + sp.count} (idS ::< sp) pRet.ty in
   let retSort = sub {sms = s + sp.count} (idS ::< sp) pRet.sort in
-  MkExpr (Choice (sPrim p sp.syn) (vPrim p sp.val)) (MkAnnot ret retSort pRet.stage)
+  ?fajajj
+  -- MkExpr (Choice (sPrim p sp.syn) (vPrim p sp.val)) (MkAnnot ret retSort pRet.stage)
