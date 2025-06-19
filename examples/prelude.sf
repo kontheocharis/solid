@@ -1,0 +1,36 @@
+
+-- Layouts
+Layout : TYPE
+Layout? : TYPE
+sta : Layout -> Layout?
+seq : Layout -> Layout -> Layout
+seq? : Layout -> Layout -> Layout?
+zero : Layout
+ptr : Layout
+idx : Layout
+
+-- Synonym for sized types
+Type : Layout -> Type? (sta zero)
+Type l = Type? (sta l)
+
+-- Generating data
+Make : [b] (A : Type? b) -> Type idx
+give : [b] [A : Type b] (a : A) -> Make A
+push : [b] [A : Type b] (a : Make A) -> A
+
+-- Unit
+UNIT : TYPE
+ttS : UNIT
+Unit : (l : Layout?) -> Type? l
+tt : [l] -> Unit l
+
+-- Irrelevance
+Irr : [b] (A : Type? b) -> Type zero
+irr : [b] [A : Type b] (a : A) -> Irr A
+
+-- Sigma
+SIGMA : (A : TYPE) -> (A -> TYPE) -> TYPE
+pairS : [A : TYPE] [B : A -> TYPE] (a : A) (b : B a) -> SIGMA A B
+fstS : [A : TYPE] [B : A -> TYPE] (p : SIGMA A B) -> A
+sndS : [A : TYPE] [B : A -> TYPE] (p : SIGMA A B) -> B (fstS p)
+Sigma : [a] (A : Type? a) [b] (B : Irr A -> Type? b) -> Type? (seq? a b)
