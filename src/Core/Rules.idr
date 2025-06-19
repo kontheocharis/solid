@@ -1,4 +1,4 @@
--- All the declarative typing and reduction rules for primitives.
+-- All the declarative reduction rules for primitives.
 module Core.Rules
 
 import Data.Singleton
@@ -97,56 +97,6 @@ public export
 ttForStage : Stage -> Ty ns
 ttForStage Mta = primN $ (PrimTT $$ [])
 ttForStage Obj = primN $ (PrimPad $$ [(Val _, embedBytes zeroBytes)])
-
--- Typing rules:
-
--- annot : (a : Ty ns) -> Stage -> Annot ns
--- annot a Mta = MkAnnot a Mta
-
--- Types of the arguments and return values of all the primitives
-public export
-primTy : (p : Primitive k r ar) -> (Tel ar ValTy ns, ValTy (ns ::< ar))
--- primTy PrimTYPE = ([], MkAnnot mtaType Mta)
--- primTy PrimCode = ([MkAnnot psBytes Obj, MkAnnot (objType (var "bytes")) Obj], MkAnnot mtaType Mta)
--- primTy PrimQuote = ([MkAnnot psBytes Obj, MkAnnot (objType (var "bytes")) Obj, MkAnnot (var "ty") Obj], MkAnnot (sCode (var "bytes") (var "ty")) Mta)
--- primTy PrimSplice = ([MkAnnot psBytes Obj, MkAnnot (objType (var "bytes")) Obj, MkAnnot (sCode (var "bytes") (var "ty")) Mta], MkAnnot (var "ty") Obj)
--- primTy PrimBYTES = ([], MkAnnot mtaType Mta)
--- primTy PrimZeroBYTES = ([], MkAnnot mtaBytes Mta)
--- primTy PrimSizeBYTES = ([], MkAnnot mtaBytes Mta)
--- primTy PrimPtrBYTES = ([], MkAnnot mtaBytes Mta)
--- primTy PrimBytes = ([], MkAnnot (sizedObjType sizeBytes) Obj)
--- primTy PrimUNIT = ([], MkAnnot mtaType Mta)
--- primTy PrimTT = ([], MkAnnot mtaUnit Mta)
--- primTy PrimIrrTy = ([MkAnnot psBytes Obj, MkAnnot (sizedObjType (var "bytes")) Obj], MkAnnot (sizedObjType zeroBytes) Obj)
--- primTy PrimIrr = ([MkAnnot psBytes Obj, MkAnnot (sizedObjType (var "bytes")) Obj, MkAnnot (var "ty") Obj], MkAnnot (primN (PrimIrrTy $$ [var "bytes", var "ty"])) Obj)
--- primTy PrimPadTy = ([MkAnnot psBytes Obj], MkAnnot (sizedObjType (var "bytes")) Obj)
--- primTy PrimPad = ([MkAnnot psBytes Obj], MkAnnot (primN (PrimPadTy $$ [var "bytes"])) Obj)
--- primTy PrimEmbedBYTES = ([MkAnnot mtaBytes Mta], MkAnnot psBytes Obj)
--- primTy PrimUnsized = ([MkAnnot psBytes Obj], MkAnnot (sizedObjType zeroBytes) Obj)
--- primTy PrimAddBYTES = ([MkAnnot mtaBytes Mta, MkAnnot mtaBytes Mta], MkAnnot mtaBytes Mta)
--- primTy PrimAddBytes = ([MkAnnot psBytes Obj, MkAnnot psBytes Obj], MkAnnot psBytes Obj)
--- primTy (PrimSIGMA a) = ([MkAnnot mtaType Mta, MkAnnot (sMtaPi (Explicit, "x") (var a) mtaType) Mta], MkAnnot mtaType Mta)
--- primTy (PrimPAIR a) = ([
---     MkAnnot mtaType Mta,
---     MkAnnot (sMtaPi (Explicit, "x") (var a) mtaType) Mta,
---     MkAnnot (var a) Mta,
---     MkAnnot (varApp "rest" (Explicit, "x") (var "va")) Mta
---   ], MkAnnot (primN (PrimSIGMA a $$ [var a, var "rest"])) Mta)
--- primTy (PrimSigma a) = ([
---     MkAnnot psBytes Obj,
---     MkAnnot psBytes Obj,
---     MkAnnot (objType (var "ba")) Obj,
---     MkAnnot (sMtaPi (Explicit, "x") (var a) (objType (var "bRest"))) Obj
---   ], MkAnnot (objType (psBytesAdd (var "ba") (var "bRest"))) Obj)
--- primTy (PrimPair a) = ([
---     MkAnnot psBytes Obj,
---     MkAnnot psBytes Obj,
---     MkAnnot (objType (var "ba")) Obj,
---     MkAnnot (sMtaPi (Explicit, "x") (var a) (objType (var "bRest"))) Obj,
---     MkAnnot (var a) Obj,
---     MkAnnot (varApp "rest" (Explicit, "x") (var "va")) Obj
---   ], MkAnnot (primN (PrimSigma a $$ [var "ba", var "bRest", var a, var "rest"])) Obj)
-
 
 -- Reduction rules:
 

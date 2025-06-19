@@ -59,9 +59,11 @@ data Primitive : PrimitiveClass -> PrimitiveReducibility -> Arity -> Type where
     [(Implicit, "ba"), (Implicit, "bRest"), (Explicit, a), (Explicit, "rest")]
   PrimPair : (a : Name) -> Primitive PrimNorm PrimIrreducible
     [(Implicit, "ba"), (Implicit, "bRest"), (Implicit, a), (Implicit, "rest"), (Explicit, "va"), (Explicit, "vrest")]
-  PrimIOTy : Primitive PrimNorm PrimIrreducible [(Explicit, "t")]
-  PrimIOBind : Primitive PrimNorm PrimIrreducible [(Explicit, "x"), (Explicit, "f")]
-  PrimIORet : Primitive PrimNorm PrimIrreducible [(Explicit, "t")]
+  PrimIOTy : Primitive PrimNorm PrimIrreducible [(Implicit, "bt"), (Explicit, "t")]
+  PrimIOBind : Primitive PrimNorm PrimIrreducible
+    [(Implicit, "bt"), (Implicit, "t"), (Implicit, "a"), (Implicit, "b"), (Explicit, "x"), (Explicit, "f")]
+  PrimIORet : Primitive PrimNorm PrimIrreducible
+    [(Implicit, "bt"), (Implicit, "t"), (Implicit, "a"), (Explicit, "t")]
 
 
 -- Can't be DecEq without writing out all cases smh

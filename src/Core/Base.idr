@@ -147,7 +147,7 @@ namespace Tel
   public export
   data Tel : Arity -> (Ctx -> Type) -> Ctx -> Type where
     Nil : Tel [] f ms
-    (::) : (Singleton a, f ms)  -> Tel ar f (ms :< a) -> Tel (a :: ar) f ms
+    (::) : (Singleton a, f ms) -> Tel ar f (ms :< a) -> Tel (a :: ar) f ms
     
   public export
   %hint

@@ -4,6 +4,7 @@ module Core.Atoms
 import Data.DPair
 import Common
 import Decidable.Equality
+import Data.Singleton
 import Core.Base
 import Core.Primitives
 import Core.Syntax
@@ -113,12 +114,12 @@ record AnnotAt (s : Stage) (ns : Ctx) where
 namespace Annot
   -- Turn `ExprAt` into `Expr`
   public export
-  packStage : {s : Stage} -> AnnotAt s ns -> Annot ns
-  packStage (MkAnnotAt ty sort) = MkAnnot ty sort s
+  (.p) : {s : Stage} -> AnnotAt s ns -> Annot ns
+  (.p) (MkAnnotAt ty sort) = MkAnnot ty sort s
 
   public export
-  forgetStage : (e : Annot ns) -> AnnotAt e.stage ns
-  forgetStage (MkAnnot ty sort s) = MkAnnotAt ty sort
+  (.f) : (e : Annot ns) -> AnnotAt e.stage ns
+  (.f) (MkAnnot ty sort s) = MkAnnotAt ty sort
 
 -- Version of ExprAt which also packages the stage
 public export
@@ -137,12 +138,12 @@ record ExprAt (s : Stage) (ns : Ctx) where
 namespace Expr
   -- Turn `ExprAt` into `Expr`
   public export
-  packStage : {s : Stage} -> ExprAt s ns -> Expr ns
-  packStage (MkExprAt tm a) = MkExpr tm (packStage a)
+  (.p) : {s : Stage} -> ExprAt s ns -> Expr ns
+  (.p) (MkExprAt tm a) = MkExpr tm a.p
 
   public export
-  forgetStage : (e : Expr ns) -> ExprAt e.annot.stage ns
-  forgetStage (MkExpr tm a) = MkExprAt tm (forgetStage a)
+  (.f) : (e : Expr ns) -> ExprAt e.annot.stage ns
+  (.f) (MkExpr tm a) = MkExprAt tm a.f
   
   public export
   asTypeIn : Atom ns -> Annot ns -> Annot ns
@@ -319,9 +320,8 @@ namespace AnnotFor
   
 -- Language items
   
-public export
-primAnnot : (p : Primitive k r ar) -> (Tel ar Annot ns, Annot (ns ::< ar))
-primAnnot = ?primAnnotImpl
+public export covering
+primAnnot : Size ns => (p : Primitive k r ar) -> (Tel ar Annot ns, Annot (ns ::< ar))
 
 public export covering
 glued : {d : Domain} -> Size ns => Variable d (ns :< n) -> Atom (ns :< n) -> Atom (ns :< n)
@@ -440,6 +440,10 @@ public export covering
 var : Size ns => Idx ns -> AnnotAt s ns -> ExprAt s ns
 var idx annot = MkExprAt (promote (varIdx idx)) annot
 
+public export covering
+v : Size ns => (n : String) -> {auto prf : In n ns} -> Atom ns
+v n = promote (var n)
+
 -- Create a primitive expression with the given data.
 public export covering
 prim : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility} -> Primitive k r ar -> Spine ar Atom ns -> Expr ns
@@ -448,3 +452,89 @@ prim @{s} p sp =
   let ret = sub {sms = s + sp.count} (idS ::< sp) pRet.ty in
   let retSort = sub {sms = s + sp.count} (idS ::< sp) pRet.sort in
   MkExpr (Choice (sPrim p sp.syn) (vPrim p sp.val)) (MkAnnot ret retSort pRet.stage)
+  
+public export covering
+code : Size ns => Atom ns -> Atom ns -> AnnotAt Mta ns
+code by ty = MkAnnotAt (promote $ sCode by.syn ty.syn) mtaTypeAnnot.ty
+
+public export covering
+app : Size ns => Atom ns -> Atom ns -> Atom ns
+app f x = ?qa
+
+-- public export covering
+-- quote : Size ns => Atom ns -> Atom ns -> Atom ns -> ExprAt Mta ns
+-- quote by ty val = MkExprAt (sPrim PrimQuote [(Val _, by), (Val _, ty), (Val _, val)])
+
+-- public export
+-- splice : Tm ns -> Tm ns -> Tm ns -> ExprAt Obj ns
+-- splice by ty val = SynPrimNormal (PrimSplice $$ [(Val _, by), (Val _, ty), (Val _, val)])
+
+public export covering
+mtaPi : Size ns => (n : Ident) -> AtomTy ns -> AtomTy (ns :< n) -> ExprAt Mta ns
+mtaPi piIdent bindTy bodyTy = pi Mta piIdent (MkAnnotFor MtaSort bindTy) (MkAnnotFor MtaSort (close idS bodyTy))
+
+  
+-- All the primitive types
+primAnnot PrimTYPE = ([], mtaTypeAnnot.p)
+primAnnot PrimCode = ([(Val _, psBytesAnnot.p), (Val _, (dynObjTypeAnnot (v "bytes")).p)], mtaTypeAnnot.p)
+primAnnot PrimQuote = ([(Val _, psBytesAnnot.p), (Val _, (dynObjTypeAnnot (v "bytes")).p), (Val _, ((v "ty") `asTypeIn` dynObjTypeAnnot (v "bytes")).p)], (code (v "bytes") (v "ty")).p)
+primAnnot PrimSplice = ([(Val _, psBytesAnnot.p), (Val _, (dynObjTypeAnnot (v "bytes")).p), (Val _, (code (v "bytes") (v "ty")).p)], (v "ty" `asTypeIn` dynObjTypeAnnot (v "bytes")).p)
+primAnnot PrimBYTES = ([], mtaTypeAnnot.p)
+primAnnot PrimZeroBYTES = ([], staBytesAnnot.p)
+primAnnot PrimSizeBYTES = ([], staBytesAnnot.p)
+primAnnot PrimPtrBYTES = ([], staBytesAnnot.p)
+primAnnot PrimBytes = ([], (sizedObjTypeAnnot (promote sizeBytes)).p)
+primAnnot PrimUNIT = ([], mtaTypeAnnot.p)
+primAnnot PrimTT = ([], (unitTy Mta).toAnnot.p)
+primAnnot PrimIrrTy = ([(Val _, psBytesAnnot.p), (Val _, (sizedObjTypeAnnot (v "bytes")).p)], (sizedObjTypeAnnot (promote zeroBytes)).p)
+primAnnot PrimIrr = ([
+      (Val _, psBytesAnnot.p),
+      (Val _, (sizedObjTypeAnnot (v "bytes")).p),
+      (Val _, ((v "ty") `asTypeIn` dynObjTypeAnnot (v "bytes")).p)
+    ], 
+    (prim PrimIrrTy [(Val _, v "bytes"), (Val _, v "ty")]).toAnnot
+  )
+primAnnot PrimPadTy = ([(Val _, psBytesAnnot.p)], (sizedObjTypeAnnot (v "bytes")).p)
+primAnnot PrimPad = ([(Val _, psBytesAnnot.p)], (prim PrimPadTy [(Val _, v "bytes")]).toAnnot)
+primAnnot PrimEmbedBYTES = ([(Val _, mtaTypeAnnot.p)], psBytesAnnot.p)
+primAnnot PrimDyn = ([(Val _, psBytesAnnot.p)], (sizedObjTypeAnnot (promote zeroBytes)).p)
+primAnnot PrimAddBYTES = ([(Val _, staBytesAnnot.p), (Val _, staBytesAnnot.p)], staBytesAnnot.p)
+primAnnot PrimAddBytes = ([(Val _, psBytesAnnot.p), (Val _, psBytesAnnot.p)], psBytesAnnot.p)
+primAnnot (PrimSIGMA a) = ([
+      (Val _, mtaTypeAnnot.p),
+      (Val _, (mtaPi (Explicit, "x") (v a) mtaTypeAnnot.ty).toAnnot.p)
+    ],
+    mtaTypeAnnot.p
+  )
+primAnnot (PrimPAIR a) = ([
+  (Val _, mtaTypeAnnot.p),
+  (Val _, (mtaPi (Explicit, "x") (v a) mtaTypeAnnot.ty).toAnnot.p),
+  (Val _, (v a `asTypeIn` mtaTypeAnnot).p),
+  (Val _, (app (v "rest") (v "va") `asTypeIn` mtaTypeAnnot).p)
+  ], (prim (PrimSIGMA a) [(Val _, v a), (Val _, v "rest")]).toAnnot)
+primAnnot (PrimSigma a) = ([
+  (Val _, psBytesAnnot.p),
+  (Val _, psBytesAnnot.p),
+  (Val _, (dynObjTypeAnnot (v "ba")).p),
+  (Val _, (mtaPi (Explicit, "x")
+    ((code (v "ba") (v a)).ty)
+    (code (prim PrimEmbedBYTES [(Val _, (prim PrimZeroBYTES []).tm)]).tm (dynObjTypeAnnot (v "bRest")).ty).ty).toAnnot.p)
+  ], (dynObjTypeAnnot (prim PrimAddBytes [(Val _, v "ba"), (Val _, v "bRest")]).tm).p)
+primAnnot (PrimPair a) = ([
+  (Val _, psBytesAnnot.p),
+  (Val _, psBytesAnnot.p),
+  (Val _, (dynObjTypeAnnot (v "ba")).p),
+  (Val _, (mtaPi (Explicit, "x")
+    ((code (v "ba") (v a)).ty)
+    (code (prim PrimEmbedBYTES [(Val _, (prim PrimZeroBYTES []).tm)]).tm (dynObjTypeAnnot (v "bRest")).ty).ty).toAnnot.p),
+  (Val _, (v a `asTypeIn` dynObjTypeAnnot (v "ba")).p),
+  (Val _, (app (v "rest") (v "va") `asTypeIn` ?fjjjjjj).p)
+  ], (prim (PrimSigma a) [(Val _, v "ba"), (Val _, v "bRest"), (Val _, v a), (Val _, v "rest")]).toAnnot)
+primAnnot PrimIOTy = ([
+      (Val _, staBytesAnnot.p),
+      (Val _, (sizedObjTypeAnnot (prim PrimEmbedBYTES [(Val _, (prim PrimPtrBYTES []).tm)]).tm).p)
+    ],
+    (sizedObjTypeAnnot (prim PrimEmbedBYTES [(Val _, (prim PrimPtrBYTES []).tm)]).tm).p
+  )
+primAnnot PrimIOBind = ?primAnnot_missing_case_2
+primAnnot PrimIORet = ?primAnnot_missing_case_3

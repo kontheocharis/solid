@@ -286,7 +286,7 @@ public export
 switch : HasTc m => Tc Infer m -> TcAll m
 switch f {md = Infer} = f
 switch f {md = Check} = \ctx, annot => do
-  result <- insertAt ctx $ f ctx (Just (packStage annot).stage)
+  result <- insertAt ctx $ f ctx (Just annot.p.stage)
   unify ctx annot.ty result.annot.ty
   pure result.tm
   
@@ -349,7 +349,7 @@ checkSpine : HasTc m
 checkSpine ctx tms [] = tcError ctx (TooManyApps (map fst tms).count)
 checkSpine ctx [] annots = tcError ctx (TooFewApps annots.count)
 checkSpine ctx ((_, tm) :: tms) ((Val _, annot) :: annots) = do -- @@Todo: spine name
-  tm' <- tm {md = Check} ctx (forgetStage annot)
+  tm' <- tm {md = Check} ctx annot.f
   tms' <- checkSpine ctx tms (sub (ctx.defs :< tm') annots)
   pure ((Val _, tm') :: tms')
   
@@ -360,12 +360,12 @@ public export
 tcMeta : HasTc m => {default Nothing name : Maybe Name} -> TcAll m
 tcMeta {md = Check} {name = name} = \ctx, annot => do
   mta <- freshMeta ctx name annot
-  whenJust name $ \n => addGoal (MkGoal (Just n) (packStage mta) ctx)
+  whenJust name $ \n => addGoal (MkGoal (Just n) mta.p ctx)
   pure mta.tm
 tcMeta {md = Infer} {name = name} = ensureKnownStage $ \ctx, stage => do
   annot <- freshMetaAnnot ctx stage Dyn -- remember, sized < dyn
   mta <- freshMeta ctx name annot
-  whenJust name $ \n => addGoal (MkGoal (Just n) (packStage mta) ctx)
+  whenJust name $ \n => addGoal (MkGoal (Just n) mta.p ctx)
   pure mta
 
 -- Check a function type.
@@ -400,7 +400,7 @@ tcLam : HasTc m
   -> (body : TcAll m)
   -> TcAll m
 tcLam lamIdent bindTy body {md = Check} = \ctx, annot@(MkAnnotAt ty sort) => do
-  let stage = (packStage annot).stage
+  let stage = annot.p.stage
   -- We must switch that the type we have is a pi
   resolve ty >>= \ty' => ifForcePi stage lamIdent ty'
     (\resolvedPi, piIdent, a, b => do
@@ -446,7 +446,7 @@ tcVar n = switch $ \ctx, stage' => case lookup ctx n of
     Nothing => tcError ctx $ UnknownName n
     Just idx => do
       let tm = var idx (MkAnnotAt {s = ctx.stages.indexS idx} (ctx.con.indexS idx) (ctx.sorts.indexS idx))
-      adjustStageIfNeeded ctx (packStage tm) stage'
+      adjustStageIfNeeded ctx tm.p stage'
 
 -- Infer or switch a user-supplied hole
 --
