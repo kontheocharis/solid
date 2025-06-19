@@ -14,6 +14,7 @@ import Core.Primitives.Rules
 import Core.Metavariables
 import Core.Unification
 import Core.Atoms
+import Core.Primitives.Typing
 
 %default covering
 
