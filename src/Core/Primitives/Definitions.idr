@@ -1,5 +1,5 @@
 -- Defining the primitives in the language
-module Core.Primitives
+module Core.Primitives.Definitions
 
 import Common
 import Core.Base

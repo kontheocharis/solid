@@ -5,7 +5,7 @@ import Data.Singleton
 import Utils
 import Common
 import Core.Base
-import Core.Primitives
+import Core.Primitives.Definitions
 import Core.Syntax
 
 %default covering -- won't bother with the totality checker here

@@ -8,10 +8,10 @@ import Control.Monad.State
 import Data.Singleton
 import Data.DPair
 import Core.Base
-import Core.Primitives
+import Core.Primitives.Definitions
 import Core.Syntax
 import Core.Evaluation
-import Core.Rules
+import Core.Primitives.Rules
 import Core.Metavariables
 import Core.Unification
 import Core.Atoms

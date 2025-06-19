@@ -11,8 +11,8 @@ import Data.DPair
 import Core.Base
 import Core.Atoms
 import Core.Typechecking
-import Core.Primitives
-import Core.Rules
+import Core.Primitives.Definitions
+import Core.Primitives.Rules
 import Surface.Presyntax
 import Core.Syntax
 import Data.Maybe

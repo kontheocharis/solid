@@ -4,7 +4,7 @@ module Core.Syntax
 import Utils
 import Common
 import Core.Base
-import Core.Primitives
+import Core.Primitives.Definitions
 import Data.Singleton
 import Decidable.Equality
 import Decidable.Decidable

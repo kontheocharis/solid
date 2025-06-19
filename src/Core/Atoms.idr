@@ -6,12 +6,12 @@ import Common
 import Decidable.Equality
 import Data.Singleton
 import Core.Base
-import Core.Primitives
+import Core.Primitives.Definitions
 import Core.Syntax
 import Core.Evaluation
 import Core.Metavariables
 import Core.Unification
-import Core.Rules
+import Core.Primitives.Rules
 
 public export
 record AnyDomain (tm : Domain -> Ctx -> Type) (ns : Ctx) where

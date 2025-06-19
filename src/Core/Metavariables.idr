@@ -7,10 +7,10 @@ import Decidable.Equality
 import Data.Maybe
 import Data.Singleton
 import Core.Base
-import Core.Primitives
+import Core.Primitives.Definitions
 import Core.Syntax
 import Core.Evaluation
-import Core.Rules
+import Core.Primitives.Rules
 
 %default covering
 

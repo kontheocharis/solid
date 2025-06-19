@@ -1,10 +1,10 @@
 -- All the declarative reduction rules for primitives.
-module Core.Rules
+module Core.Primitives.Rules
 
 import Data.Singleton
 import Common
 import Core.Base
-import Core.Primitives
+import Core.Primitives.Definitions
 import Core.Syntax
 import Core.Evaluation
 
