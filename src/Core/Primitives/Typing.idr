@@ -27,41 +27,37 @@ mta : Size ns => Atom ns -> Annot ns
 mta x = MkAnnot x (PrimTYPE $> []) Mta
 
 obj : Size ns => Atom ns -> Atom ns -> Annot ns
-obj bx x = MkAnnot x (PrimType $> [(Val _, PrimSta $> [(Val _, bx)])]) Obj
+obj bx x = MkAnnot x (PrimTypeDyn $> [(Val _, PrimSta $> [(Val _, bx)])]) Obj
 
 objZ : Size ns => Atom ns -> Annot ns
 objZ x = obj (PrimZeroLayout $> []) x
-
--- objSizedTy : Atom ns -> Annot ns
--- objSizedTy = ?fafa
 
 -- Typing rules for all the primitives
 public export covering
 primAnnot : Size ns => (p : Primitive k r ar) -> (Tel ar Annot ns, Annot (ns ::< ar))
 primAnnot PrimTYPE = ([], mta (PrimTYPE $> []))
-
 primAnnot PrimCode = ([
-      (Val (_, "bytes"), mta (PrimLayoutDyn $> [])),
-      (Val _, objZ (PrimType $> [(Val _, v "bytes")]))
+      (Val (_, "l"), mta (PrimLayoutDyn $> [])),
+      (Val _, objZ (PrimTypeDyn $> [(Val _, v "l")]))
     ],
     mta (PrimTYPE $> [])
   )
 primAnnot PrimQuote = ([
-      (Val (_, "bytes"), mta (PrimLayout $> [])),
-      (Val (_, "ty"), objZ (PrimType $> [(Val _, PrimSta $> [(Val _, v "bytes")])])),
-      (Val _, obj (v "bytes") (v "ty"))
+      (Val (_, "l"), mta (PrimLayout $> [])),
+      (Val (_, "ty"), objZ (PrimTypeDyn $> [(Val _, PrimSta $> [(Val _, v "l")])])),
+      (Val _, obj (v "l") (v "ty"))
     ],
-    mta (PrimCode $> [(Val _, PrimSta $> [(Val _, v "bytes")]), (Val _, v "ty")])
+    mta (PrimCode $> [(Val _, PrimSta $> [(Val _, v "l")]), (Val _, v "ty")])
   )
 primAnnot PrimSplice = ([
-      (Val (_, "bytes"), mta (PrimLayout $> [])),
-      (Val (_, "ty"), objZ (PrimType $> [(Val _, PrimSta $> [(Val _, v "bytes")])])),
-      (Val _, mta (PrimCode $> [(Val _, PrimSta $> [(Val _, v "bytes")]), (Val _, v "ty")]))
+      (Val (_, "l"), mta (PrimLayout $> [])),
+      (Val (_, "ty"), objZ (PrimTypeDyn $> [(Val _, PrimSta $> [(Val _, v "l")])])),
+      (Val _, mta (PrimCode $> [(Val _, PrimSta $> [(Val _, v "l")]), (Val _, v "ty")]))
     ],
-    obj (v "bytes") (v "ty")
+    obj (v "l") (v "ty")
   )
 primAnnot PrimSta = ([(Val _, mta (PrimLayout $> []))], mta (PrimLayoutDyn $> []))
-primAnnot PrimType = ([(Val (_, "bs"), mta (PrimLayoutDyn $> []))], objZ (PrimType $> [(Val _, PrimZeroLayout $> [])]))
+primAnnot PrimTypeDyn = ([(Val (_, "l"), mta (PrimLayoutDyn $> []))], objZ (PrimTypeDyn $> [(Val _, PrimZeroLayout $> [])]))
 primAnnot PrimSeqLayout = ([
       (Val _, mta (PrimLayout $> [])),
       (Val _, mta (PrimLayout $> []))
@@ -79,96 +75,6 @@ primAnnot PrimZeroLayout = ([], mta (PrimLayout $> []))
 primAnnot PrimIdxLayout = ([], mta (PrimLayout $> []))
 primAnnot PrimPtrLayout = ([], mta (PrimLayout $> []))
 primAnnot PrimLayoutDyn = ([], mta (PrimTYPE $> []))
-primAnnot PrimMake = ([
-      (Val (_, "bytes"), mta (PrimLayoutDyn $> [])),
-      (Val (_, "ty"), objZ (PrimType $> [(Val _, v "bytes")]))
-    ],
-    objZ (PrimType $> [(Val _, PrimSta $> [(Val _, PrimIdxLayout $> [])])])
-  )
-primAnnot PrimGive = ([
-      (Val (_, "bytes"), mta (PrimLayout $> [])),
-      (Val (_, "ty"), objZ (PrimType $> [(Val _, PrimSta $> [(Val _, v "bytes")])])),
-      (Val _, obj (v "bytes") (v "ty"))
-    ],
-    obj (PrimIdxLayout $> []) (PrimMake $> [(Val _, v "bytes"), (Val _, v "ty")])
-  )
-primAnnot PrimPush = ([
-      (Val (_, "bytes"), mta (PrimLayout $> [])),
-      (Val (_, "ty"), objZ (PrimType $> [(Val _, PrimSta $> [(Val _, v "bytes")])])),
-      (Val _, obj (PrimIdxLayout $> []) (PrimMake $> [(Val _, v "bytes"), (Val _, v "ty")]))
-    ],
-    obj (v "bytes") (v "ty")
-  )
-primAnnot PrimUNIT = ([], mta (PrimTYPE $> []))
-primAnnot PrimTT = ([], mta (PrimUNIT $> []))
-primAnnot PrimIrrTy = ([
-      (Val (_, "bytes"), mta (PrimLayoutDyn $> [])),
-      (Val _, objZ (PrimType $> [(Val _, v "bytes")]))
-    ],
-    objZ (PrimType $> [(Val _, PrimSta $> [(Val _, PrimZeroLayout $> [])])])
-  )
-primAnnot PrimIrr = ([
-      (Val (_, "bytes"), mta (PrimLayout $> [])),
-      (Val (_, "ty"), objZ (PrimType $> [(Val _, PrimSta $> [(Val _, v "bytes")])])),
-      (Val _, obj (v "bytes") (v "ty"))
-    ], 
-    objZ (PrimIrrTy $> [(Val _, v "bytes"), (Val _, v "ty")])
-  )
-primAnnot PrimUnit = ([(Val _, mta (PrimLayoutDyn $> []))], objZ (PrimType $> [(Val _, v "bytes")]))
-primAnnot PrimTt = ([
-      (Val _, mta (PrimLayoutDyn $> []))
-    ],
-    obj (PrimIdxLayout $> []) (PrimMake $> [(Val _, v "bytes"), (Val _, PrimUnit $> [(Val _, v "bytes")])])
-  )
-primAnnot (PrimSIGMA a) = ([
-      (Val (_, snd a), mta (PrimTYPE $> [])),
-      (Val _, mta (mtaPi a (v (snd a)) (PrimTYPE $> [])))
-    ],
-    mta (PrimTYPE $> [])
-  )
-primAnnot (PrimPAIR a) = ([
-      (Val (_, snd a), mta (PrimTYPE $> [])),
-      (Val (_, "rest"), mta (mtaPi a (v (snd a)) (PrimTYPE $> []))),
-      (Val (_, "va"), mta (v (snd a))),
-      (Val _, mta (app (v "rest") (Explicit, "x") (v "va")))
-    ],
-    mta (mtaSigma a (v (snd a)) (v "rest"))
-  )
-primAnnot PrimIOTy = ([
-  (Val (_, "bt"), mta (PrimLayout $> [])),
-  (Val _, objZ (PrimType $> [(Val _, PrimSta $> [(Val _, v "bt")])]))
-    ],
-    objZ (PrimType $> [(Val _, PrimPtrLayout $> [])])
-  )
-primAnnot PrimIOBind = ([
-      (Val (_, "ba"), mta (PrimLayout $> [])),
-      (Val (_, "bb"), mta (PrimLayout $> [])),
-      (Val (_, "a"), objZ (PrimType $> [(Val _, PrimSta $> [(Val _, v "ba")])])),
-      (Val (_, "b"), objZ (PrimType $> [(Val _, PrimSta $> [(Val _, v "bb")])])),
-      (Val _, obj (PrimPtrLayout $> []) (PrimIOTy $> [(Val _, v "ba"), (Val _, v "a")])),
-      (?Fajj)
-    ],
-    obj (PrimPtrLayout $> []) (PrimIOTy $> [(Val _, v "bb"), (Val _, v "b")])
-  )
-primAnnot PrimIORet = ?primioret
--- primAnnot (PrimSigma a) = ([
---   (Val _, layoutDynAnnot.p),
---   (Val _, layoutDynAnnot.p),
---   (Val _, (dynObjTypeAnnot (v "ba")).p),
---   (Val _, (mtaPi (Explicit, "x")
---     ((code (v "ba") (v a)).ty)
---     (code (prim PrimSta [(Val _, (prim PrimZeroLayout []).tm)]).tm (dynObjTypeAnnot (v "bRest")).ty).ty).toAnnot.p)
---   ], (dynObjTypeAnnot (prim PrimSeqLayoutDyn [(Val _, v "ba"), (Val _, v "bRest")]).tm).p)
--- primAnnot (PrimPair a) = ([
---   (Val _, layoutDynAnnot.p),
---   (Val _, layoutDynAnnot.p),
---   (Val _, (dynObjTypeAnnot (v "ba")).p),
---   (Val _, (mtaPi (Explicit, "x")
---     ((code (v "ba") (v a)).ty)
---     (code (prim PrimSta [(Val _, (prim PrimZeroLayout []).tm)]).tm (dynObjTypeAnnot (v "bRest")).ty).ty).toAnnot.p),
---   (Val _, (v a `asTypeIn` dynObjTypeAnnot (v "ba")).p),
---   (Val _, (app (v "rest") (v "va") `asTypeIn` ?fjjjjjj).p)
---   ], (prim (PrimSigma a) [(Val _, v "ba"), (Val _, v "bRest"), (Val _, v a), (Val _, v "rest")]).toAnnot)
 
 -- Create a primitive expression with the given data.
 public export covering

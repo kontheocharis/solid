@@ -40,11 +40,11 @@ layoutDyn = SynPrimNormal (PrimLayoutDyn $$ [])
 -- `Type b` for some *compile-time* byte size `b`, object-level type of types.
 public export
 sizedObjType : (b : Tm ns) -> Ty ns
-sizedObjType b = SynPrimNormal (PrimType $$ [(Val _, staLayoutDyn b)])
+sizedObjType b = SynPrimNormal (PrimTypeDyn $$ [(Val _, staLayoutDyn b)])
 
 public export
 dynObjType : Tm ns -> Ty ns
-dynObjType b = SynPrimNormal (PrimType $$ [(Val _, b)])
+dynObjType b = SynPrimNormal (PrimTypeDyn $$ [(Val _, b)])
 
 -- The `0` bytes value.
 public export
@@ -69,10 +69,6 @@ public export
 typeOfTypesForStage : Stage -> Ty ns
 typeOfTypesForStage Mta = mtaType
 typeOfTypesForStage Obj = sizedObjType zeroLayout
-
-public export
-mtaUnit : Ty ns
-mtaUnit = SynPrimNormal (PrimUNIT $$ [])
 
 public export
 layoutDynAdd : Tm ns -> Tm ns -> Tm ns

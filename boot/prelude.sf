@@ -24,3 +24,8 @@ pairS : [A : TYPE] [B : A -> TYPE] (a : A) (b : B a) -> SIGMA A B
 fstS : [A : TYPE] [B : A -> TYPE] (p : SIGMA A B) -> A
 sndS : [A : TYPE] [B : A -> TYPE] (p : SIGMA A B) -> B (fstS p)
 Sigma : [a] (A : Type? a) [b] (B : Irr A -> Type? b) -> Type? (seq? a b)
+
+-- IO
+IO : [a] (A : Type a) -> Type ptr
+io-bind : [a] [A : Type a] (m : IO A) (f : A -> IO b) -> IO b
+io-return : [a] [A : Type a] (a : A) -> IO A
