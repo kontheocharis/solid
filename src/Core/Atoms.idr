@@ -243,24 +243,24 @@ public export covering
 dynObjTypeAnnot : Size ns => Atom ns -> AnnotAt Obj ns
 dynObjTypeAnnot b = MkAnnotAt --@@Todo: more performant
   (promote $ dynObjType b.syn)
-  (promote $ sizedObjType zeroBytes)
+  (promote $ sizedObjType zeroLayout)
 
 -- Type b as an annotation
 public export covering
 sizedObjTypeAnnot : Size ns => Atom ns -> AnnotAt Obj ns
 sizedObjTypeAnnot b = MkAnnotAt --@@Todo: more performant
   (promote $ sizedObjType b.syn)
-  (promote $ sizedObjType zeroBytes)
+  (promote $ sizedObjType zeroLayout)
 
 -- Partially static bytes, the argument to Dyn
 public export covering
-psBytesAnnot : Size ns => AnnotAt Mta ns
-psBytesAnnot = MkAnnotAt (promote psBytes) (promote mtaType)
+layoutDynAnnot : Size ns => AnnotAt Mta ns
+layoutDynAnnot = MkAnnotAt (promote layoutDyn) (promote mtaType)
 
 -- Static bytes, the argument to Type
 public export covering
-staBytesAnnot : Size ns => AnnotAt Mta ns
-staBytesAnnot = MkAnnotAt (promote staBytes) (promote mtaType)
+layoutAnnot : Size ns => AnnotAt Mta ns
+layoutAnnot = MkAnnotAt (promote layout) (promote mtaType)
 
 -- Sorts
 
@@ -365,7 +365,7 @@ lam piStage piIdent lamIdent bindAnnot bodyAnnot body =
       MkExprAt
         (promote $ sObjLam lamIdent ba.syn bb.syn body.open.syn)
         ((promote $ vObjPi piIdent ba.val bb.val bindTy.val bodyClosure.val)
-          `asTypeIn` sizedObjTypeAnnot (Choice ptrBytes ptrBytes))
+          `asTypeIn` sizedObjTypeAnnot (Choice ptrLayout ptrLayout))
           
 -- Create a pi expression
 public export covering
@@ -385,7 +385,7 @@ pi piStage piIdent bindAnnot bodyAnnot = case piStage of
     let MkAnnotFor (ObjSort Sized bb) bodyClosure = bodyAnnot in
     MkExprAt
       (promote $ sObjPi piIdent ba.syn bb.syn bindTy.syn bodyClosure.open.syn)
-      (sizedObjTypeAnnot (Choice ptrBytes ptrBytes)) -- @@Todo: clean this Choice up
+      (sizedObjTypeAnnot (Choice ptrLayout ptrLayout)) -- @@Todo: clean this Choice up
 
 -- The type of the callback that `ifForcePi` calls when it finds a matching
 -- type.
@@ -476,30 +476,30 @@ mtaPi piIdent bindTy bodyTy = pi Mta piIdent (MkAnnotFor MtaSort bindTy) (MkAnno
   
 -- All the primitive types
 primAnnot PrimTYPE = ([], mtaTypeAnnot.p)
-primAnnot PrimCode = ([(Val _, psBytesAnnot.p), (Val _, (dynObjTypeAnnot (v "bytes")).p)], mtaTypeAnnot.p)
-primAnnot PrimQuote = ([(Val _, psBytesAnnot.p), (Val _, (dynObjTypeAnnot (v "bytes")).p), (Val _, ((v "ty") `asTypeIn` dynObjTypeAnnot (v "bytes")).p)], (code (v "bytes") (v "ty")).p)
-primAnnot PrimSplice = ([(Val _, psBytesAnnot.p), (Val _, (dynObjTypeAnnot (v "bytes")).p), (Val _, (code (v "bytes") (v "ty")).p)], (v "ty" `asTypeIn` dynObjTypeAnnot (v "bytes")).p)
-primAnnot PrimBYTES = ([], mtaTypeAnnot.p)
-primAnnot PrimZeroBYTES = ([], staBytesAnnot.p)
-primAnnot PrimSizeBYTES = ([], staBytesAnnot.p)
-primAnnot PrimPtrBYTES = ([], staBytesAnnot.p)
-primAnnot PrimBytes = ([], (sizedObjTypeAnnot (promote sizeBytes)).p)
+primAnnot PrimCode = ([(Val _, layoutDynAnnot.p), (Val _, (dynObjTypeAnnot (v "bytes")).p)], mtaTypeAnnot.p)
+primAnnot PrimQuote = ([(Val _, layoutDynAnnot.p), (Val _, (dynObjTypeAnnot (v "bytes")).p), (Val _, ((v "ty") `asTypeIn` dynObjTypeAnnot (v "bytes")).p)], (code (v "bytes") (v "ty")).p)
+primAnnot PrimSplice = ([(Val _, layoutDynAnnot.p), (Val _, (dynObjTypeAnnot (v "bytes")).p), (Val _, (code (v "bytes") (v "ty")).p)], (v "ty" `asTypeIn` dynObjTypeAnnot (v "bytes")).p)
+primAnnot PrimLayout = ([], mtaTypeAnnot.p)
+primAnnot PrimZeroLayout = ([], layoutAnnot.p)
+primAnnot PrimIdxLayout = ([], layoutAnnot.p)
+primAnnot PrimPtrLayout = ([], layoutAnnot.p)
+primAnnot PrimLayoutDyn = ([], (sizedObjTypeAnnot (promote idxLayout)).p)
 primAnnot PrimUNIT = ([], mtaTypeAnnot.p)
 primAnnot PrimTT = ([], (unitTy Mta).toAnnot.p)
-primAnnot PrimIrrTy = ([(Val _, psBytesAnnot.p), (Val _, (sizedObjTypeAnnot (v "bytes")).p)], (sizedObjTypeAnnot (promote zeroBytes)).p)
+primAnnot PrimIrrTy = ([(Val _, layoutDynAnnot.p), (Val _, (sizedObjTypeAnnot (v "bytes")).p)], (sizedObjTypeAnnot (promote zeroLayout)).p)
 primAnnot PrimIrr = ([
-      (Val _, psBytesAnnot.p),
+      (Val _, layoutDynAnnot.p),
       (Val _, (sizedObjTypeAnnot (v "bytes")).p),
       (Val _, ((v "ty") `asTypeIn` dynObjTypeAnnot (v "bytes")).p)
     ], 
     (prim PrimIrrTy [(Val _, v "bytes"), (Val _, v "ty")]).toAnnot
   )
-primAnnot PrimPadTy = ([(Val _, psBytesAnnot.p)], (sizedObjTypeAnnot (v "bytes")).p)
-primAnnot PrimPad = ([(Val _, psBytesAnnot.p)], (prim PrimPadTy [(Val _, v "bytes")]).toAnnot)
-primAnnot PrimEmbedBYTES = ([(Val _, mtaTypeAnnot.p)], psBytesAnnot.p)
-primAnnot PrimDyn = ([(Val _, psBytesAnnot.p)], (sizedObjTypeAnnot (promote zeroBytes)).p)
-primAnnot PrimAddBYTES = ([(Val _, staBytesAnnot.p), (Val _, staBytesAnnot.p)], staBytesAnnot.p)
-primAnnot PrimAddBytes = ([(Val _, psBytesAnnot.p), (Val _, psBytesAnnot.p)], psBytesAnnot.p)
+primAnnot PrimPadTy = ([(Val _, layoutDynAnnot.p)], (sizedObjTypeAnnot (v "bytes")).p)
+primAnnot PrimPad = ([(Val _, layoutDynAnnot.p)], (prim PrimPadTy [(Val _, v "bytes")]).toAnnot)
+primAnnot PrimStaLayoutDyn = ([(Val _, mtaTypeAnnot.p)], layoutDynAnnot.p)
+primAnnot PrimType = ([(Val _, layoutDynAnnot.p)], (sizedObjTypeAnnot (promote zeroLayout)).p)
+primAnnot PrimSeqLayout = ([(Val _, layoutAnnot.p), (Val _, layoutAnnot.p)], layoutAnnot.p)
+primAnnot PrimSeqLayoutDyn = ([(Val _, layoutDynAnnot.p), (Val _, layoutDynAnnot.p)], layoutDynAnnot.p)
 primAnnot (PrimSIGMA a) = ([
       (Val _, mtaTypeAnnot.p),
       (Val _, (mtaPi (Explicit, "x") (v a) mtaTypeAnnot.ty).toAnnot.p)
@@ -513,28 +513,28 @@ primAnnot (PrimPAIR a) = ([
   (Val _, (app (v "rest") (v "va") `asTypeIn` mtaTypeAnnot).p)
   ], (prim (PrimSIGMA a) [(Val _, v a), (Val _, v "rest")]).toAnnot)
 primAnnot (PrimSigma a) = ([
-  (Val _, psBytesAnnot.p),
-  (Val _, psBytesAnnot.p),
+  (Val _, layoutDynAnnot.p),
+  (Val _, layoutDynAnnot.p),
   (Val _, (dynObjTypeAnnot (v "ba")).p),
   (Val _, (mtaPi (Explicit, "x")
     ((code (v "ba") (v a)).ty)
-    (code (prim PrimEmbedBYTES [(Val _, (prim PrimZeroBYTES []).tm)]).tm (dynObjTypeAnnot (v "bRest")).ty).ty).toAnnot.p)
-  ], (dynObjTypeAnnot (prim PrimAddBytes [(Val _, v "ba"), (Val _, v "bRest")]).tm).p)
+    (code (prim PrimStaLayoutDyn [(Val _, (prim PrimZeroLayout []).tm)]).tm (dynObjTypeAnnot (v "bRest")).ty).ty).toAnnot.p)
+  ], (dynObjTypeAnnot (prim PrimSeqLayoutDyn [(Val _, v "ba"), (Val _, v "bRest")]).tm).p)
 primAnnot (PrimPair a) = ([
-  (Val _, psBytesAnnot.p),
-  (Val _, psBytesAnnot.p),
+  (Val _, layoutDynAnnot.p),
+  (Val _, layoutDynAnnot.p),
   (Val _, (dynObjTypeAnnot (v "ba")).p),
   (Val _, (mtaPi (Explicit, "x")
     ((code (v "ba") (v a)).ty)
-    (code (prim PrimEmbedBYTES [(Val _, (prim PrimZeroBYTES []).tm)]).tm (dynObjTypeAnnot (v "bRest")).ty).ty).toAnnot.p),
+    (code (prim PrimStaLayoutDyn [(Val _, (prim PrimZeroLayout []).tm)]).tm (dynObjTypeAnnot (v "bRest")).ty).ty).toAnnot.p),
   (Val _, (v a `asTypeIn` dynObjTypeAnnot (v "ba")).p),
   (Val _, (app (v "rest") (v "va") `asTypeIn` ?fjjjjjj).p)
   ], (prim (PrimSigma a) [(Val _, v "ba"), (Val _, v "bRest"), (Val _, v a), (Val _, v "rest")]).toAnnot)
 primAnnot PrimIOTy = ([
-      (Val _, staBytesAnnot.p),
-      (Val _, (sizedObjTypeAnnot (prim PrimEmbedBYTES [(Val _, (prim PrimPtrBYTES []).tm)]).tm).p)
+      (Val _, layoutAnnot.p),
+      (Val _, (sizedObjTypeAnnot (prim PrimStaLayoutDyn [(Val _, (prim PrimPtrLayout []).tm)]).tm).p)
     ],
-    (sizedObjTypeAnnot (prim PrimEmbedBYTES [(Val _, (prim PrimPtrBYTES []).tm)]).tm).p
+    (sizedObjTypeAnnot (prim PrimStaLayoutDyn [(Val _, (prim PrimPtrLayout []).tm)]).tm).p
   )
 primAnnot PrimIOBind = ?primAnnot_missing_case_2
 primAnnot PrimIORet = ?primAnnot_missing_case_3

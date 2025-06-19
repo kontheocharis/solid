@@ -295,10 +295,10 @@ switch f {md = Check} = \ctx, annot => do
 freshSortData : HasTc m => Context ns -> (s : Stage) -> (k : SortKind s) -> m (SortData s k ns)
 freshSortData ctx Mta k = pure $ MtaSort 
 freshSortData ctx Obj Dyn = do
-  b <- freshMeta ctx Nothing psBytesAnnot
+  b <- freshMeta ctx Nothing layoutDynAnnot
   pure $ ObjSort Dyn b.tm
 freshSortData ctx Obj Sized = do
-  b <- freshMeta ctx Nothing staBytesAnnot
+  b <- freshMeta ctx Nothing layoutAnnot
   pure $ ObjSort Sized b.tm
   
 -- Create a fresh annotation for the given stage and sort kind.
@@ -385,8 +385,8 @@ tcPi x a b = switch $ ensureKnownStage $ \ctx, stage => case stage of
     b' <- b {md = Check} (bind x (a' `asTypeIn` aSort) ctx) (wkS mtaTypeAnnot)
     pure $ pi Mta x (MkAnnotFor MtaSort a') (MkAnnotFor MtaSort (close ctx.defs b'))
   Obj => do
-    ba <- freshMeta ctx Nothing staBytesAnnot
-    bb <- freshMeta ctx Nothing staBytesAnnot
+    ba <- freshMeta ctx Nothing layoutAnnot
+    bb <- freshMeta ctx Nothing layoutAnnot
     let aSort = sizedObjTypeAnnot ba.tm
     a' <- a {md = Check} ctx aSort
     b' <- b {md = Check} (bind x (a' `asTypeIn` aSort) ctx) (wkS $ sizedObjTypeAnnot bb.tm)

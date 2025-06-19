@@ -37,21 +37,21 @@ data Primitive : PrimitiveClass -> PrimitiveReducibility -> Arity -> Type where
   PrimCode : Primitive PrimNorm PrimIrreducible [(Implicit, "bytes"), (Explicit, "ty")]
   PrimQuote : Primitive PrimNorm PrimIrreducible [(Implicit, "bytes"), (Implicit, "ty"), (Explicit, "val")]
   PrimSplice : Primitive PrimNorm PrimIrreducible [(Implicit, "bytes"), (Implicit, "ty"), (Explicit, "val")]
-  PrimBYTES : Primitive PrimNorm PrimIrreducible []
-  PrimZeroBYTES : Primitive PrimNorm PrimIrreducible []
-  PrimSizeBYTES : Primitive PrimNorm PrimIrreducible []
-  PrimPtrBYTES : Primitive PrimNorm PrimIrreducible []
-  PrimBytes : Primitive PrimNorm PrimIrreducible []
+  PrimLayout : Primitive PrimNorm PrimIrreducible []
+  PrimZeroLayout : Primitive PrimNorm PrimIrreducible []
+  PrimIdxLayout : Primitive PrimNorm PrimIrreducible []
+  PrimPtrLayout : Primitive PrimNorm PrimIrreducible []
+  PrimLayoutDyn : Primitive PrimNorm PrimIrreducible []
   PrimUNIT : Primitive PrimNorm PrimIrreducible []
   PrimTT : Primitive PrimNorm PrimIrreducible []
   PrimPadTy : Primitive PrimNorm PrimIrreducible [(Explicit, "bytes")]
   PrimPad : Primitive PrimNorm PrimIrreducible [(Implicit, "bytes")]
   PrimIrrTy : Primitive PrimNorm PrimIrreducible [(Implicit, "bytes"), (Explicit, "ty")]
   PrimIrr : Primitive PrimNorm PrimIrreducible [(Implicit, "bytes"), (Implicit, "ty"), (Explicit, "val")]
-  PrimEmbedBYTES : Primitive PrimNorm PrimIrreducible [(Explicit, "staticBytes")]
-  PrimDyn : Primitive PrimNorm PrimIrreducible [(Explicit, "bytes")]
-  PrimAddBYTES : Primitive PrimNorm PrimReducible [(Explicit, "a"), (Explicit, "b")]
-  PrimAddBytes : Primitive PrimNorm PrimReducible [(Explicit, "a"), (Explicit, "b")]
+  PrimStaLayoutDyn : Primitive PrimNorm PrimIrreducible [(Explicit, "staticBytes")]
+  PrimType : Primitive PrimNorm PrimIrreducible [(Explicit, "bytes")]
+  PrimSeqLayout : Primitive PrimNorm PrimReducible [(Explicit, "a"), (Explicit, "b")]
+  PrimSeqLayoutDyn : Primitive PrimNorm PrimReducible [(Explicit, "a"), (Explicit, "b")]
   PrimSIGMA : (a : Name) -> Primitive PrimNorm PrimIrreducible [(Explicit, a), (Explicit, "rest")]
   PrimPAIR : (a : Name) -> Primitive PrimNorm PrimIrreducible
     [(Implicit, a), (Implicit, "rest"), (Explicit, "va"), (Explicit, "vrest")]
@@ -73,24 +73,24 @@ primEq PrimCode PrimCode = Just Refl
 primEq PrimQuote PrimQuote = Just Refl
 primEq PrimSplice PrimSplice = Just Refl
 primEq PrimTYPE PrimTYPE = Just Refl
-primEq PrimBYTES PrimBYTES = Just Refl
-primEq PrimZeroBYTES PrimZeroBYTES = Just Refl
-primEq PrimSizeBYTES PrimSizeBYTES = Just Refl
-primEq PrimPtrBYTES PrimPtrBYTES = Just Refl
+primEq PrimLayout PrimLayout = Just Refl
+primEq PrimZeroLayout PrimZeroLayout = Just Refl
+primEq PrimIdxLayout PrimIdxLayout = Just Refl
+primEq PrimPtrLayout PrimPtrLayout = Just Refl
 primEq PrimUNIT PrimUNIT = Just Refl
 primEq PrimTT PrimTT = Just Refl
 primEq PrimIrrTy PrimIrrTy = Just Refl
 primEq PrimIrr PrimIrr = Just Refl
 primEq PrimPadTy PrimPadTy = Just Refl
 primEq PrimPad PrimPad = Just Refl
-primEq PrimBytes PrimBytes = Just Refl
-primEq PrimEmbedBYTES PrimEmbedBYTES = Just Refl
+primEq PrimLayoutDyn PrimLayoutDyn = Just Refl
+primEq PrimStaLayoutDyn PrimStaLayoutDyn = Just Refl
 primEq (PrimSigma x) (PrimSigma x') = case decEq x x' of
   Yes Refl => Just Refl
   No contra => Nothing
-primEq PrimDyn PrimDyn = Just Refl
-primEq PrimAddBYTES PrimAddBYTES = Just Refl
-primEq PrimAddBytes PrimAddBytes = Just Refl
+primEq PrimType PrimType = Just Refl
+primEq PrimSeqLayout PrimSeqLayout = Just Refl
+primEq PrimSeqLayoutDyn PrimSeqLayoutDyn = Just Refl
 primEq PrimIOTy PrimIOTy = Just Refl
 primEq PrimIOBind PrimIOBind = Just Refl
 primEq PrimIORet PrimIORet = Just Refl
@@ -102,27 +102,25 @@ primName PrimTYPE = "TYPE"
 primName PrimCode = "Code"
 primName PrimQuote = "quote"
 primName PrimSplice = "splice"
-primName PrimBYTES = "BYTES"
-primName PrimZeroBYTES = "zero"
-primName PrimSizeBYTES = "size"
-primName PrimPtrBYTES = "ptr"
-primName PrimBytes = "Bytes"
+primName PrimLayout = "Layout"
+primName PrimZeroLayout = "zero"
+primName PrimIdxLayout = "idx"
+primName PrimPtrLayout = "ptr"
+primName PrimLayoutDyn = "Layout?"
 primName PrimUNIT = "UNIT"
 primName PrimTT = "TT"
-primName PrimPadTy = "PadTy"
-primName PrimPad = "Pad"
-primName PrimIrrTy = "IrrTy"
-primName PrimIrr = "Irr"
-primName PrimEmbedBYTES = "embed-BYTES"
-primName PrimDyn = "Dyn"
-primName PrimAddBYTES = "add-bytes"
-primName PrimAddBytes = "add-bytes"
+primName PrimPadTy = "Pad"
+primName PrimPad = "pad"
+primName PrimIrrTy = "Irr"
+primName PrimIrr = "irr"
+primName PrimStaLayoutDyn = "sta"
+primName PrimType = "Type"
+primName PrimSeqLayout = "seq"
+primName PrimSeqLayoutDyn = "seq-dyn"
 primName (PrimSIGMA a) = "SIGMA(" ++ a ++ ")"
 primName (PrimPAIR a) = "PAIR(" ++ a ++ ")"
 primName (PrimSigma a) = "Sigma(" ++ a ++ ")"
-primName (PrimPair a) = "Pair(" ++ a ++ ")"
+primName (PrimPair a) = "pair(" ++ a ++ ")"
 primName PrimIOTy = "IO"
 primName PrimIOBind = "io-bind"
 primName PrimIORet = "io-ret"
-
-
