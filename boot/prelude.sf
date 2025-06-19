@@ -1,14 +1,4 @@
 
--- Layouts
-Layout : TYPE
-Layout? : TYPE
-sta : Layout -> Layout?
-seq : Layout -> Layout -> Layout
-seq? : Layout -> Layout -> Layout?
-zero : Layout
-ptr : Layout
-idx : Layout
-
 -- Synonym for sized types
 Type : Layout -> Type? (sta zero)
 Type l = Type? (sta l)
