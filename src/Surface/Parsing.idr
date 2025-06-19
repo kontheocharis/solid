@@ -311,10 +311,10 @@ pairSpine : Parser (PSpine Pairs)
 pairSpine = MkPSpine <$> parens (sepByOptEnd (symbol ",") pairArg)
 
 stage : Parser Stage
-stage = (symbol "obj" >> pure Obj) <|> (symbol "mta" >> pure Mta)
+stage = (symbol "#obj" >> pure Obj) <|> (symbol "#mta" >> pure Mta)
 
 irr : Parser Bool
-irr = (symbol "irr" >> pure True) <|> pure False
+irr = (symbol "#0" >> pure True) <|> pure False
 
 decl : Parser (String, Maybe PTy)
 decl = do
@@ -350,6 +350,8 @@ blockStatement = atom . located (|>) $ do
               Nothing => v
               Just tel => PLam tel v
         pure $ \l => PLetRec l flags n ty v')
+      -- just a declaration
+      <|> (pure $ \l => PDecl l n ty)
     (n, Nothing) => -- can only be a bind or let without type
       -- let without type
       (symbol ":=" >> do

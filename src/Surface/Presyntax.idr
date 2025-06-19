@@ -87,6 +87,10 @@ data PBlockStatement : Type where
   -- x : A
   -- x = a
   PLetRec : Loc -> LetFlags -> (name : String) -> PTy -> PTm -> PBlockStatement
+  -- Declaration without an assignment
+  --
+  -- x : A
+  PDecl : Loc -> (name : String) -> PTy -> PBlockStatement
   -- Let statement
   --
   -- x : A = a
@@ -238,16 +242,17 @@ showLetFlags (MkLetFlags s i) =
 where
   stage : Maybe Stage -> Maybe String
   stage Nothing = Nothing
-  stage (Just Obj) = Just "obj"
-  stage (Just Mta) = Just "mta"
+  stage (Just Obj) = Just "#obj"
+  stage (Just Mta) = Just "#mta"
 
   irr : Bool -> Maybe String
   irr False = Nothing
-  irr True = Just "irr"
+  irr True = Just "#0"
 
 public export covering
 Show PBlockStatement where
   show (PLetRec _ f n ty v) = showLetFlags f ++ n ++ " : " ++ show ty ++ "\n" ++ n ++ " = " ++ show v
+  show (PDecl _ n ty) = n ++ " : " ++ show ty
   show (PLet _ f n Nothing v) = showLetFlags f ++ n ++ " := " ++ show v
   show (PLet _ f n (Just ty) v) = showLetFlags f ++ n ++ " : " ++ show ty ++ " = " ++ show v
   show (PBind _ n (Just ty) v) = n ++ " : " ++ show ty ++ " <- " ++ show v
