@@ -56,9 +56,8 @@ idxLayout : Tm ns
 idxLayout = SynPrimNormal (PrimIdxLayout $$ [])
 
 public export
-ptrLayout : {d : Domain} -> Term d ns
-ptrLayout {d = Syntax} = SynPrimNormal (PrimPtrLayout $$ [])
-ptrLayout {d = Value} = SimpPrimNormal (SimpApplied PrimPtrLayout [])
+ptrLayout : Tm ns
+ptrLayout = SynPrimNormal (PrimPtrLayout $$ [])
 
 -- `TYPE`, meta-level type of types.
 public export
@@ -86,17 +85,17 @@ primN = SynPrimNormal
 public export
 unitSortForStage : Stage -> Ty ns
 unitSortForStage Mta = primN $ (PrimUNIT $$ [])
-unitSortForStage Obj = primN $ (PrimPadTy $$ [(Val _, staLayoutDyn zeroLayout)])
+unitSortForStage Obj = primN $ (PrimUnit $$ [(Val _, staLayoutDyn zeroLayout)])
 
 public export
 unitForStage : Stage -> Ty ns
 unitForStage Mta = primN $ (PrimUNIT $$ [])
-unitForStage Obj = primN $ (PrimPadTy $$ [(Val _, staLayoutDyn zeroLayout)])
+unitForStage Obj = primN $ (PrimUnit $$ [(Val _, staLayoutDyn zeroLayout)])
 
 public export
 ttForStage : Stage -> Ty ns
 ttForStage Mta = primN $ (PrimTT $$ [])
-ttForStage Obj = primN $ (PrimPad $$ [(Val _, staLayoutDyn zeroLayout)])
+ttForStage Obj = primN $ (PrimTt $$ [(Val _, staLayoutDyn zeroLayout)])
 
 -- Reduction rules:
 

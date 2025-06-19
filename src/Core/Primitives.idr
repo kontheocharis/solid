@@ -44,21 +44,21 @@ data Primitive : PrimitiveClass -> PrimitiveReducibility -> Arity -> Type where
   PrimLayoutDyn : Primitive PrimNorm PrimIrreducible []
   PrimUNIT : Primitive PrimNorm PrimIrreducible []
   PrimTT : Primitive PrimNorm PrimIrreducible []
-  PrimPadTy : Primitive PrimNorm PrimIrreducible [(Explicit, "bytes")]
-  PrimPad : Primitive PrimNorm PrimIrreducible [(Implicit, "bytes")]
+  PrimUnit : Primitive PrimNorm PrimIrreducible [(Explicit, "bytes")]
+  PrimTt : Primitive PrimNorm PrimIrreducible [(Implicit, "bytes")]
   PrimIrrTy : Primitive PrimNorm PrimIrreducible [(Implicit, "bytes"), (Explicit, "ty")]
   PrimIrr : Primitive PrimNorm PrimIrreducible [(Implicit, "bytes"), (Implicit, "ty"), (Explicit, "val")]
   PrimStaLayoutDyn : Primitive PrimNorm PrimIrreducible [(Explicit, "staticBytes")]
   PrimType : Primitive PrimNorm PrimIrreducible [(Explicit, "bytes")]
   PrimSeqLayout : Primitive PrimNorm PrimReducible [(Explicit, "a"), (Explicit, "b")]
   PrimSeqLayoutDyn : Primitive PrimNorm PrimReducible [(Explicit, "a"), (Explicit, "b")]
-  PrimSIGMA : (a : Name) -> Primitive PrimNorm PrimIrreducible [(Explicit, a), (Explicit, "rest")]
-  PrimPAIR : (a : Name) -> Primitive PrimNorm PrimIrreducible
-    [(Implicit, a), (Implicit, "rest"), (Explicit, "va"), (Explicit, "vrest")]
-  PrimSigma : (a : Name) -> Primitive PrimNorm PrimIrreducible
-    [(Implicit, "ba"), (Implicit, "bRest"), (Explicit, a), (Explicit, "rest")]
-  PrimPair : (a : Name) -> Primitive PrimNorm PrimIrreducible
-    [(Implicit, "ba"), (Implicit, "bRest"), (Implicit, a), (Implicit, "rest"), (Explicit, "va"), (Explicit, "vrest")]
+  PrimSIGMA : (a : Ident) -> Primitive PrimNorm PrimIrreducible [(Explicit, snd a), (Explicit, "rest")]
+  PrimPAIR : (a : Ident) -> Primitive PrimNorm PrimIrreducible
+    [(Implicit, snd a), (Implicit, "rest"), (Explicit, "va"), (Explicit, "vrest")]
+  -- PrimSigma : (a : Ident) -> Primitive PrimNorm PrimIrreducible
+  --   [(Implicit, "ba"), (Implicit, "bRest"), (Explicit, snd a), (Explicit, "rest")]
+  -- PrimPair : (a : Ident) -> Primitive PrimNorm PrimIrreducible
+  --   [(Implicit, "ba"), (Implicit, "bRest"), (Implicit, snd a), (Implicit, "rest"), (fst a, "va"), (Explicit, "vrest")]
   PrimIOTy : Primitive PrimNorm PrimIrreducible [(Implicit, "bt"), (Explicit, "t")]
   PrimIOBind : Primitive PrimNorm PrimIrreducible
     [(Implicit, "bt"), (Implicit, "t"), (Implicit, "a"), (Implicit, "b"), (Explicit, "x"), (Explicit, "f")]
@@ -81,13 +81,13 @@ primEq PrimUNIT PrimUNIT = Just Refl
 primEq PrimTT PrimTT = Just Refl
 primEq PrimIrrTy PrimIrrTy = Just Refl
 primEq PrimIrr PrimIrr = Just Refl
-primEq PrimPadTy PrimPadTy = Just Refl
-primEq PrimPad PrimPad = Just Refl
+primEq PrimUnit PrimUnit = Just Refl
+primEq PrimTt PrimTt = Just Refl
 primEq PrimLayoutDyn PrimLayoutDyn = Just Refl
 primEq PrimStaLayoutDyn PrimStaLayoutDyn = Just Refl
-primEq (PrimSigma x) (PrimSigma x') = case decEq x x' of
-  Yes Refl => Just Refl
-  No contra => Nothing
+-- primEq (PrimSigma x) (PrimSigma x') = case decEq x x' of
+--   Yes Refl => Just Refl
+--   No contra => Nothing
 primEq PrimType PrimType = Just Refl
 primEq PrimSeqLayout PrimSeqLayout = Just Refl
 primEq PrimSeqLayoutDyn PrimSeqLayoutDyn = Just Refl
@@ -109,18 +109,18 @@ primName PrimPtrLayout = "ptr"
 primName PrimLayoutDyn = "Layout?"
 primName PrimUNIT = "UNIT"
 primName PrimTT = "TT"
-primName PrimPadTy = "Pad"
-primName PrimPad = "pad"
+primName PrimUnit = "Tt"
+primName PrimTt = "pad"
 primName PrimIrrTy = "Irr"
 primName PrimIrr = "irr"
 primName PrimStaLayoutDyn = "sta"
 primName PrimType = "Type"
 primName PrimSeqLayout = "seq"
 primName PrimSeqLayoutDyn = "seq-dyn"
-primName (PrimSIGMA a) = "SIGMA(" ++ a ++ ")"
-primName (PrimPAIR a) = "PAIR(" ++ a ++ ")"
-primName (PrimSigma a) = "Sigma(" ++ a ++ ")"
-primName (PrimPair a) = "pair(" ++ a ++ ")"
+primName (PrimSIGMA a) = "SIGMA(" ++ show a ++ ")"
+primName (PrimPAIR a) = "PAIR(" ++ show a ++ ")"
+-- primName (PrimSigma a) = "Sigma(" ++ show a ++ ")"
+-- primName (PrimPair a) = "pair(" ++ show a ++ ")"
 primName PrimIOTy = "IO"
 primName PrimIOBind = "io-bind"
 primName PrimIORet = "io-ret"

@@ -30,6 +30,11 @@ public export
 0 Ident : Type
 Ident = (PiMode, Name)
 
+public export
+Show Ident where
+  show (Explicit, n) = n
+  show (Implicit, n) = "[" ++ n ++ "]"
+
 -- The stage we are in
 --
 -- This is a two-level language.
