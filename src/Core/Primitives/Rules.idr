@@ -27,7 +27,7 @@ sSplice by ty val = SynPrimNormal (PrimSplice $$ [(Val _, by), (Val _, ty), (Val
 -- Compile-time bytes as partially-static
 public export
 staLayoutDyn : Tm ns -> Tm ns
-staLayoutDyn b = SynPrimNormal (PrimStaLayoutDyn $$ [(Val _, b)])
+staLayoutDyn b = SynPrimNormal (PrimSta $$ [(Val _, b)])
 
 public export
 layout : Ty ns
@@ -94,10 +94,10 @@ primAddBYTES a b@(Glued b') = Glued (LazyPrimNormal (LazyApplied PrimSeqLayout [
 primAddBYTES a b = SimpPrimNormal (SimpApplied PrimSeqLayout [(Val _, a), (Val _, b)])
 
 primAddBytes : Term Value ns -> Term Value ns -> Term Value ns
-primAddBytes (SimpPrimNormal (SimpApplied PrimStaLayoutDyn [(_, a)])) (SimpPrimNormal (SimpApplied PrimStaLayoutDyn [(_, b)]))
-  = SimpPrimNormal (SimpApplied PrimStaLayoutDyn [(Val _, primAddBYTES a b)])
-primAddBytes (SimpPrimNormal (SimpApplied PrimStaLayoutDyn [(_, SimpPrimNormal (SimpApplied PrimZeroLayout []))])) b = b
-primAddBytes a (SimpPrimNormal (SimpApplied PrimStaLayoutDyn [(_, SimpPrimNormal (SimpApplied PrimZeroLayout []))])) = a
+primAddBytes (SimpPrimNormal (SimpApplied PrimSta [(_, a)])) (SimpPrimNormal (SimpApplied PrimSta [(_, b)]))
+  = SimpPrimNormal (SimpApplied PrimSta [(Val _, primAddBYTES a b)])
+primAddBytes (SimpPrimNormal (SimpApplied PrimSta [(_, SimpPrimNormal (SimpApplied PrimZeroLayout []))])) b = b
+primAddBytes a (SimpPrimNormal (SimpApplied PrimSta [(_, SimpPrimNormal (SimpApplied PrimZeroLayout []))])) = a
 primAddBytes a@(Glued a') b = Glued (LazyPrimNormal (LazyApplied PrimSeqLayoutDyn [(Val _, a), (Val _, b)] (primAddBytes (simplified a') b)))
 primAddBytes a b@(Glued b') = Glued (LazyPrimNormal (LazyApplied PrimSeqLayoutDyn [(Val _, a), (Val _, b)] (primAddBytes a (simplified b'))))
 primAddBytes a b = SimpPrimNormal (SimpApplied PrimSeqLayoutDyn [(Val _, a), (Val _, b)])

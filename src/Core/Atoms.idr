@@ -286,10 +286,6 @@ public export covering
 app : Size ns => Atom ns -> Ident -> Atom ns -> Atom ns
 app f a x = promote $ apps f.val [(Val a, x.val)]
 
-public export covering
-mtaSigma : Size ns => (n : Ident) -> AtomTy ns -> Atom ns -> ExprAt Mta ns
-mtaSigma piIdent bindTy bodyTy = ?ajajajaj
-
 -- Sorts
 
 -- A sort can be either static (meta-level), dynamic (object-level with a
@@ -455,8 +451,8 @@ ifForcePi stage (mode, name) potentialPi ifMatching ifMismatching otherwise
 
 -- Shorthand for meta-level pis.
 public export covering
-mtaPi : Size ns => (n : Ident) -> AtomTy ns -> AtomTy (ns :< n) -> ExprAt Mta ns
-mtaPi piIdent bindTy bodyTy = pi Mta piIdent (MkAnnotFor MtaSort bindTy) (MkAnnotFor MtaSort (close idS bodyTy))
+mtaPi : Size ns => (n : Ident) -> AtomTy ns -> AtomTy (ns :< n) -> Atom ns
+mtaPi piIdent bindTy bodyTy = (pi Mta piIdent (MkAnnotFor MtaSort bindTy) (MkAnnotFor MtaSort (close idS bodyTy))).tm
           
 -- Create a variable expression with the given index and annotation.
 public export covering
@@ -467,4 +463,7 @@ var idx annot = MkExprAt (promote (varIdx idx)) annot
 public export covering
 v : Size ns => (n : String) -> {auto prf : In n ns} -> Atom ns
 v n = promote (var n)
-  
+
+public export covering
+mtaSigma : Size ns => (n : Ident) -> AtomTy ns -> Atom ns -> Atom ns
+mtaSigma piIdent bindTy bodyTy = ?ajajajaj
