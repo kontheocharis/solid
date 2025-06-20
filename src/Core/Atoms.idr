@@ -224,67 +224,74 @@ EvalSized Atom (ExprAt s) (ExprAt s) where
   evalS env (MkExprAt tm a) = MkExprAt (evalS env tm) (evalS env a)
 
 -- Annotation versions of syntax
+
+public export covering
+($>) : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility}
+    -> Primitive k r ar
+    -> Spine ar Atom ns
+    -> Atom ns
+($>) p sp = ?ffa -- promote $ SynPrimNormal x
+
+public export covering
+mta : Size ns => Atom ns -> Annot ns
+mta x = MkAnnot x (PrimTYPE $> []) Mta
+
+public export covering
+obj : Size ns => Atom ns -> Atom ns -> Annot ns
+obj bx x = MkAnnot x (PrimTypeDyn $> [(Val _, PrimSta $> [(Val _, bx)])]) Obj
+
+public export covering
+objZ : Size ns => Atom ns -> Annot ns
+objZ x = obj (PrimZeroLayout $> []) x
+
+-- -- TYPE as an annotation
+-- public export covering
+-- mtaTypeAnnot : Size ns => AnnotAt Mta ns
+-- mtaTypeAnnot = let t = promote {tm = Term} mtaType in MkAnnotAt t t
+
+-- -- Type? b as an annotation
+-- public export covering
+-- dynObjTypeAnnot : Size ns => Atom ns -> AnnotAt Obj ns
+-- dynObjTypeAnnot b = MkAnnotAt --@@Todo: more performant
+--   (promote $ dynObjType b.syn)
+--   (promote $ sizedObjType zeroLayout)
+
+-- -- Type b as an annotation
+-- public export covering
+-- sizedObjTypeAnnot : Size ns => Atom ns -> AnnotAt Obj ns
+-- sizedObjTypeAnnot b = MkAnnotAt --@@Todo: more performant
+--   (promote $ sizedObjType b.syn)
+--   (promote $ sizedObjType zeroLayout)
+
+-- -- Partially static layout, the argument to Type?
+-- public export covering
+-- layoutDynAnnot : Size ns => AnnotAt Mta ns
+-- layoutDynAnnot = MkAnnotAt (promote layoutDyn) (promote mtaType)
+
+-- -- Static layout, the argument to Type
+-- public export covering
+-- layoutAnnot : Size ns => AnnotAt Mta ns
+-- layoutAnnot = MkAnnotAt (promote layout) (promote mtaType)
+
+-- public export
+-- unitTy : Size ns => (s : Stage) -> ExprAt s ns
+-- unitTy = ?unitTyImpl
   
--- The type of types, for the given stage.
--- 
--- For the meta level, this is TYPE
--- For the object level, this is Type 0.
-public export covering
-typeOfTypeAnnot : Size ns => (s : Stage) -> AnnotAt s ns
-typeOfTypeAnnot stage = let t = promote $ typeOfTypesForStage stage in MkAnnotAt t t
-
--- TYPE as an annotation
-public export covering
-mtaTypeAnnot : Size ns => AnnotAt Mta ns
-mtaTypeAnnot = let t = promote {tm = Term} mtaType in MkAnnotAt t t
-
--- Type? b as an annotation
-public export covering
-dynObjTypeAnnot : Size ns => Atom ns -> AnnotAt Obj ns
-dynObjTypeAnnot b = MkAnnotAt --@@Todo: more performant
-  (promote $ dynObjType b.syn)
-  (promote $ sizedObjType zeroLayout)
-
--- Type b as an annotation
-public export covering
-sizedObjTypeAnnot : Size ns => Atom ns -> AnnotAt Obj ns
-sizedObjTypeAnnot b = MkAnnotAt --@@Todo: more performant
-  (promote $ sizedObjType b.syn)
-  (promote $ sizedObjType zeroLayout)
-
--- Partially static layout, the argument to Type?
-public export covering
-layoutDynAnnot : Size ns => AnnotAt Mta ns
-layoutDynAnnot = MkAnnotAt (promote layoutDyn) (promote mtaType)
-
--- Static layout, the argument to Type
-public export covering
-layoutAnnot : Size ns => AnnotAt Mta ns
-layoutAnnot = MkAnnotAt (promote layout) (promote mtaType)
-
-public export
-unitTy : Size ns => (s : Stage) -> ExprAt s ns
-unitTy = ?unitTyImpl
+-- public export
+-- objUnitTy : Size ns => Atom ns -> ExprAt Obj ns
+-- objUnitTy = ?unitTyImpli
   
-public export
-objUnitTy : Size ns => Atom ns -> ExprAt Obj ns
-objUnitTy = ?unitTyImpli
+-- public export
+-- irrTy : Size ns => Atom ns -> AtomTy ns -> ExprAt Obj ns
+-- irrTy = ?irrTyImpl
   
-public export
-irrTy : Size ns => Atom ns -> AtomTy ns -> ExprAt Obj ns
-irrTy = ?irrTyImpl
-  
-public export
-ioTy : Size ns => ExprAt Obj ns -> ExprAt Obj ns
-ioTy = ?ioTyImpl
-  
-public export covering
-code : Size ns => Atom ns -> Atom ns -> AnnotAt Mta ns
-code by ty = MkAnnotAt (promote $ sCode by.syn ty.syn) mtaTypeAnnot.ty
+-- public export
+-- ioTy : Size ns => ExprAt Obj ns -> ExprAt Obj ns
+-- ioTy = ?ioTyImpl
 
-public export covering
-app : Size ns => Atom ns -> Ident -> Atom ns -> Atom ns
-app f a x = promote $ apps f.val [(Val a, x.val)]
+-- public export covering
+-- app : Size ns => Atom ns -> Ident -> Atom ns -> Atom ns
+-- app f a x = promote $ apps f.val [(Val a, x.val)]
 
 -- Sorts
 
@@ -311,9 +318,9 @@ WeakSized (SortData s k) where
 -- Convert a `SortData` to its corresponding annotation.
 public export covering
 (.asAnnot) : Size ns => SortData s k ns -> AnnotAt s ns
-(.asAnnot) MtaSort = mtaTypeAnnot
-(.asAnnot) (ObjSort Dyn by) = dynObjTypeAnnot by
-(.asAnnot) (ObjSort Sized by) = sizedObjTypeAnnot by
+(.asAnnot) MtaSort = (mta (PrimTYPE $> [])).f
+(.asAnnot) (ObjSort Dyn by) = ?qa -- (obj by (PrimTypeDyn $> [(Val _, by)])).f
+(.asAnnot) (ObjSort Sized by) = ?qb -- sizedObjTypeAnnot by
 
 namespace AnnotFor
     
@@ -372,7 +379,7 @@ lam piStage piIdent lamIdent bindAnnot bodyAnnot body =
       MkExprAt
         (promote $ sMtaLam lamIdent body.open.syn)
         ((promote $ vMtaPi piIdent bindTy.val bodyClosure.val)
-          `asTypeIn` mtaTypeAnnot)
+          `asTypeIn` ?qc)
     Obj => do
       let MkAnnotFor (ObjSort Sized ba) bindTy = bindAnnot
       let MkAnnotFor (ObjSort Sized bb) bodyClosure = bodyAnnot
@@ -393,7 +400,7 @@ pi piStage piIdent bindAnnot bodyAnnot = case piStage of
   Mta =>
     let MkAnnotFor MtaSort bindTy = bindAnnot in
     let MkAnnotFor MtaSort bodyClosure = bodyAnnot in
-    MkExprAt (promote $ sMtaPi piIdent bindTy.syn bodyClosure.open.syn) (mtaTypeAnnot)
+    MkExprAt (promote $ sMtaPi piIdent bindTy.syn bodyClosure.open.syn) (?qd)
   Obj =>
     let MkAnnotFor (ObjSort Sized ba) bindTy = bindAnnot in
     let MkAnnotFor (ObjSort Sized bb) bodyClosure = bodyAnnot in

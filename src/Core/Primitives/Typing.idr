@@ -15,23 +15,6 @@ import Core.Unification
 import Core.Primitives.Rules
 import Core.Atoms
 
-
-public export covering
-($>) : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility}
-    -> Primitive k r ar
-    -> Spine ar Atom ns
-    -> Atom ns
-($>) p sp = ?ffa -- promote $ SynPrimNormal x
-
-mta : Size ns => Atom ns -> Annot ns
-mta x = MkAnnot x (PrimTYPE $> []) Mta
-
-obj : Size ns => Atom ns -> Atom ns -> Annot ns
-obj bx x = MkAnnot x (PrimTypeDyn $> [(Val _, PrimSta $> [(Val _, bx)])]) Obj
-
-objZ : Size ns => Atom ns -> Annot ns
-objZ x = obj (PrimZeroLayout $> []) x
-
 -- Typing rules for all the primitives
 public export covering
 primAnnot : Size ns => (p : Primitive k r ar) -> (Tel ar Annot ns, Annot (ns ::< ar))
