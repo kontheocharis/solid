@@ -165,6 +165,10 @@ interface (Monad m) => HasTc m where
   -- Get all the goals that have been seen
   getGoals : m (SnocList Goal)
 
+  -- The type of a declared primitive
+  definedPrimAnnot : Size ns => (p : Primitive k r PrimDeclared ar) -> m (Tel ar Annot ns, Annot (ns ::< ar))
+  setDefinedPrimAnnot : Size ns => (p : Primitive k r PrimDeclared ar) -> (Tel ar Annot ns, Annot (ns ::< ar)) -> m ()
+
 -- This is the type over which we build the typechecking combinators.
 --
 -- `TcOp m md ns` is a typechecking operation in mode md.

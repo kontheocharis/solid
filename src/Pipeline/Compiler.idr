@@ -13,6 +13,7 @@ import Core.Atoms
 import Core.Syntax
 import Core.Metavariables
 import Core.Typechecking
+import Core.Primitives.Definitions
 import Data.Singleton
 import Control.Monad.State
 import Control.Monad.Error.Either
@@ -131,6 +132,9 @@ liftIO i = lift $ Control.App.primIO i
   tcError ctx err = do
     l <- gets loc
     lift $ throw (MkTcError ctx l err)
+    
+  definedPrimAnnot = ?b
+  setDefinedPrimAnnot = ?a
     
 -- Inputs and outputs of the compiler
   

@@ -4,6 +4,9 @@ module Core.Primitives.Definitions
 import Common
 import Core.Base
 import Decidable.Equality
+import Data.Maybe
+import Data.DPair
+import Data.Hashable
 
 -- Primitives are either neutral or normal.
 --
@@ -69,7 +72,7 @@ primEq PrimIdxLayout PrimIdxLayout = Just Refl
 primEq PrimPtrLayout PrimPtrLayout = Just Refl
 primEq _ _ = Nothing
 
-export
+public export
 primName : Primitive k r na ar -> String
 primName PrimTYPE = "TYPE"
 primName PrimCode = "Code"
@@ -84,3 +87,28 @@ primName PrimSta = "sta"
 primName PrimTypeDyn = "Type?"
 primName PrimSeqLayout = "seq"
 primName PrimSeqLayoutDyn = "seq-dyn"
+
+public export
+Eq (Primitive k r na ar) where
+  (==) p p' = isJust $ primEq p p'
+
+-- : - O
+public export
+PrimitiveAny : Type
+PrimitiveAny = Exists (\k => Exists (\r => Exists (\na => Exists (\ar => Primitive k r na ar))))
+
+public export
+Eq PrimitiveAny where
+  (==)
+    (Evidence _ (Evidence _ (Evidence _ (Evidence _ p))))
+    (Evidence _ (Evidence _ (Evidence _ (Evidence _ p'))))
+      = isJust $ primEq p p'
+
+public export
+Hashable PrimitiveAny where
+  -- @@Optim: use integers!
+  hashWithSalt s (Evidence _ (Evidence _ (Evidence _ (Evidence _ p)))) = hashWithSalt s (primName p)
+  
+public export
+Show (Primitive k r na ar) where
+  show p = primName p
