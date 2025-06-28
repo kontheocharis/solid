@@ -14,50 +14,60 @@ import Core.Metavariables
 import Core.Unification
 import Core.Primitives.Rules
 import Core.Atoms
+import Core.Combinators
+
+arg : {n : _} -> Expr ns -> (Singleton n, Annot ns)
+arg e = (Val _, e.a)
+
+argN : {m : _} -> (n : String) -> Expr ns -> (Singleton (m, n), Annot ns)
+argN _ e = (Val _, e.a)
+
+ret : Expr ns -> Annot ns
+ret = (.a)
 
 -- Typing rules for all the primitives
 public export covering
 primAnnot : Size ns => (p : Primitive k r ar) -> (Tel ar Annot ns, Annot (ns ::< ar))
-primAnnot PrimTYPE = ([], mta (PrimTYPE $> []))
+primAnnot PrimTYPE = ([], ret $ mta (PrimTYPE $> []))
 primAnnot PrimCode = ([
-      (Val (_, "l"), mta (PrimLayoutDyn $> [])),
-      (Val _, objZ (PrimTypeDyn $> [(Val _, v "l")]))
+      argN "l" $ mta (PrimLayoutDyn $> []),
+      arg $ objZ (PrimTypeDyn $> [(Val _, v "l")])
     ],
-    mta (PrimTYPE $> [])
+    ret $ mta (PrimTYPE $> [])
   )
 primAnnot PrimQuote = ([
-      (Val (_, "l"), mta (PrimLayout $> [])),
-      (Val (_, "ty"), objZ (PrimTypeDyn $> [(Val _, PrimSta $> [(Val _, v "l")])])),
-      (Val _, obj (v "l") (v "ty"))
+      argN "l" $ mta (PrimLayout $> []),
+      argN "ty" $ objZ (PrimTypeDyn $> [(Val _, PrimSta $> [(Val _, v "l")])]),
+      arg $ obj (v "l") (v "ty")
     ],
-    mta (PrimCode $> [(Val _, PrimSta $> [(Val _, v "l")]), (Val _, v "ty")])
+    ret $ mta (PrimCode $> [(Val _, PrimSta $> [(Val _, v "l")]), (Val _, v "ty")])
   )
 primAnnot PrimSplice = ([
-      (Val (_, "l"), mta (PrimLayout $> [])),
-      (Val (_, "ty"), objZ (PrimTypeDyn $> [(Val _, PrimSta $> [(Val _, v "l")])])),
-      (Val _, mta (PrimCode $> [(Val _, PrimSta $> [(Val _, v "l")]), (Val _, v "ty")]))
+      argN "l" $ mta (PrimLayout $> []),
+      argN "ty" $ objZ (PrimTypeDyn $> [(Val _, PrimSta $> [(Val _, v "l")])]),
+      arg $ mta (PrimCode $> [(Val _, PrimSta $> [(Val _, v "l")]), (Val _, v "ty")])
     ],
-    obj (v "l") (v "ty")
+    ret $ obj (v "l") (v "ty")
   )
-primAnnot PrimSta = ([(Val _, mta (PrimLayout $> []))], mta (PrimLayoutDyn $> []))
-primAnnot PrimTypeDyn = ([(Val (_, "l"), mta (PrimLayoutDyn $> []))], objZ (PrimTypeDyn $> [(Val _, PrimZeroLayout $> [])]))
+primAnnot PrimSta = ([arg $ mta (PrimLayout $> [])], ret $ mta (PrimLayoutDyn $> []))
+primAnnot PrimTypeDyn = ([arg $ mta (PrimLayoutDyn $> [])], ret $ objZ (PrimTypeDyn $> [(Val _, PrimZeroLayout $> [])]))
 primAnnot PrimSeqLayout = ([
-      (Val _, mta (PrimLayout $> [])),
-      (Val _, mta (PrimLayout $> []))
+      arg $ mta (PrimLayout $> []),
+      arg $ mta (PrimLayout $> [])
     ],
-    mta (PrimLayout $> [])
+    ret $ mta (PrimLayout $> [])
   )
 primAnnot PrimSeqLayoutDyn = ([
-      (Val _, mta (PrimLayoutDyn $> [])),
-      (Val _, mta (PrimLayoutDyn $> []))
+      arg $ mta (PrimLayoutDyn $> []),
+      arg $ mta (PrimLayoutDyn $> [])
     ],
-    mta (PrimLayoutDyn $> [])
+    ret $ mta (PrimLayoutDyn $> [])
   )
-primAnnot PrimLayout = ([], mta (PrimTYPE $> []))
-primAnnot PrimZeroLayout = ([], mta (PrimLayout $> []))
-primAnnot PrimIdxLayout = ([], mta (PrimLayout $> []))
-primAnnot PrimPtrLayout = ([], mta (PrimLayout $> []))
-primAnnot PrimLayoutDyn = ([], mta (PrimTYPE $> []))
+primAnnot PrimLayout = ([], ret $ mta (PrimTYPE $> []))
+primAnnot PrimZeroLayout = ([], ret $ mta (PrimLayout $> []))
+primAnnot PrimIdxLayout = ([], ret $ mta (PrimLayout $> []))
+primAnnot PrimPtrLayout = ([], ret $ mta (PrimLayout $> []))
+primAnnot PrimLayoutDyn = ([], ret $ mta (PrimTYPE $> []))
 
 -- Create a primitive expression with the given data.
 public export covering

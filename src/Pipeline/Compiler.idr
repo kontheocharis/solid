@@ -231,7 +231,7 @@ compiler = (read, parse, elaborate, stage, codegen)
   
 -- Main compilation function: compile until a certain stage.
 export covering
-compileUntil : Input -> CompilerStageElem o k -> (Show o, IO o)
+compileUntil : Input -> CompilerStageElem out k -> (Show out, IO out)
 compileUntil input (Val k, o)
   = (showCompilerOutput k, execCompiler $ runPipelineUntil {m = Comp} compiler o input)
   where

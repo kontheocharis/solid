@@ -112,7 +112,7 @@ record AnnotAt (s : Stage) (ns : Ctx) where
   sort : AtomTy ns
 
 namespace Annot
-  -- Turn `ExprAt` into `Expr`
+  -- Turn `AnnotAt` into `Annot`
   public export
   (.p) : {s : Stage} -> AnnotAt s ns -> Annot ns
   (.p) (MkAnnotAt ty sort) = MkAnnot ty sort s
@@ -150,8 +150,12 @@ namespace Expr
   asTypeIn ty (MkAnnot sort _ s) = MkAnnot ty sort s
   
   public export
-  (.toAnnot) : Expr ns -> Annot ns
-  (.toAnnot) (MkExpr ty (MkAnnot sort s st)) = MkAnnot ty sort st
+  (.a) : Expr ns -> Annot ns
+  (.a) (MkExpr ty (MkAnnot sort s st)) = MkAnnot ty sort st
+  
+  public export
+  (.e) : Annot ns -> Atom ns -> Expr ns
+  (.e) (MkAnnot ty sort st) s = MkExpr ty (MkAnnot sort s st)
   
 namespace ExprAt
   public export
@@ -159,8 +163,8 @@ namespace ExprAt
   asTypeIn ty (MkAnnotAt sort _) = MkAnnotAt ty sort
   
   public export
-  (.toAnnot) : ExprAt s ns -> AnnotAt s ns
-  (.toAnnot) (MkExprAt ty (MkAnnotAt sort s)) = MkAnnotAt ty sort
+  (.a) : ExprAt s ns -> AnnotAt s ns
+  (.a) (MkExprAt ty (MkAnnotAt sort s)) = MkAnnotAt ty sort
 
 
 -- Helper to decide which `Expr` to pick based on an optional stage
@@ -222,255 +226,3 @@ WeakSized (ExprAt s) where
 public export covering
 EvalSized Atom (ExprAt s) (ExprAt s) where
   evalS env (MkExprAt tm a) = MkExprAt (evalS env tm) (evalS env a)
-
--- Annotation versions of syntax
-
-public export covering
-($>) : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility}
-    -> Primitive k r ar
-    -> Spine ar Atom ns
-    -> Atom ns
-($>) p sp = ?ffa -- promote $ SynPrimNormal x
-
-public export covering
-mta : Size ns => Atom ns -> Annot ns
-mta x = MkAnnot x (PrimTYPE $> []) Mta
-
-public export covering
-obj : Size ns => Atom ns -> Atom ns -> Annot ns
-obj bx x = MkAnnot x (PrimTypeDyn $> [(Val _, PrimSta $> [(Val _, bx)])]) Obj
-
-public export covering
-objZ : Size ns => Atom ns -> Annot ns
-objZ x = obj (PrimZeroLayout $> []) x
-
--- -- TYPE as an annotation
--- public export covering
--- mtaTypeAnnot : Size ns => AnnotAt Mta ns
--- mtaTypeAnnot = let t = promote {tm = Term} mtaType in MkAnnotAt t t
-
--- -- Type? b as an annotation
--- public export covering
--- dynObjTypeAnnot : Size ns => Atom ns -> AnnotAt Obj ns
--- dynObjTypeAnnot b = MkAnnotAt --@@Todo: more performant
---   (promote $ dynObjType b.syn)
---   (promote $ sizedObjType zeroLayout)
-
--- -- Type b as an annotation
--- public export covering
--- sizedObjTypeAnnot : Size ns => Atom ns -> AnnotAt Obj ns
--- sizedObjTypeAnnot b = MkAnnotAt --@@Todo: more performant
---   (promote $ sizedObjType b.syn)
---   (promote $ sizedObjType zeroLayout)
-
--- -- Partially static layout, the argument to Type?
--- public export covering
--- layoutDynAnnot : Size ns => AnnotAt Mta ns
--- layoutDynAnnot = MkAnnotAt (promote layoutDyn) (promote mtaType)
-
--- -- Static layout, the argument to Type
--- public export covering
--- layoutAnnot : Size ns => AnnotAt Mta ns
--- layoutAnnot = MkAnnotAt (promote layout) (promote mtaType)
-
--- public export
--- unitTy : Size ns => (s : Stage) -> ExprAt s ns
--- unitTy = ?unitTyImpl
-  
--- public export
--- objUnitTy : Size ns => Atom ns -> ExprAt Obj ns
--- objUnitTy = ?unitTyImpli
-  
--- public export
--- irrTy : Size ns => Atom ns -> AtomTy ns -> ExprAt Obj ns
--- irrTy = ?irrTyImpl
-  
--- public export
--- ioTy : Size ns => ExprAt Obj ns -> ExprAt Obj ns
--- ioTy = ?ioTyImpl
-
--- public export covering
--- app : Size ns => Atom ns -> Ident -> Atom ns -> Atom ns
--- app f a x = promote $ apps f.val [(Val a, x.val)]
-
--- Sorts
-
--- A sort can be either static (meta-level), dynamic (object-level with a
--- runtime size), or sized (object-level with a compile-time size).
-public export
-data SortKind : Stage -> Type where
-  Static : SortKind Mta
-  Dyn : SortKind s
-  Sized : SortKind s
-  
--- The accompanying data for a sort at a given stage.
-public export
-data SortData : (s : Stage) -> SortKind s -> Ctx -> Type where
-  MtaSort : SortData Mta k ns
-  -- Object sorts remember their size.
-  ObjSort : (k : SortKind Obj) -> (by : Atom ns) -> SortData Obj k ns
-  
-public export covering
-WeakSized (SortData s k) where
-  weakS e MtaSort = MtaSort
-  weakS e (ObjSort k by) = ObjSort k (weakS e by)
-  
--- Convert a `SortData` to its corresponding annotation.
-public export covering
-(.asAnnot) : Size ns => SortData s k ns -> AnnotAt s ns
-(.asAnnot) MtaSort = (mta (PrimTYPE $> [])).f
-(.asAnnot) (ObjSort Dyn by) = ?qa -- (obj by (PrimTypeDyn $> [(Val _, by)])).f
-(.asAnnot) (ObjSort Sized by) = ?qb -- sizedObjTypeAnnot by
-
-namespace AnnotFor
-    
-  -- An annotation for a given sort.
-  public export
-  data AnnotFor : (s : Stage) -> SortKind s -> (annotTy : Ctx -> Type) -> (ns : Ctx) -> Type where
-    MkAnnotFor : SortData s k ns -> (inner : annotTy ns) -> AnnotFor s k annotTy ns
-    
-  -- The actual type of the annotation.
-  public export
-  (.inner) : AnnotFor s k annotTy ns -> annotTy ns
-  (.inner) (MkAnnotFor _ ty) = ty
-
-  -- `AnnotFor` with Atom can be converted to an `AnnotAt` type.
-  public export covering
-  (.asAnnot) : Size ns => AnnotFor s k Atom ns -> AnnotAt s ns
-  (.asAnnot) (MkAnnotFor d i) = MkAnnotAt i d.asAnnot.ty
-
-  -- The sort information for the annotation.
-  public export
-  (.sortData) : AnnotFor s k annotTy ns -> SortData s k ns
-  (.sortData) (MkAnnotFor d _) = d
-
-  -- Open an annotation containing a body
-  public export covering
-  (.open) : Size ns => AnnotFor s k (AtomBody n) ns -> AnnotFor s k Atom (ns :< n')
-  (.open) (MkAnnotFor d i) = MkAnnotFor (wkS d) i.open
-  
--- Language items
-
--- Create a glued application expression.
-public export covering
-glued : {d : Domain} -> Size ns => Variable d (ns :< n) -> Atom (ns :< n) -> Atom (ns :< n)
-glued v t = Choice (here) (Glued (LazyApps (ValDef (Level here) $$ []) t.val))
-
--- Create a metavariable expression.
-public export covering
-meta : Size ns => MetaVar -> Spine ar Atom ns -> AnnotAt s ns -> ExprAt s ns
-meta m sp annot = MkExprAt (promote $ SimpApps (ValMeta m $$ mapSpine (force . (.val)) sp)) annot
-      
--- Create a lambda expression
-public export covering
-lam : Size ns
-  => (piStage : Stage)
-  -> (piIdent : Ident)
-  -> (lamIdent : Ident)
-  -> (bindAnnot : AnnotFor piStage Sized AtomTy ns)
-  -> (bodyAnnot : AnnotFor piStage Sized (AtomBody piIdent) ns)
-  -> (body : AtomBody lamIdent ns)
-  -> ExprAt piStage ns
-lam piStage piIdent lamIdent bindAnnot bodyAnnot body =
-  case piStage of
-    Mta => do
-      let MkAnnotFor MtaSort bindTy = bindAnnot
-      let MkAnnotFor MtaSort bodyClosure = bodyAnnot
-      MkExprAt
-        (promote $ sMtaLam lamIdent body.open.syn)
-        ((promote $ vMtaPi piIdent bindTy.val bodyClosure.val)
-          `asTypeIn` ?qc)
-    Obj => do
-      let MkAnnotFor (ObjSort Sized ba) bindTy = bindAnnot
-      let MkAnnotFor (ObjSort Sized bb) bodyClosure = bodyAnnot
-      MkExprAt
-        (promote $ sObjLam lamIdent ba.syn bb.syn body.open.syn)
-        ((promote $ vObjPi piIdent ba.val bb.val bindTy.val bodyClosure.val)
-          `asTypeIn` sizedObjTypeAnnot (promote ptrLayout))
-          
--- Create a pi expression
-public export covering
-pi : Size ns
-  => (piStage : Stage)
-  -> (piIdent : Ident)
-  -> (bindAnnot : AnnotFor piStage Sized AtomTy ns)
-  -> (bodyAnnot : AnnotFor piStage Sized (AtomBody piIdent) ns)
-  -> ExprAt piStage ns
-pi piStage piIdent bindAnnot bodyAnnot = case piStage of
-  Mta =>
-    let MkAnnotFor MtaSort bindTy = bindAnnot in
-    let MkAnnotFor MtaSort bodyClosure = bodyAnnot in
-    MkExprAt (promote $ sMtaPi piIdent bindTy.syn bodyClosure.open.syn) (?qd)
-  Obj =>
-    let MkAnnotFor (ObjSort Sized ba) bindTy = bindAnnot in
-    let MkAnnotFor (ObjSort Sized bb) bodyClosure = bodyAnnot in
-    MkExprAt
-      (promote $ sObjPi piIdent ba.syn bb.syn bindTy.syn bodyClosure.open.syn)
-      (sizedObjTypeAnnot (promote ptrLayout))
-
--- The type of the callback that `ifForcePi` calls when it finds a matching
--- type.
-public export
-0 ForcePiCallback : (r : Type) -> Stage -> Ctx -> Type
-ForcePiCallback r stage ns = (resolvedPi : AtomTy ns)
-  -> (piIdent : Ident)
-  -> (a : AnnotFor stage Sized Atom ns)
-  -> (b : AnnotFor stage Sized (AtomBody piIdent) ns)
-  -> r
-
--- Given a `potentialPi`, try to match it given that we expect something in
--- `mode` and `stage`.
---
--- If it matches, call `ifMatching` with the appropriate information, otherwise
--- call `ifMismatching` with the appropriate information.
-public export covering
-ifForcePi : Size ns
-  => (stage : Stage)
-  -> (ident : Ident)
-  -> (potentialPi : AtomTy ns)
-  -> (ifMatching : ForcePiCallback r stage ns)
-  -> (ifMismatching : (stage' : Stage) -> ForcePiCallback r stage' ns)
-  -> (otherwise : AtomTy ns -> r)
-  -> r
-ifForcePi stage (mode, name) potentialPi ifMatching ifMismatching otherwise
-  = case potentialPi.val of
-    -- object-level pi
-    resolvedPi@(RigidBinding piStage@Obj (Bound _ (BindObjPi (piMode, piName) ba bb a) b)) => 
-      let res = case decEq (piMode, piStage) (mode, stage) of
-            Yes Refl => ifMatching 
-            _ => ifMismatching Obj
-      in let
-        ba' = promote ba
-        bb' = promote bb
-      in res (promote resolvedPi) (piMode, piName)
-          (MkAnnotFor (ObjSort Sized ba') (promote a))
-          (MkAnnotFor (ObjSort Sized bb') (promoteBody b))
-    -- meta-level pi
-    resolvedPi@(RigidBinding piStage@Mta (Bound _ (BindMtaPi (piMode, piName) a) b)) =>
-      let res = case decEq (piMode, piStage) (mode, stage) of
-            Yes Refl => ifMatching
-            _ => ifMismatching Mta
-      in res (promote resolvedPi) (piMode, piName)
-          (MkAnnotFor MtaSort (promote a))
-          (MkAnnotFor MtaSort (promoteBody b))
-    -- fail
-    resolvedPi => otherwise (promote resolvedPi)
-
--- Shorthand for meta-level pis.
-public export covering
-mtaPi : Size ns => (n : Ident) -> AtomTy ns -> AtomTy (ns :< n) -> Atom ns
-mtaPi piIdent bindTy bodyTy = (pi Mta piIdent (MkAnnotFor MtaSort bindTy) (MkAnnotFor MtaSort (close idS bodyTy))).tm
-          
--- Create a variable expression with the given index and annotation.
-public export covering
-var : Size ns => Idx ns -> AnnotAt s ns -> ExprAt s ns
-var idx annot = MkExprAt (promote (varIdx idx)) annot
-
--- Find a variable by its name in the context.
-public export covering
-v : Size ns => (n : String) -> {auto prf : In n ns} -> Atom ns
-v n = promote (var n)
-
-public export covering
-mtaSigma : Size ns => (n : Ident) -> AtomTy ns -> Atom ns -> Atom ns
-mtaSigma piIdent bindTy bodyTy = ?ajajajaj

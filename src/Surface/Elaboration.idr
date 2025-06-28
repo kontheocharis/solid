@@ -10,6 +10,7 @@ import Data.Singleton
 import Data.DPair
 import Core.Base
 import Core.Atoms
+import Core.Combinators
 import Core.Typechecking
 import Core.Primitives.Definitions
 import Core.Primitives.Rules
@@ -24,7 +25,7 @@ elab : (HasTc m) => PTm -> TcAll m
 -- The annotation of the entry point of the program
 export
 mainAnnot : AnnotAt Obj [<]
-mainAnnot = (ioTy (unitTy Obj)).toAnnot
+mainAnnot = (ioTy (unitTy Obj)).a
 
 covering
 elabSpine : (HasTc m) => PSpine k -> List (Ident, TcAll m)

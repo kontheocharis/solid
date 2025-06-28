@@ -14,6 +14,7 @@ import Core.Primitives.Rules
 import Core.Metavariables
 import Core.Unification
 import Core.Atoms
+import Core.Combinators
 import Core.Primitives.Typing
 
 %default covering
@@ -296,16 +297,16 @@ switch f {md = Check} = \ctx, annot => do
 freshSortData : HasTc m => Context ns -> (s : Stage) -> (k : SortKind s) -> m (SortData s k ns)
 freshSortData ctx Mta k = pure $ MtaSort 
 freshSortData ctx Obj Dyn = do
-  b <- freshMeta ctx Nothing layoutDynAnnot
+  b <- freshMeta ctx Nothing layoutA.f
   pure $ ObjSort Dyn b.tm
 freshSortData ctx Obj Sized = do
-  b <- freshMeta ctx Nothing layoutAnnot
+  b <- freshMeta ctx Nothing layoutDynA.f
   pure $ ObjSort Sized b.tm
   
 -- Create a fresh annotation for the given stage and sort kind.
 freshMetaAnnot : HasTc m => Context ns -> (s : Stage) -> SortKind s -> m (AnnotAt s ns)
 freshMetaAnnot ctx s k = do
-  tySort <- freshSortData ctx s k <&> .asAnnot
+  tySort <- freshSortData ctx s k <&> .a
   ty <- freshMeta ctx Nothing tySort
   pure $ MkAnnotAt ty.tm tySort.ty
   
@@ -313,7 +314,7 @@ freshMetaAnnot ctx s k = do
 fitAnnot : HasTc m => Context ns -> (s : Stage) -> (k : SortKind s) -> (annotTy ns, AtomTy ns) -> m (AnnotFor s k annotTy ns)
 fitAnnot ctx s k (vty, univ) = do
   d <- freshSortData ctx s k
-  unify ctx univ d.asAnnot.ty
+  unify ctx univ d.a.ty
   pure $ MkAnnotFor d vty
 
 -- Insert (some kind of an implicit) lambda from the given information.
@@ -328,8 +329,7 @@ insertLam : HasTc m => Context ns
   -> (subject : Tc Check m)
   -> m (ExprAt piStage ns)
 insertLam ctx piStage piIdent bindAnnot bodyAnnot subject = do
-  s <- subject (bind piIdent bindAnnot.asAnnot ctx)
-        (bodyAnnot.inner.open `asTypeIn` (wkS $ typeOfTypeAnnot piStage))
+  s <- subject (bind piIdent bindAnnot.asAnnot ctx) (objZOrMta piStage (bodyAnnot.inner.open)).a.f
   pure $ lam piStage piIdent piIdent bindAnnot bodyAnnot (close ctx.defs s)
   
 -- Infer the given object as a type, also inferring its stage in the process.
@@ -381,16 +381,14 @@ tcPi x a b = switch $ ensureKnownStage $ \ctx, stage => case stage of
   -- This is more annoying here because of byte metas, but also I am not
   -- convinced that it is the right thing to do. It might lead to some weird elab results.
   Mta => do
-    let aSort = mtaTypeAnnot
-    a' <- a {md = Check} ctx aSort
-    b' <- b {md = Check} (bind x (a' `asTypeIn` aSort) ctx) (wkS mtaTypeAnnot)
+    a' <- a {md = Check} ctx mtaA.f
+    b' <- b {md = Check} (bind x (mta a').f.a ctx) mtaA.f
     pure $ pi Mta x (MkAnnotFor MtaSort a') (MkAnnotFor MtaSort (close ctx.defs b'))
   Obj => do
-    ba <- freshMeta ctx Nothing layoutAnnot
-    bb <- freshMeta ctx Nothing layoutAnnot
-    let aSort = sizedObjTypeAnnot ba.tm
-    a' <- a {md = Check} ctx aSort
-    b' <- b {md = Check} (bind x (a' `asTypeIn` aSort) ctx) (wkS $ sizedObjTypeAnnot bb.tm)
+    ba <- freshMeta ctx Nothing layoutA.f
+    bb <- freshMeta ctx Nothing layoutA.f
+    a' <- a {md = Check} ctx (objA ba.tm).f
+    b' <- b {md = Check} (bind x (obj ba.tm a').a.f ctx) (wkS $ objA bb.tm).f
     pure $ pi Obj x (MkAnnotFor (ObjSort Sized ba.tm) a') (MkAnnotFor (ObjSort Sized bb.tm) (close ctx.defs b'))
 
 -- Check a lambda abstraction.
@@ -431,7 +429,7 @@ tcLam lamIdent bindTy body {md = Check} = \ctx, annot@(MkAnnotAt ty sort) => do
       -- Otherwise try unify with a constructed pi
       createdPi <- tcPi lamIdent tcMeta tcMeta {md = Infer} ctx (Just stage)
       unify ctx other createdPi.tm
-      tcLam {md = Check} lamIdent bindTy body ctx {s = stage} createdPi.toAnnot
+      tcLam {md = Check} lamIdent bindTy body ctx {s = stage} createdPi.a
     )
 tcLam lamIdent bindTy body {md = Infer} = ensureKnownStage $ \ctx, stage => do
   -- @@Reconsider: Same remark as for pis.
