@@ -7,6 +7,7 @@ import Decidable.Equality
 import Data.Maybe
 import Data.DPair
 import Data.Hashable
+import Utils
 
 -- Primitives are either neutral or normal.
 --
@@ -56,7 +57,7 @@ data Primitive : PrimitiveClass -> PrimitiveReducibility -> PrimitiveLevel -> Ar
 
 -- Can't be DecEq without writing out all cases smh
 export
-primEq : (a : Primitive k r na ar) -> (b : Primitive k' r' na' ar') -> Maybe (a = b)
+primEq : (a : Primitive k r na ar) -> (b : Primitive k' r' na' ar') -> Maybe (a ~=~ b)
 primEq PrimTYPE PrimTYPE = Just Refl
 primEq PrimCode PrimCode = Just Refl
 primEq PrimQuote PrimQuote = Just Refl
@@ -92,22 +93,32 @@ public export
 Eq (Primitive k r na ar) where
   (==) p p' = isJust $ primEq p p'
 
--- : - O
 public export
-PrimitiveAny : Type
-PrimitiveAny = Exists (\k => Exists (\r => Exists (\na => Exists (\ar => Primitive k r na ar))))
+record PrimitiveAny where
+  constructor MkPrimitiveAny
+  0 classif : PrimitiveClass
+  0 reducibility : PrimitiveReducibility
+  0 level : PrimitiveLevel
+  0 arity : Arity
+  primitive : Primitive classif reducibility level arity
 
 public export
 Eq PrimitiveAny where
-  (==)
-    (Evidence _ (Evidence _ (Evidence _ (Evidence _ p))))
-    (Evidence _ (Evidence _ (Evidence _ (Evidence _ p'))))
-      = isJust $ primEq p p'
+  (==) p p' = isJust $ primEq p.primitive p'.primitive
+  
+congPrimitive : {0 a, b : PrimitiveAny} -> a.primitive ~=~ b.primitive -> a = b
+congPrimitive {a = MkPrimitiveAny k r l ar _} {b = MkPrimitiveAny k r l ar _} Refl = Refl
+
+public export
+SemiDecEq PrimitiveAny where
+  semiDecEq p p' = case (primEq p.primitive p'.primitive) of
+    Just p => Just (congPrimitive p)
+    Nothing => Nothing
 
 public export
 Hashable PrimitiveAny where
   -- @@Optim: use integers!
-  hashWithSalt s (Evidence _ (Evidence _ (Evidence _ (Evidence _ p)))) = hashWithSalt s (primName p)
+  hashWithSalt s p = hashWithSalt s (primName p.primitive)
   
 public export
 Show (Primitive k r na ar) where

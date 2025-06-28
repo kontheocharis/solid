@@ -29,7 +29,7 @@ ret = (.a)
 -- 
 -- Typing for the rest of the primitives is given in the prelude.
 public export covering
-primAnnot : Size ns => (p : Primitive k r PrimNative ar) -> (Tel ar Annot ns, Annot (ns ::< ar))
+primAnnot : Size ns => (p : Primitive k r PrimNative ar) -> Op ar ns
 primAnnot PrimTYPE = ([], ret $ mta (PrimTYPE $> []))
 primAnnot PrimCode = ([
       argN "l" $ mta (PrimLayoutDyn $> []),

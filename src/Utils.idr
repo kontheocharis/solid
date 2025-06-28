@@ -35,6 +35,10 @@ decToSemiDec : Dec a -> Maybe a
 decToSemiDec (Yes x) = Just x
 decToSemiDec (No _) = Nothing
 
+public export
+interface SemiDecEq a where
+  semiDecEq : (x : a) -> (y : a) -> Maybe (x = y)
+
 -- Text stuff
 
 public export

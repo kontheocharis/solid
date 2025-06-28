@@ -14,6 +14,7 @@ import Core.Syntax
 import Core.Metavariables
 import Core.Typechecking
 import Core.Primitives.Definitions
+import Core.Primitives.Typing
 import Data.Singleton
 import Control.Monad.State
 import Control.Monad.Error.Either
@@ -22,6 +23,8 @@ import Control.App.Console
 import Data.HashMap
 import System
 import System.File
+import Lib.HashMap
+import Data.DPair
 
 -- States in the compiler:
 
@@ -43,9 +46,10 @@ record CompilerState where
   metaState : MetaState
   loc : Loc
   goals : SnocList Goal
+  definedPrimitives : HashDMap PrimitiveAny (\p => Op p.arity [<])
 
 emptyCompilerState : CompilerState
-emptyCompilerState = MkCompilerState emptyMetaState dummyLoc [<]
+emptyCompilerState = MkCompilerState emptyMetaState dummyLoc [<] empty
 
 -- Errors in the compiler:
 
@@ -113,7 +117,7 @@ liftIO i = lift $ Control.App.primIO i
   metasM = MetaComp
 
   enterMetas = mapLens
-    (\(MkCompilerState m l g) => withMetaSolvingMode sm m)
+    (\(MkCompilerState m l g h) => withMetaSolvingMode sm m)
     (\(metaSt' ** _), c => { metaState := metaSt' } c)
 
   metas = metaCompMetas
@@ -133,8 +137,20 @@ liftIO i = lift $ Control.App.primIO i
     l <- gets loc
     lift $ throw (MkTcError ctx l err)
     
-  definedPrimAnnot = ?b
-  setDefinedPrimAnnot = ?a
+  definedPrimAnnot p = do
+    m <- gets definedPrimitives
+    let res = lookup (MkPrimitiveAny _ _ _ _ p) m
+    case res of
+      Just r => pure r
+      Nothing => error "Tried to access primitive \{show p} but it has not been defined yet!"
+
+  setDefinedPrimAnnot p v = do
+    m <- modify
+      (\s =>
+        { definedPrimitives
+          := insert (MkPrimitiveAny _ _ _ _ p) v s.definedPrimitives } s)
+    pure ()
+  
     
 -- Inputs and outputs of the compiler
   

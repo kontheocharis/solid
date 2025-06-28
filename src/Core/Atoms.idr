@@ -178,6 +178,11 @@ public export
 maybePackStage : {s : Maybe Stage} -> ExprAtMaybe s ns -> Expr ns
 maybePackStage {s = Just s} (MkExprAt tm (MkAnnotAt ty sort)) = MkExpr tm (MkAnnot ty sort s)
 maybePackStage {s = Nothing} x = x
+
+-- Operations
+public export
+Op : Arity -> Ctx -> Type
+Op ar ns = (Tel ar Annot ns, Annot (ns ::< ar))
   
 public export covering
 Relabel Annot where
@@ -226,3 +231,17 @@ WeakSized (ExprAt s) where
 public export covering
 EvalSized Atom (ExprAt s) (ExprAt s) where
   evalS env (MkExprAt tm a) = MkExprAt (evalS env tm) (evalS env a)
+
+-- @@TODO:
+
+public export covering
+Relabel (Op ar) where
+  relabel r (a, b) = (relabel r a, relabel ?r b)
+
+public export covering
+Count ar => WeakSized (Op ar) where
+  weakS e (a, b) = ?b
+
+public export covering
+EvalSized Atom (Op ar) (Op ar) where
+  evalS env (a, b) = (evalS env a, ?bb)
