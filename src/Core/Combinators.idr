@@ -17,7 +17,7 @@ import Core.Atoms
 
 public export covering
 ($>) : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility}
-    -> Primitive k r ar
+    -> Primitive k r na ar
     -> Spine ar Atom ns
     -> Atom ns
 ($>) p sp = ?ffa -- promote $ SynPrimNormal x

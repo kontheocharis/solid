@@ -142,16 +142,16 @@ public export
 data PrimitiveApplied : PrimitiveClass -> (d : Domain) -> HeadKind d -> Ctx -> Type where
   -- Syntactic primitive
   ($$) : {k : PrimitiveClass} -> {r : PrimitiveReducibility}
-    -> Primitive k r ar
+    -> Primitive k r na ar
     -> Spine ar (Term Syntax) ns
     -> PrimitiveApplied k Syntax NA ns
   -- Fully simplified primitive value
   SimpApplied : {k : PrimitiveClass} -> {r : PrimitiveReducibility}
-    -> Primitive k r ar
+    -> Primitive k r na ar
     -> Spine ar (Term Value) ns
     -> PrimitiveApplied k Value Simplified ns
   -- Glued normalised primitive value, which can (definitely) be evaluated further, stored in a lazy value.
-  LazyApplied : {k : PrimitiveClass} -> Primitive k PrimReducible ar
+  LazyApplied : {k : PrimitiveClass} -> Primitive k PrimReducible na ar
     -> Spine ar (Term Value) ns
     -> Lazy (Term Value ns)
     -> PrimitiveApplied k Value Normalised ns
@@ -295,7 +295,7 @@ vObjPi : (n : Ident) -> Val ns -> Val ns -> ValTy ns -> Body Value n ns -> ValTy
 vObjPi n ba bb ty body = RigidBinding _ (Bound _ (BindObjPi n ba bb ty) body)
 
 public export
-sPrim : {k : PrimitiveClass} -> {r : PrimitiveReducibility} -> Primitive k r ar -> Spine ar Tm ns -> Tm ns
+sPrim : {k : PrimitiveClass} -> {r : PrimitiveReducibility} -> Primitive k r na ar -> Spine ar Tm ns -> Tm ns
 sPrim {k = PrimNorm} p sp = SynPrimNormal (p $$ sp)
 sPrim {k = PrimNeu} p sp = SynApps (PrimNeutral (p $$ sp) $$ [])
 

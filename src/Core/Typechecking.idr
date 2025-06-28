@@ -468,7 +468,7 @@ tcPrim : HasTc m
   => Count ar
   => {r : PrimitiveReducibility}
   -> {k : PrimitiveClass}
-  -> Primitive k r ar
+  -> Primitive k r PrimNative ar
   -> List (Ident, TcAll m)
   -> TcAll m
 tcPrim p args = switch $ \ctx, stage => do

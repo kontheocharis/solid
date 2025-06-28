@@ -25,9 +25,11 @@ argN _ e = (Val _, e.a)
 ret : Expr ns -> Annot ns
 ret = (.a)
 
--- Typing rules for all the primitives
+-- Typing rules for all the *native* primitives
+-- 
+-- Typing for the rest of the primitives is given in the prelude.
 public export covering
-primAnnot : Size ns => (p : Primitive k r ar) -> (Tel ar Annot ns, Annot (ns ::< ar))
+primAnnot : Size ns => (p : Primitive k r PrimNative ar) -> (Tel ar Annot ns, Annot (ns ::< ar))
 primAnnot PrimTYPE = ([], ret $ mta (PrimTYPE $> []))
 primAnnot PrimCode = ([
       argN "l" $ mta (PrimLayoutDyn $> []),
@@ -71,7 +73,7 @@ primAnnot PrimLayoutDyn = ([], ret $ mta (PrimTYPE $> []))
 
 -- Create a primitive expression with the given data.
 public export covering
-prim : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility} -> Primitive k r ar -> Spine ar Atom ns -> Expr ns
+prim : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility} -> Primitive k r PrimNative ar -> Spine ar Atom ns -> Expr ns
 prim @{s} p sp =
   let (_, pRet) = primAnnot {ns = ns} p in
   let ret = sub {sms = s + sp.count} (idS ::< sp) pRet.ty in
