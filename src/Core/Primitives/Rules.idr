@@ -114,3 +114,12 @@ public export
 data DomainIn : Domain -> Ctx -> Type where
   SyntaxIn : DomainIn Syntax ns
   ValueIn : Size ns -> DomainIn Value ns
+
+-- Create a primitive value
+--
+-- Always calls eval if the primitive is reducible, to wrap it in lazy if needed.
+public export covering
+vPrim : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility} -> Primitive k r na ar -> Spine ar Val ns -> Val ns
+vPrim {k = PrimNorm} p sp = SimpPrimNormal (SimpApplied p sp)
+vPrim {k = PrimNeu} {r = PrimIrreducible} p sp = SimpApps (PrimNeutral (SimpApplied p sp) $$ [])
+vPrim {k = PrimNeu} {r = PrimReducible} p sp = eval id $ sPrim p (quote sp)

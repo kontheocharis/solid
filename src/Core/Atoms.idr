@@ -31,11 +31,11 @@ AtomTy = AnyDomain Term
 namespace ValSpine
   public export
   (.val) : Spine ar (AnyDomain tm) ns -> Spine ar (tm Value) ns
-  (.val) sp = mapSpine (force . (.val)) sp
+  (.val) sp = map (force . (.val)) sp
 
   public export
   (.syn) : Spine ar (AnyDomain tm) ns -> Spine ar (tm Syntax) ns
-  (.syn) sp = mapSpine (force . (.syn)) sp
+  (.syn) sp = map (force . (.syn)) sp
   
 -- All syntactic presheaf related bounds
 public export
@@ -232,16 +232,6 @@ public export covering
 EvalSized Atom (ExprAt s) (ExprAt s) where
   evalS env (MkExprAt tm a) = MkExprAt (evalS env tm) (evalS env a)
 
--- @@TODO:
-
 public export covering
 Relabel (Op ar) where
-  relabel r (a, b) = (relabel r a, relabel ?r b)
-
-public export covering
-Count ar => WeakSized (Op ar) where
-  weakS e (a, b) = ?b
-
-public export covering
-EvalSized Atom (Op ar) (Op ar) where
-  evalS env (a, b) = (evalS env a, ?bb)
+  relabel r (a, b) = (relabel r a, relabel (keepMany r) b)

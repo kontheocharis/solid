@@ -179,8 +179,8 @@ namespace Spine
   traverseSpine f ((n, x) :: xs) = [| ((n, ) <$> f x) :: traverseSpine f xs |]
 
   public export
-  mapSpine : (f ns -> g ns') -> Spine ar f ns -> Spine ar g ns'
-  mapSpine f sp = (traverseSpine (Id . f) sp).runIdentity
+  map : (f ns -> g ns') -> Spine ar f ns -> Spine ar g ns'
+  map f sp = (traverseSpine (Id . f) sp).runIdentity
 
 
 namespace Con
@@ -360,6 +360,11 @@ data Relab : Ctx -> Ctx -> Type where
   Id : Relab ns ns
   Keep : Relab ns ms -> Relab (ns :< n) (ms :< n)
   Change : (0 n : Ident) -> Relab ns ms -> Relab (ns :< n) (ms :< n')
+
+public export  
+keepMany : Count ar => Relab ns ms -> Relab (ns ::< ar) (ms ::< ar)
+keepMany @{CZ} r = r
+keepMany @{CS n} r = keepMany @{n} (Keep r)
   
 public export
 interface Relabel (0 tm : Ctx -> Type) where
@@ -416,19 +421,19 @@ Quote Lvl Idx where
   
 public export
 Relabel tm => Relabel (Spine ar tm) where
-  relabel r sp = mapSpine (relabel r) sp
+  relabel r sp = map (relabel r) sp
 
 public export
 (Weak tm) => Weak (Spine ar tm) where
-  weak e sp = mapSpine (weak e) sp
+  weak e sp = map (weak e) sp
 
 public export
 (WeakSized tm) => WeakSized (Spine ar tm) where
-  weakS e sp = mapSpine (weakS e) sp
+  weakS e sp = map (weakS e) sp
 
 public export
 Eval over tm val => Eval over (Spine ar tm) (Spine ar val) where
-  eval env sp = mapSpine (eval env) sp
+  eval env sp = map (eval env) sp
 
 public export
 (WeakSized over, Vars over, EvalSized over tm val) => EvalSized over (Tel ar tm) (Tel ar val) where
@@ -437,7 +442,7 @@ public export
 
 public export
 Quote val tm => Quote (Spine ar val) (Spine ar tm) where
-  quote sp = mapSpine quote sp
+  quote sp = map quote sp
   
 public export
 Relabel tm => Relabel (Tel ar tm) where

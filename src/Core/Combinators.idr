@@ -20,7 +20,7 @@ public export covering
     -> Primitive k r na ar
     -> Spine ar Atom ns
     -> Atom ns
-($>) p sp = ?ffa -- promote $ SynPrimNormal x
+($>) p sp = Choice (sPrim p sp.syn) (vPrim p sp.val)
 
 public export covering
 mtaA : Size ns => Annot ns
@@ -111,9 +111,9 @@ WeakSized (SortData s k) where
 -- Convert a `SortData` to its corresponding annotation.
 public export covering
 (.a) : Size ns => SortData s k ns -> AnnotAt s ns
-(.a) MtaSort = (mta (PrimTYPE $> [])).a.f
-(.a) (ObjSort Dyn by) = ?qa -- (obj by (PrimTypeDyn $> [(Val _, by)])).f
-(.a) (ObjSort Sized by) = ?qb -- sizedObjTypeAnnot by
+(.a) MtaSort = mtaA.f
+(.a) (ObjSort Dyn by) = (objDynA by).f
+(.a) (ObjSort Sized by) = (objA by).f
 
 namespace AnnotFor
     
@@ -152,7 +152,7 @@ glued v t = Choice (here) (Glued (LazyApps (ValDef (Level here) $$ []) t.val))
 -- Create a metavariable expression.
 public export covering
 meta : Size ns => MetaVar -> Spine ar Atom ns -> AnnotAt s ns -> ExprAt s ns
-meta m sp annot = MkExprAt (promote $ SimpApps (ValMeta m $$ mapSpine (force . (.val)) sp)) annot
+meta m sp annot = MkExprAt (promote $ SimpApps (ValMeta m $$ map (force . (.val)) sp)) annot
       
 -- Create a lambda expression
 public export covering
@@ -191,7 +191,7 @@ pi piStage piIdent bindAnnot bodyAnnot = case piStage of
   Mta =>
     let MkAnnotFor MtaSort bindTy = bindAnnot in
     let MkAnnotFor MtaSort bodyClosure = bodyAnnot in
-    MkExprAt (promote $ sMtaPi piIdent bindTy.syn bodyClosure.open.syn) (?qd)
+    (mta (promote $ sMtaPi piIdent bindTy.syn bodyClosure.open.syn)).f
   Obj =>
     let MkAnnotFor (ObjSort Sized ba) bindTy = bindAnnot in
     let MkAnnotFor (ObjSort Sized bb) bodyClosure = bodyAnnot in
