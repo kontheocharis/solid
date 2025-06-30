@@ -165,7 +165,7 @@ interface (Monad m) => HasTc m where
   -- Get all the goals that have been seen
   getGoals : m (SnocList Goal)
 
-  -- Lookup the signature of a declared primitive
+  -- The signature of a declared primitive
   definedPrimAnnot : Primitive k r PrimDeclared ar -> m (Op ar [<])
   setDefinedPrimAnnot : Primitive k r PrimDeclared ar -> Op ar [<] -> m ()
 

@@ -14,18 +14,17 @@ import Core.Primitives.Rules
 
 %default covering
 
--- A renaming is just a substitution containing only variables.
--- A partial renaming is a renaming that leaves gaps for some variables in the
--- output context.
+-- A renaming is just a substitution containing only variables. A partial
+-- renaming is a renaming that leaves gaps for some variables in the output
+-- context.
 --
 -- A partial renaming can be viewed a "strengthening" followed by a
 -- monomorphism, followed by a weakening. The strengthening can fail, which
 -- means some variables are "escaping".
 --
--- Warning: when it comes to context morphisms, the notions of mono and epi are
--- intuitively swapped: a mono uses each variable at *least* once, while an
--- epi uses each variable at *most* once. This is because context morphisms
--- are sort of contravariant in nature.
+-- Warning: the notions of mono and epi are swapped for variables: a mono uses
+-- each variable at *least* once, while an epi uses each variable at *most*
+-- once.
 namespace PRen
   -- Here we represent a partial renaming as a partial function from indices to
   -- indices.
