@@ -69,9 +69,9 @@ Unelab (Binding s r Syntax) PTm where
   unelab (Bound Obj (BindObjLam n domBytes codBytes) y) =
     pure $ pLam (MkPParam dummyLoc n Nothing) !(unelab y)
   unelab (Bound Mta (BindMtaLet (_, n) ty rhs) y) =
-    pure $ pLet dummyLoc (MkLetFlags (Just Mta) False) n !(Just <$> unelab ty) !(unelab rhs) !(unelab y)
+    pure $ pLet dummyLoc n !(Just <$> unelab ty) !(unelab rhs) !(unelab y)
   unelab (Bound Obj (BindObjLet (_, n) tyBytes ty rhs) y) =
-    pure $ pLet dummyLoc (MkLetFlags (Just Obj) False) n !(Just <$> unelab ty) !(unelab rhs) !(unelab y)
+    pure $ pLet dummyLoc n !(Just <$> unelab ty) !(unelab rhs) !(unelab y)
   unelab (Bound Mta (BindMtaPi n dom) y) =
     pure $ pPi (MkPParam dummyLoc n Nothing) !(unelab y)
   unelab (Bound Obj (BindObjPi n domBytes codBytes dom) y) =

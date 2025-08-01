@@ -55,16 +55,18 @@ elab (PSigmas (MkPTel ((MkPParam l n ty) :: xs)))
 elab (PPairs ps) = tcPairs (elabSpine ps)
 elab (PProj v n) = tcProj (elab v) n
 elab (PBlock t []) = tcUnit
-elab (PBlock t (PLet l (MkLetFlags stage False) n ty tm :: bs))
-  = let statement = tcLet n stage (elab <$> ty) (elab tm) (elab (PBlock t bs)) in
+elab (PBlock t (PLet l n ty tm :: bs))
+  = let statement = tcLet n ?stage (elab <$> ty) (elab tm) (elab (PBlock t bs)) in
     interceptAll (enterLoc l) statement
-elab (PBlock t (PLetRec l (MkLetFlags stage False) n ty tm :: bs))
-  = let statement = tcLetRec n stage (elab ty) (elab tm) (elab (PBlock t bs)) in
+elab (PBlock t (PLetRec l n ty tm :: bs))
+  = let statement = tcLetRec n ?stage2 (elab ty) (elab tm) (elab (PBlock t bs)) in
     interceptAll (enterLoc l) statement
 elab (PBlock t (PBlockTm l tm :: [])) = elab tm
 elab (PBlock t (PDecl l n ty :: bs)) = ?todoDecl
-elab (PBlock t (PLet l (MkLetFlags stage True) n ty tm :: bs)) = ?todoIrrLet
-elab (PBlock t (PLetRec l (MkLetFlags stage True) n ty tm :: bs)) = ?todoIrrLetRec
+elab (PBlock t (PLet l n ty tm :: bs)) = ?todoIrrLet
+elab (PBlock t (PLetRec l n ty tm :: bs)) = ?todoIrrLetRec
 elab (PBlock t (PBind l n ty tm :: bs)) = ?todoBind
 elab (PBlock t (PBlockTm l tm :: bs)) = ?todoNamelessBind
+elab (PBlock t (PDirSt d b :: bs)) = elab (PBlock t (b :: bs)) -- @@TODO
 elab (PLit l) = ?todoLit
+elab (PDirTm d t) = elab t -- @@TODO

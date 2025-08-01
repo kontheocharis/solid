@@ -57,36 +57,45 @@ record PSpine (t : Target) where
   constructor MkPSpine
   actual : List (PArg t)
 
--- Varius flags for let statements
-public export
-record LetFlags where
-  constructor MkLetFlags
-  -- Which stage to bind the let in
-  stage : Maybe Stage
-  -- Whether the RHS is irrelevant, and if so we can extract its value as long
-  -- as the rest of the block is zero-sized.
-  irr : Bool
+-- -- Varius flags for let statements
+-- public export
+-- record LetFlags where
+--   constructor MkLetFlags
+--   -- Which stage to bind the let in
+--   stage : Maybe Stage
+--   -- Whether the RHS is irrelevant, and if so we can extract its value as long
+--   -- as the rest of the block is zero-sized.
+--   irr : Bool
 
-public export
-letFlagsAreDefault : LetFlags -> Bool
-letFlagsAreDefault (MkLetFlags Nothing False) = True
-letFlagsAreDefault _ = False
+-- public export
+-- letFlagsAreDefault : LetFlags -> Bool
+-- letFlagsAreDefault (MkLetFlags Nothing False) = True
+-- letFlagsAreDefault _ = False
 
 -- Binary operators
 --
 -- @@Todo: Actually use this
 public export
 data BinOp = Times | Plus
+           
+-- Directives
+-- For now just strings
+public export
+record Directive where
+  constructor MkDirective
+  name : String
 
 -- A block is a sequence of assignment-like things. It is written like
 -- { x1 := a1; ... ; xn := an; y }, similar to Rust.
 public export
 data PBlockStatement : Type where
+  -- Directive-wrapped statement
+  PDirSt : Directive -> PBlockStatement -> PBlockStatement
   -- Recursive let statement
   --
   -- x : A
   -- x = a
-  PLetRec : Loc -> LetFlags -> (name : String) -> PTy -> PTm -> PBlockStatement
+  PLetRec : Loc -> (name : String) -> PTy -> PTm -> PBlockStatement
   -- Declaration without an assignment
   --
   -- x : A
@@ -96,7 +105,7 @@ data PBlockStatement : Type where
   -- x : A = a
   -- or
   -- x := a
-  PLet : Loc -> LetFlags -> (name : String) -> Maybe PTy -> PTm -> PBlockStatement
+  PLet : Loc -> (name : String) -> Maybe PTy -> PTm -> PBlockStatement
   -- Monadic bind statement
   --
   -- x : A <- a
@@ -117,6 +126,8 @@ data PTm : Type where
   PLam : PTel Functions -> PTm -> PTm
   PApp : PTm -> PSpine Functions -> PTm
   PPi : PTel Functions -> PTy -> PTy
+  -- Directives
+  PDirTm : Directive -> PTm -> PTm
   -- This stands for both types and terms
   PUnit : PTm
   -- If there is a single element these are elaborated to their contents.
@@ -160,9 +171,9 @@ pPair : PArg Pairs -> PArg Pairs -> PTm
 pPair a b = PPairs (MkPSpine [a, b])
 
 export
-pLet : Loc -> LetFlags -> (name : String) -> Maybe PTy -> PTm -> PTm -> PTm
-pLet l fl n ty tm (PBlock t bs) = PBlock t (bs ++ [PLet l fl n ty tm])
-pLet l fl n ty tm u = PBlock True [PLet l fl n ty tm, PBlockTm dummyLoc u]
+pLet : Loc -> (name : String) -> Maybe PTy -> PTm -> PTm -> PTm
+pLet l n ty tm (PBlock t bs) = PBlock t (bs ++ [PLet l n ty tm])
+pLet l n ty tm u = PBlock True [PLet l n ty tm, PBlockTm dummyLoc u]
 
 -- Whether the term can always be unambiguously printed without parentheses
 public export total
@@ -234,30 +245,35 @@ Show (PSpine Pairs) where
   show (MkPSpine ts) = "(" ++ (map show ts |> cast |> joinBy ", ") ++ ")"
 
 -- Calculate prefix flags to let statements
-public export total
-showLetFlags : LetFlags -> String
-showLetFlags (MkLetFlags s i) =
-  let result = catMaybes [stage s, irr i] |> joinBy " " in
-  if result == "" then "" else result ++ " "
-where
-  stage : Maybe Stage -> Maybe String
-  stage Nothing = Nothing
-  stage (Just Obj) = Just "#obj"
-  stage (Just Mta) = Just "#mta"
+-- public export total
+-- showLetFlags : LetFlags -> String
+-- showLetFlags (MkLetFlags s i) =
+--   let result = catMaybes [stage s, irr i] |> joinBy " " in
+--   if result == "" then "" else result ++ " "
+-- where
+--   stage : Maybe Stage -> Maybe String
+--   stage Nothing = Nothing
+--   stage (Just Obj) = Just "#obj"
+--   stage (Just Mta) = Just "#mta"
 
-  irr : Bool -> Maybe String
-  irr False = Nothing
-  irr True = Just "#0"
+--   irr : Bool -> Maybe String
+--   irr False = Nothing
+--   irr True = Just "#0"
+  
+public export total
+Show Directive where
+  show (MkDirective n) = "#" ++ n
 
 public export covering
 Show PBlockStatement where
-  show (PLetRec _ f n ty v) = showLetFlags f ++ n ++ " : " ++ show ty ++ "\n" ++ n ++ " = " ++ show v
+  show (PLetRec _ n ty v) = n ++ " : " ++ show ty ++ "\n" ++ n ++ " = " ++ show v
   show (PDecl _ n ty) = n ++ " : " ++ show ty
-  show (PLet _ f n Nothing v) = showLetFlags f ++ n ++ " := " ++ show v
-  show (PLet _ f n (Just ty) v) = showLetFlags f ++ n ++ " : " ++ show ty ++ " = " ++ show v
+  show (PLet _ n Nothing v) = n ++ " := " ++ show v
+  show (PLet _ n (Just ty) v) = n ++ " : " ++ show ty ++ " = " ++ show v
   show (PBind _ n (Just ty) v) = n ++ " : " ++ show ty ++ " <- " ++ show v
   show (PBind _ n Nothing v) = n ++ " <- " ++ show v
   show (PBlockTm _ t) = show t
+  show (PDirSt d s) = show d ++ "\n" ++ show s
 
 public export total
 Show BinOp where
@@ -281,3 +297,4 @@ Show PTm where
   show (PProj t n) = showAtomic t ++ "." ++ n
   show (PLoc _ t) = show t
   show (PLit l) = show l
+  show (PDirTm d t) = show d ++ show t
