@@ -45,7 +45,7 @@ runTest (MkTest name path ZeroCode options source) = ?fjJ_1
 runTest (MkTest name path (ShouldErrorWith errM) options source) = ?fjJ_2
 
 runTests : TestRecipe -> IO ()
-runTests x = ?executeRecipe_rhs
+runTests (MkTestRecipe root toPass toFail) = for_ toFail runTest >> for_ toPass runTest
 
 gatherTests : {k : _} -> {p : _} -> Tree p -> IO (List (Test k))
 gatherTests (MkTree files rest) = do
