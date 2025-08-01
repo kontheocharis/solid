@@ -234,7 +234,7 @@ parse input = case parse topLevelBlock input of
 
 covering
 elaborate : PTm -> Comp (Atom [<])
-elaborate ptm = runAt Check (elab @{compTc} ptm) emptyContext mainAnnot
+elaborate ptm = runAt Check (runElab $ elab @{compTc} ptm) emptyContext mainAnnot
 
 covering
 stage : Atom [<] -> Comp (Val [<])

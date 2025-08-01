@@ -71,7 +71,7 @@ public export
 emptyContext : Context [<]
 emptyContext =
   MkContext (Val [<]) [<] [<] [<] [<] SZ (Evidence [] [])
-
+ 
 -- A goal is a hole in a context.
 public export
 record Goal where
