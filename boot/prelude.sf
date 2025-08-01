@@ -13,27 +13,27 @@ push : [b] [A : Type b] (a : Make A) -> A
 #primitive
 UNIT : TYPE
 
--- #primitive
--- ttS : UNIT
+#primitive
+ttS : UNIT
 
--- #primitive
--- Unit : (l : Layout?) -> Type? l
+#primitive
+Unit : (l : Layout?) -> Type? l
 
--- #primitive
--- tt : [l] -> Unit l
+#primitive
+tt : [l] -> Unit l
 
--- -- Irrelevance
--- Irr : [b] (A : Type? b) -> Type zero
--- irr : [b] [A : Type b] (a : A) -> Irr A
+-- Irrelevance
+Irr : [b] (A : Type? b) -> Type zero
+irr : [b] [A : Type b] (a : A) -> Irr A
 
--- -- Sigma
--- SIGMA : (A : TYPE) -> (A -> TYPE) -> TYPE
--- pairS : [A : TYPE] [B : A -> TYPE] (a : A) (b : B a) -> SIGMA A B
--- fstS : [A : TYPE] [B : A -> TYPE] (p : SIGMA A B) -> A
--- sndS : [A : TYPE] [B : A -> TYPE] (p : SIGMA A B) -> B (fstS p)
--- Sigma : [a] (A : Type? a) [b] (B : Irr A -> Type? b) -> Type? (seq? a b)
+-- Sigma
+SIGMA : (A : TYPE) -> (A -> TYPE) -> TYPE
+pairS : [A : TYPE] [B : A -> TYPE] (a : A) (b : B a) -> SIGMA A B
+fstS : [A : TYPE] [B : A -> TYPE] (p : SIGMA A B) -> A
+sndS : [A : TYPE] [B : A -> TYPE] (p : SIGMA A B) -> B (fstS p)
+Sigma : [a] (A : Type? a) [b] (B : Irr A -> Type? b) -> Type? (seq? a b)
 
--- -- IO
--- IO : [a] (A : Type a) -> Type ptr
--- io-bind : [a] [A : Type a] (m : IO A) (f : A -> IO b) -> IO b
--- io-return : [a] [A : Type a] (a : A) -> IO A
+-- IO
+IO : [a] (A : Type a) -> Type ptr
+io-bind : [a] [A : Type a] (m : IO A) (f : A -> IO b) -> IO b
+io-return : [a] [A : Type a] (a : A) -> IO A

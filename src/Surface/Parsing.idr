@@ -312,7 +312,7 @@ directive : Parse Directive
 directive = do
   string "#"
   s <- identifier
-  pure . trace s $ MkDirective s
+  pure $ MkDirective s
 
 decl : Parse (String, Maybe PTy)
 decl = do
@@ -323,49 +323,64 @@ decl = do
 endStatement : Parse ()
 endStatement = (symbol ";" <|> symbol "\n") <* whitespace anySpace
 
-blockStatement : Parse PBlockStatement
+-- (name : type) = value
+letWithType : String -> PTy -> Parse (Loc -> PBlockStatement)
+letWithType n ty = do
+  symbol "="
+  v <- tm
+  pure $ \l => PLet l n (Just ty) v
+
+-- (name : type) <- value
+bindWithType : String -> PTy -> Parse (Loc -> PBlockStatement) 
+bindWithType n ty = do
+  symbol "<-"
+  v <- tm
+  pure $ \l => PBind l n (Just ty) v
+
+-- (name : type) ; name [params] = value
+letRec : String -> PTy -> Parse (Loc -> PBlockStatement)
+letRec n ty = do
+  endStatement
+  symbol n
+  tel <- optional lamTel
+  symbol "="
+  v <- tm
+  let v' = case tel of
+        Nothing => v
+        Just tel => PLam tel v
+  pure $ \l => PLetRec l n ty v'
+
+-- (name : type)
+justDecl : String -> PTy -> Parse (Loc -> PBlockStatement)
+justDecl n ty = pure $ \l => PDecl l n ty
+
+-- (name) := value
+letWithoutType : String -> Parse (Loc -> PBlockStatement)
+letWithoutType n = do
+  symbol ":="
+  v <- tm
+  pure $ \l => PLet l n Nothing v
+
+-- (name) <- value
+bindWithoutType : String -> Parse (Loc -> PBlockStatement)
+bindWithoutType n = do
+  symbol "<-"
+  v <- tm
+  pure $ \l => PBind l n Nothing v
+  
+-- value
+termStatement : Parse (Loc -> PBlockStatement)
+termStatement = do 
+  t <- tm
+  pure $ \l => PBlockTm l t
+
 blockStatement = atom . located (|>) $ do
   d <- optional directive
-  -- s <- optional stage
-  -- i <- irr
-  -- let flags = MkLetFlags s i
-  dir <- wrapInDirective d <$> ((decl >>= \case
-    (n, Just ty) => -- can be a bind or let with type, or a let rec
-      -- let with type
-      (symbol "=" >> do
-        v <- tm
-        pure $ \l => PLet l n (Just ty) v)
-      -- bind with type
-      <|> (symbol "<-" >> do
-        -- when (not $ letFlagsAreDefault flags) (fail $ CannotUseLetFlags flags)
-        v <- tm
-        pure $ \l => PBind l n (Just ty) v)
-      -- let rec
-      <|> (endStatement >> symbol n >> do
-        tel <- optional lamTel
-        symbol "="
-        v <- tm
-        let v' = case tel of
-              Nothing => v
-              Just tel => PLam tel v
-        pure $ \l => PLetRec l n ty v')
-      -- just a declaration
-      <|> (pure $ \l => PDecl l n ty)
-    (n, Nothing) => -- can only be a bind or let without type
-      -- let without type
-      (symbol ":=" >> do
-        v <- tm
-        pure $ \l => PLet l n Nothing v)
-      -- bind without type
-      <|> (symbol "<-" >> do
-        -- when (not $ letFlagsAreDefault flags) (fail $ CannotUseLetFlags flags)
-        v <- tm
-        pure $ \l => PBind l n Nothing v)
-    ) <|> (do
-      -- just a term statement
-      t <- tm
-      pure $ \l => PBlockTm l t))
-  pure $ \l => trace (show $ dir l) (dir l)
+  whitespace anySpace 
+  wrapInDirective d <$> ((decl >>= \case
+      (n, Just ty) => letWithType n ty <|> bindWithType n ty <|> letRec n ty <|> justDecl n ty
+      (n, Nothing) => letWithoutType n <|> bindWithoutType n
+    ) <|> termStatement)
   where
     wrapInDirective : Maybe Directive -> (a -> PBlockStatement) -> (a -> PBlockStatement)
     wrapInDirective Nothing y a = y a
