@@ -31,7 +31,6 @@ showUsage = do
 main : IO ()
 main = do
   args <- getArgs
-  putStrLn $ show args
   run args
   where
     run : List String -> IO ()
