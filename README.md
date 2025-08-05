@@ -1,9 +1,9 @@
 # Solid
 
-A compiler for a dependently typed programming language featuring unboxed types and staged computation.
+A compiler for a dependently typed programming language.
 
 The language features staged compilation with dependent types that track memory
-layouts and other computational information.
+layouts and other computational information. As a result, data is unboxed by default.
 
 ## Building
 
