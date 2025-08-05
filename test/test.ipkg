@@ -1,4 +1,4 @@
-package unboxed-idr-test
+package solid-test
 version = 0.1.0
 authors = "Constantine Theocharis"
 -- maintainers =
@@ -13,7 +13,7 @@ authors = "Constantine Theocharis"
 -- langversion
 
 -- packages to add to search path
-depends = unboxed-idr
+depends = solid
         , base >= 0.5.1
         , contrib
         , hashable
@@ -26,7 +26,7 @@ depends = unboxed-idr
 main = Main
 
 -- name of executable
-executable = "unboxed-idr-test"
+executable = "solid-test"
 -- opts =
 sourcedir = "src"
 -- builddir =

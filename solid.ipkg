@@ -1,4 +1,4 @@
-package unboxed-idr
+package solid
 version = 0.1.0
 authors = "Constantine Theocharis"
 -- maintainers =
@@ -24,7 +24,7 @@ depends = base >= 0.5.1
 main = Main
 
 -- name of executable
-executable = "unboxed-idr"
+executable = "solid"
 opts = "--total"
 sourcedir = "src"
 -- builddir =

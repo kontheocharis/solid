@@ -1,4 +1,4 @@
-# Unboxed IDR
+# Solid
 
 A compiler for a dependently typed programming language featuring unboxed types and staged computation.
 
