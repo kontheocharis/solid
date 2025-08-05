@@ -19,8 +19,7 @@ pack install
 Run the test suite:
 
 ```bash
-# Build and run tests
 pack test
 ```
 
-Test cases are organized in `test/cases/` with passing and failing examples.
+Test cases are organised in `test/cases/` with passing and failing examples.
