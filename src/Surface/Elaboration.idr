@@ -67,9 +67,9 @@ elab (PSigmas (MkPTel [])) = elab PUnit
 elab (PSigmas (MkPTel ((MkPParam l n ty) :: xs))) = do
   t' <- elab {m = m} (PSigmas (MkPTel xs))
   let ty' = fromMaybe (PHole Nothing) ty
-  pure $ tcSigma n (interceptAll {m = m} (enterLoc l) $ !(elab ty')) t'
-elab (PPairs ps) = tcPairs <$> elabSpine ps
-elab (PProj v n) = pure $ tcProj !(elab v) n
+  pure $ ?tcSigma n (interceptAll {m = m} (enterLoc l) $ !(elab ty')) t'
+elab (PPairs ps) = ?tcPairs -- <$> elabSpine ps
+elab (PProj v n) = pure $ ?tcProj -- !(elab v) n
 elab (PBlock t []) = pure tcUnit
 elab (PBlock t (PLet l n ty tm :: bs)) = do
   ty' <- traverse elab ty

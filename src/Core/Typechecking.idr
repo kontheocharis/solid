@@ -233,9 +233,10 @@ resolve x = do
   t <- enterMetas $ resolveGlueAndMetas {sm = SolvingAllowed} @{metas} x.val
   pure $ promote t
 
-promoteWithoutDefs : Size ns -> {d : Domain} -> Term d ns -> Atom ns
-promoteWithoutDefs s {d = Syntax} tm = Choice tm (eval id tm)
-promoteWithoutDefs s {d = Value} val = Choice (quote val) val
+-- This should probably never be used.
+-- promoteWithoutDefs : Size ns -> {d : Domain} -> Term d ns -> Atom ns
+-- promoteWithoutDefs s {d = Syntax} tm = Choice tm (eval id tm)
+-- promoteWithoutDefs s {d = Value} val = Choice (quote val) val
 
 -- Create a fresh metavariable
 freshMeta : HasTc m => Context ns -> Maybe Name -> AnnotAt s ns -> m (ExprAt s ns)
@@ -473,6 +474,7 @@ tcApp : HasTc m
   => (subject : TcAll m)
   -> List (Ident, TcAll m)
   -> TcAll m
+tcApp subject args = switch $ \ctx, stage => ?faj
 
 -- Check a primitive
 public export
@@ -497,27 +499,6 @@ tcUnit {md = Infer} = \ctx, annot => do
   ?fb
   -- let stage = (packStage annot).stage
   -- adjustStageIfNeeded ctx (unitForStage stage) stage
-  
--- Check a sigma type
-public export
-tcSigma : HasTc m
-  => Ident
-  -> TcAll m
-  -> TcAll m
-  -> TcAll m
-
--- Check an iterated pair
-public export
-tcPairs : HasTc m
-  => List (Ident, TcAll m)
-  -> TcAll m
-
--- Check a named pair projection
-public export
-tcProj : HasTc m
-  => (subject : TcAll m)
-  -> (member : Name)
-  -> TcAll m
   
 -- Check a let statement.
 public export
