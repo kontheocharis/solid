@@ -78,5 +78,4 @@ prim @{s} p sp =
   let (_, pRet) = primAnnot {ns = ns} p in
   let ret = sub {sms = s + sp.count} (idS ::< sp) pRet.ty in
   let retSort = sub {sms = s + sp.count} (idS ::< sp) pRet.sort in
-  ?fajajj
-  -- MkExpr (Choice (sPrim p sp.syn) (vPrim p sp.val)) (MkAnnot ret retSort pRet.stage)
+  MkExpr (Choice (sPrim p sp.syn) (vPrim p sp.val)) (MkAnnot ret retSort pRet.stage)
