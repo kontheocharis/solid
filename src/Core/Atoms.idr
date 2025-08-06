@@ -235,3 +235,7 @@ EvalSized Atom (ExprAt s) (ExprAt s) where
 public export covering
 Relabel (Op ar) where
   relabel r (a, b) = (relabel r a, relabel (keepMany r) b)
+  
+export covering
+Show (Term Syntax ns) => Show (Atom ns) where
+  show a = show a.syn

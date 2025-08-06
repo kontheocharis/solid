@@ -15,6 +15,7 @@ import Core.Primitives.Rules
 import Core.Metavariables
 import Core.Unification
 import Core.Atoms
+import Core.Syntax
 import Surface.Presyntax
 
 %default covering
@@ -120,3 +121,8 @@ public export
 %hint
 showUnelabVal : Show (Val [<])
 showUnelabVal = showUnelab
+
+public export
+%hint
+showSyntax : ShowSyntax
+showSyntax = ?showSyntax_impl

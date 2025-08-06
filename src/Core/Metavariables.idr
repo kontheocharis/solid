@@ -78,6 +78,10 @@ Weak PRenError where
 Relabel PRenError where
   relabel s (Escapes l) = Escapes (relabel s l)
   relabel s (InvalidMeta m) = InvalidMeta m
+  
+(ns : Ctx) => Show (PRenError ns) where
+  show (Escapes x) = "variable `\{show x}` escapes meta solution"
+  show (InvalidMeta x) = "cyclic or invalid metavariable `\{show x}` occurrence"
 
 -- Whether a metavariable is allowed to appear in a term being renamed.
 data MetaValidity : Type where
@@ -215,6 +219,12 @@ Relabel SolveError where
   relabel s (NonLinear sp) = NonLinear (relabel s sp)
   relabel s (NonVar sp) = NonVar (relabel s sp)
   relabel s (RenamingError err) = RenamingError (relabel s err)
+  
+export
+(ns : Ctx) => ShowSyntax => Show (SolveError ns) where
+    show (NonLinear sp) = "metavariable is applied to a non-linear spine: `\{show sp}`"
+    show (NonVar sp) = "metavariable is applied to non-variable terms: `\{show sp}`"
+    show (RenamingError err) = "renaming error occurred while solving metavariable: `\{show err}`"
 
 -- A flex is a metavariable applied to a spine of arguments
 public export

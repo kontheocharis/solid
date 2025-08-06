@@ -373,3 +373,12 @@ export covering
 relabelBody : (0 n' : Ident) -> Body d n ns -> Body d n' ns
 relabelBody n' (Delayed t) = Delayed (relabel (Change n' Id) t)
 relabelBody n' (Closure sub t) = Closure sub (relabel (Change n' Id) t)
+
+-- Showing (just traits for now)
+
+public export
+0 ShowSyntax : Type
+ShowSyntax = (
+    forall d . (ns : Ctx) => Show (Term d ns),
+    forall d, ar . (ns : Ctx) => Show (Spine ar (Term d) ns)
+  )

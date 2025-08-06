@@ -116,17 +116,25 @@ record TcError where
   err : TcErrorAt conNs
   
 export
-Show (TcErrorAt ns) where
-  show (WhenUnifying x y z) = ?fafa_0
-  show (WrongPiMode x y) = ?fafa_1
-  show CannotInferStage = ?fafa_2
-  show (UnknownName str) = ?fafa_3
-  show (TooManyApps less) = ?fafa_4
-  show (TooFewApps more) = ?fafa_5
+(ns : Ctx) => ShowSyntax => Show (Unification ns) where
+  show AreSame = "terms are the same"
+  show AreDifferent = "terms are different"
+  show DontKnow = "terms are not the same"
+  show (Error x) = "unification error: " ++ show x
+
+export
+(ns : Ctx) => ShowSyntax => Show (TcErrorAt ns) where
+  show (WhenUnifying x y z) = "When unifying " ++ show x ++ " with " ++ show y ++ ": " ++ show z
+  show (WrongPiMode mode ty) = "Wrong pi mode " ++ show mode ++ " for type " ++ show ty
+  show CannotInferStage = "Cannot infer stage"
+  show (UnknownName name) = "Unknown name: " ++ show name
+  show (TooManyApps count) = "Too many applications (expected " ++ show count ++ " fewer)"
+  show (TooFewApps count) = "Too few applications (expected " ++ show count ++ " more)"
   
 export
-Show TcError where
-  show (MkTcError con loc err) = ?showTcError_0
+ShowSyntax => Show TcError where
+  show (MkTcError con loc err) = let Val _ = con.idents in
+      "Typechecking error at \{show loc}:\n\{show err}"
 
 -- Add a potentially self-referencing definition to the context.
 addToContext : {s : Stage} -> (isBound : Bool) -> (n : Ident) -> AnnotAt s ns -> Atom (ns :< n) -> Context ns -> Context (ns :< n)

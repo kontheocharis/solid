@@ -9,6 +9,11 @@ import Utils
 -- We remember this in the context.
 public export
 data PiMode = Explicit | Implicit
+            
+public export
+Show PiMode where
+  show Explicit = "explicit"
+  show Implicit = "implicit"
 
 public export
 DecEq PiMode where
@@ -31,7 +36,7 @@ public export
 Ident = (PiMode, Name)
 
 public export
-Show Ident where
+[showIdent] Show Ident where
   show (Explicit, n) = n
   show (Implicit, n) = "[" ++ n ++ "]"
 
