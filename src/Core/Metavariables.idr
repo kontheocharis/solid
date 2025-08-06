@@ -74,6 +74,10 @@ data PRenError : Ctx -> Type where
 Weak PRenError where
   weak s (Escapes l) = Escapes (weak s l)
   weak s (InvalidMeta m) = InvalidMeta m
+  
+Relabel PRenError where
+  relabel s (Escapes l) = Escapes (relabel s l)
+  relabel s (InvalidMeta m) = InvalidMeta m
 
 -- Whether a metavariable is allowed to appear in a term being renamed.
 data MetaValidity : Type where
@@ -205,6 +209,12 @@ Weak SolveError where
   weak s (NonLinear sp) = NonLinear (weak s sp)
   weak s (NonVar sp) = NonVar (weak s sp)
   weak s (RenamingError err) = RenamingError (weak s err)
+
+public export
+Relabel SolveError where
+  relabel s (NonLinear sp) = NonLinear (relabel s sp)
+  relabel s (NonVar sp) = NonVar (relabel s sp)
+  relabel s (RenamingError err) = RenamingError (relabel s err)
 
 -- A flex is a metavariable applied to a spine of arguments
 public export

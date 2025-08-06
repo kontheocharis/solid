@@ -37,12 +37,13 @@ data Unification : Ctx -> Type where
 --
 -- If the binder didn't have a name, we just use the name `_` which stands for
 -- "internal binder".
-escapeBinder : Maybe (Singleton n) -> Unification (ns :< n) -> Unification ns
+escapeBinder : Size ns => Maybe (Singleton n) -> Unification (ns :< n) -> Unification ns
 escapeBinder sn AreSame = AreSame
 escapeBinder sn AreDifferent = AreDifferent
 escapeBinder sn DontKnow = DontKnow
 escapeBinder (Just (Val n)) (Error {under = ar} err) = Error {under = n :: ar} err
-escapeBinder Nothing (Error {under = ar} err) = Error {under = (Explicit, "_") :: ar} ?err
+escapeBinder Nothing (Error {under = ar} err)
+  = Error {under = (Explicit, "_") :: ar} (relabel (keepMany @{ar.count} (Change _ Id)) err)
 
 -- The typeclass for unification
 --

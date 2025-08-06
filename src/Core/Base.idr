@@ -378,7 +378,6 @@ namespace Relabel
 
 -- Basic implementations for the defined types
 
-
 public export
 Relabel Idx where
   relabel Id i = i
