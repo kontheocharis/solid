@@ -289,7 +289,7 @@ coerce : (HasTc m) => Expr ns -> Annot ns -> m (Tm ns)
 -- Succeeds if the unification says `AreSame`.
 unify : HasTc m => Context ns -> Atom ns -> Atom ns -> m ()
 unify @{tc} ctx a b = do
-  val : Unification _ <- enterMetas (unify {sm = SolvingAllowed} @{metas} @{unifyValues @{metas @{tc}}} a.val b.val)
+  val : Unification _ <- enterMetas (unify {sm = SolvingAllowed} @{metas} @{unifyValues} a.val b.val)
   case val of
     AreSame => pure ()
     failure => tcError ctx $ WhenUnifying a b failure

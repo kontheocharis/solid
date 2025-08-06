@@ -153,7 +153,9 @@ Unify sm val val' => Unify sm (Spine as val) (Spine as' val') where
 --
 -- All such conservative operations are never allowed to solve metavariables.
 
-Unify sm (Term Value) (Term Value)
+export
+%hint
+unifyValues : {sm : SolvingMode} -> Unify sm (Term Value) (Term Value)
 
 -- Unification outcome depends on reducibility
 -- Conservative for lets.
@@ -227,7 +229,7 @@ Unify SolvingNotAllowed LazyValue LazyValue where
 
 -- Finally, term unification
 export
-[unifyValues] {sm : SolvingMode} -> (HasMetas m) => Unify sm (Term Value) (Term Value) where
+[unifyValues] {sm : SolvingMode} -> Unify sm (Term Value) (Term Value) where
   resolveLhs = resolveMetas
   resolveRhs = resolveMetas
 
