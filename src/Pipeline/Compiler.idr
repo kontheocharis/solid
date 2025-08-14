@@ -113,7 +113,7 @@ liftIO i = lift $ Control.App.primIO i
         => (MkMetaState sm (insert m Nothing metas) (c + 1) ** Refl))
     pure m
 
-[compTc] HasTc Comp where
+HasTc Comp where
   metasM = MetaComp
 
   enterMetas = mapLens
@@ -150,7 +150,8 @@ liftIO i = lift $ Control.App.primIO i
         { definedPrimitives
           := insert (MkPrimitiveAny _ _ _ _ p) v s.definedPrimitives } s)
     pure ()
-  
+    
+HasElab Comp where
     
 -- Inputs and outputs of the compiler
   
@@ -234,7 +235,7 @@ parse input = case parse topLevelBlock input of
 
 covering
 elaborate : PTm -> Comp (Atom [<])
-elaborate ptm = runAt Check (runElab $ elab @{compTc} ptm) emptyContext mainAnnot
+elaborate ptm = runAt Check (elab ptm) emptyContext mainAnnot
 
 covering
 stage : Atom [<] -> Comp (Val [<])

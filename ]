@@ -20,61 +20,65 @@ import Core.Syntax
 import Data.Maybe
 import Control.Monad.State
 
-public export
-interface HasTc m => HasElab m where
+record ElabState where
+  constructor MkElabState
+  stageHint : Maybe Stage
+  
+0 Elab : (Type -> Type) -> Type -> Type
+Elab m a = StateT ElabState m a
 
 -- Elaborate a presyntax term into a typechecking operation.
 export covering
-elab : (HasElab m) => PTm -> TcAll m
+elab : (HasTc m) => PTm -> TcAll (Elab m)
 
 -- The annotation of the entry point of the program
 export
 mainAnnot : AnnotAt Obj [<]
 -- mainAnnot = (ioTy (unitTy Obj)).a
 
--- export
--- runElab : (HasElab m) => Elab m a -> m a
--- runElab = evalStateT (MkElabState Nothing)
+export
+runElab : (HasTc m) => Elab m a -> m a
+runElab = evalStateT (MkElabState Nothing)
 
 covering
-elabSpine : (HasElab m) => PSpine k -> List (Ident, TcAll m)
+elabSpine : (HasTc m) => PSpine k -> List (Ident, TcAll (Elab m))
 elabSpine (MkPSpine []) = []
 elabSpine (MkPSpine (MkPArg l n v :: xs)) = (
     fromMaybe (Explicit, "_") n,
     interceptAll (enterLoc l) $ elab v
   ) :: elabSpine (MkPSpine xs)
 
-elab (PLoc l t) = interceptAll (enterLoc l) $ elab t
-elab (PName n) = tcVar n
+elab (PLoc l t) = pure . interceptAll (enterLoc l) $ !(elab t)
+elab (PName n) = pure $ tcVar n
 elab (PLam (MkPTel []) t) = elab t
 elab (PLam (MkPTel ((MkPParam l n ty) :: xs)) t) = do
-  let t' = elab {m = m} (PLam (MkPTel xs) t)
-  let ty = elab <$> ty
-  tcLam n (interceptAll (enterLoc l) <$> ty) t'
+  t' <- elab {m = m} (PLam (MkPTel xs) t)
+  ty <- traverse elab ty
+  pure $ tcLam n (interceptAll (enterLoc l) <$> ty) t'
 elab (PPi (MkPTel []) t) = elab t
 elab (PPi (MkPTel ((MkPParam l n ty) :: xs)) t) = do
-  let t' = elab {m = m} (PPi (MkPTel xs) t)
+  t' <- elab {m = m} (PPi (MkPTel xs) t)
   let ty' = fromMaybe (PHole Nothing) ty
-  let ty = elab ty'
-  tcPi n (interceptAll {m = m} (enterLoc l) ty) t'
-elab (PApp subject sp) = tcApps (elab subject) (elabSpine sp)
-elab (PHole n) = tcHole n
-elab PUnit = tcPrim PrimUNIT []
+  ty <- elab ty'
+  pure $ tcPi n (interceptAll {m = m} (enterLoc l) ty) t'
+elab (PApp subject sp) = pure $ tcApps !(elab subject) !(elabSpine sp)
+elab (PHole n) = pure $ tcHole n
+elab PUnit = pure $ tcPrim PrimUNIT []
 elab (PSigmas (MkPTel [])) = elab PUnit
 elab (PSigmas (MkPTel ((MkPParam l n ty) :: xs))) = do
-  let t' = elab {m = m} (PSigmas (MkPTel xs))
+  t' <- elab {m = m} (PSigmas (MkPTel xs))
   let ty' = fromMaybe (PHole Nothing) ty
-  ?tcSigma n (interceptAll {m = m} (enterLoc l) (elab ty')) t'
+  pure $ ?tcSigma n (interceptAll {m = m} (enterLoc l) $ !(elab ty')) t'
 elab (PPairs ps) = ?tcPairs -- <$> elabSpine ps
-elab (PProj v n) = ?tcProj -- !(elab v) n
+elab (PProj v n) = pure $ ?tcProj -- !(elab v) n
 elab (PBlock t []) = elab PUnit
 elab (PBlock t (PLet l n ty tm :: bs)) = do
-  let ty' = elab <$> ty
-  let statement = tcLet n ?stage ty' (elab tm) (elab (PBlock t bs))
-  interceptAll (enterLoc l) statement
+  ty' <- traverse elab ty
+  let statement = tcLet n ?stage ty' !(elab tm) !(elab (PBlock t bs))
+  pure $ interceptAll (enterLoc l) statement
 elab (PBlock t (PLetRec l n ty tm :: bs)) = do
-  let statement = tcLetRec n ?stage2 (elab ty) (elab tm) (elab (PBlock t bs))
-  interceptAll (enterLoc l) statement
+  let statement = tcLetRec n ?stage2 !(elab ty) !(elab tm) !(elab (PBlock t bs))
+  pure $ interceptAll (enterLoc l) statement
 elab (PBlock t (PBlockTm l tm :: [])) = elab tm
 elab (PBlock t (PDecl l n ty :: bs)) = ?todoDecl
 elab (PBlock t (PLet l n ty tm :: bs)) = ?todoIrrLet
