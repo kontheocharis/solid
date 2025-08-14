@@ -57,6 +57,11 @@ data Primitive : PrimitiveClass -> PrimitiveReducibility -> PrimitiveLevel -> Ar
 
   PrimUNIT : Primitive PrimNorm PrimIrreducible PrimDeclared []
   PrimTT : Primitive PrimNorm PrimIrreducible PrimDeclared []
+  PrimUnit : Primitive PrimNorm PrimIrreducible PrimDeclared []
+  PrimTt : Primitive PrimNorm PrimIrreducible PrimDeclared []
+
+  PrimSIGMA : Primitive PrimNorm PrimIrreducible PrimDeclared [(Explicit, "a"), (Explicit, "b")]
+  PrimSigma : Primitive PrimNorm PrimIrreducible PrimDeclared [(Implicit, "ba"), (Implicit, "bb"), (Explicit, "a"), (Explicit, "b")]
 
 -- Can't be DecEq without writing out all cases smh
 export
@@ -91,8 +96,12 @@ primName PrimSta = "sta"
 primName PrimTypeDyn = "Type?"
 primName PrimSeqLayout = "seq"
 primName PrimSeqLayoutDyn = "seq-dyn"
-primName PrimUNIT = "()"
-primName PrimTT = "()"
+primName PrimUNIT = "UNIT"
+primName PrimTT = "TT"
+primName PrimUnit = "Unit"
+primName PrimTt = "tt"
+primName PrimSIGMA = "SIGMA"
+primName PrimSigma = "Sigma"
 
 public export
 Eq (Primitive k r na ar) where

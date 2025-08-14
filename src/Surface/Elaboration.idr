@@ -36,6 +36,11 @@ mainAnnot : AnnotAt Obj [<]
 -- runElab : (HasElab m) => Elab m a -> m a
 -- runElab = evalStateT (MkElabState Nothing)
 
+export
+whenInStage : (Maybe Stage -> TcAll m) -> TcAll m
+whenInStage f Infer = \ctx, maybeStage => f maybeStage Infer ctx maybeStage
+whenInStage f Check = \ctx, annot => f (Just annot.p.stage) Check ctx annot
+
 covering
 elabSpine : (HasElab m) => PSpine k -> List (Ident, TcAll m)
 elabSpine (MkPSpine []) = []
@@ -43,6 +48,10 @@ elabSpine (MkPSpine (MkPArg l n v :: xs)) = (
     fromMaybe (Explicit, "_") n,
     interceptAll (enterLoc l) $ elab v
   ) :: elabSpine (MkPSpine xs)
+  
+covering
+hole : HasElab m => TcAll m
+hole = elab (PHole Nothing)
 
 elab (PLoc l t) = interceptAll (enterLoc l) $ elab t
 elab (PName n) = tcVar n
@@ -59,13 +68,16 @@ elab (PPi (MkPTel ((MkPParam l n ty) :: xs)) t) =
   tcPi n (interceptAll {m = m} (enterLoc l) ty) t'
 elab (PApp subject sp) = tcApps (elab subject) (elabSpine sp)
 elab (PHole n) = tcHole n
-elab PUnit = switch $ \ctx, maybeStage => do
-  ?fajajj
+elab PUnit = whenInStage $ \case
+  Just Obj => tcPrimKnown PrimTt []
+  _ => tcPrimKnown PrimTT []
 elab (PSigmas (MkPTel [])) = elab PUnit
 elab (PSigmas (MkPTel ((MkPParam l n ty) :: xs))) =
-  let t' = elab {m = m} (PSigmas (MkPTel xs)) in
-  let ty' = fromMaybe (PHole Nothing) ty in
-  ?tcSigma n (interceptAll {m = m} (enterLoc l) (elab ty')) t'
+  let ty' = elab (fromMaybe (PHole Nothing) ty) in
+  let t' = elab (PSigmas (MkPTel xs)) in
+  whenInStage $ \case
+    Just Obj => tcPrimKnown PrimSigma [hole, hole, ty', t']
+    _ => tcPrimKnown PrimSIGMA [ty', t']
 elab (PPairs ps) = ?tcPairs -- <$> elabSpine ps
 elab (PProj v n) = ?tcProj -- !(elab v) n
 elab (PBlock t []) = elab PUnit

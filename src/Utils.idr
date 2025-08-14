@@ -74,3 +74,23 @@ public export
 export
 Show Loc where
   show m = "line " ++ show m.row ++ ", column " ++ show m.col
+
+public export
+data DispList : List a -> Type -> Type where
+  Nil : DispList [] b
+  (::) : b -> DispList xs b -> DispList (x :: xs) b
+  
+public export
+dispToList : {xs : List a} -> DispList xs b -> List (a, b)
+dispToList [] = []
+dispToList {xs = x :: _} (l :: ls) = (x, l) :: dispToList ls
+
+public export
+data DispSnocList : SnocList a -> Type -> Type where
+  Lin : DispSnocList [<] b
+  (:<) : DispSnocList xs b -> b -> DispSnocList (xs :< x) b
+  
+public export
+dispToSnocList : {xs : SnocList a} -> DispSnocList xs b -> SnocList (a, b)
+dispToSnocList [<] = [<]
+dispToSnocList {xs = _ :< x} (ls :< l) = dispToSnocList ls :< (x, l)

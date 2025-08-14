@@ -208,13 +208,13 @@ public export
 Tc md m = forall ns . TcAt md m ns
 
 -- Typechecking at any mode and context.
-export
+public export
 0 TcAll : (m : Type -> Type) -> Type
 TcAll m = (md : TcMode) -> Tc md m
 
-export
+public export
 runAt : (md : TcMode) -> TcAll m -> Tc md m
-runAt md f = f {md = md}
+runAt md f = f md
 
 -- Map a parametric monadic operation over Tc.
 public export
@@ -294,6 +294,7 @@ coerce : (HasTc m) => Expr ns -> Annot ns -> m (Tm ns)
 -- Unify two values in the given context.
 --
 -- Succeeds if the unification says `AreSame`.
+public export
 unify : HasTc m => Context ns -> Atom ns -> Atom ns -> m ()
 unify @{tc} ctx a b = do
   val : Unification _ <- enterMetas (unify {sm = SolvingAllowed} @{metas} @{unifyValues} a.val b.val)
@@ -301,12 +302,17 @@ unify @{tc} ctx a b = do
     AreSame => pure ()
     failure => tcError ctx $ WhenUnifying a b failure
 
+public export
+areEqual : HasTc m => Context ns -> Atom ns -> Atom ns -> m (Unification ns)
+areEqual @{tc} ctx a b = do
+  enterMetas (unify {sm = SolvingNotAllowed} @{metas} @{unifyValues} a.val b.val)
+
 -- Force a typechecking operation to be in checking mode. This might involve unifying with an
 -- inferred type.
 public export
 switch : HasTc m => Tc Infer m -> TcAll m
-switch f {md = Infer} = f
-switch f {md = Check} = \ctx, annot => do
+switch f Infer = f
+switch f Check = \ctx, annot => do
   result <- insertAt ctx $ f ctx (Just annot.p.stage)
   unify ctx annot.ty result.annot.ty
   pure result.tm
@@ -378,11 +384,11 @@ tcSpine ctx ((_, tm) :: tms) ((Val _, annot) :: annots) = do -- @@Todo: spine na
 -- Introduce a metavariable
 public export
 tcMeta : HasTc m => {default Nothing name : Maybe Name} -> TcAll m
-tcMeta {md = Check} {name = name} = \ctx, annot => do
+tcMeta {name = name} Check = \ctx, annot => do
   mta <- freshMeta ctx name annot
   whenJust name $ \n => addGoal (MkGoal (Just n) mta.p ctx)
   pure mta.tm
-tcMeta {md = Infer} {name = name} = ensureKnownStage $ \ctx, stage => do
+tcMeta {name = name} Infer = ensureKnownStage $ \ctx, stage => do
   annot <- freshMetaAnnot ctx stage Dyn -- remember, sized < dyn
   mta <- freshMeta ctx name annot
   whenJust name $ \n => addGoal (MkGoal (Just n) mta.p ctx)
@@ -432,7 +438,7 @@ tcLam lamIdent bindTy body Check = \ctx, annot@(MkAnnotAt ty sort) => do
     Mismatching piStage (MkPiData resolvedPi piIdent a b) => case fst piIdent of
       -- Wasn't the right kind of pi; if it was implicit, insert a lambda
       Implicit => do
-        MkExprAt tm _ <- insertLam ctx piStage piIdent a b (tcLam {md = Check} lamIdent bindTy body)
+        MkExprAt tm _ <- insertLam ctx piStage piIdent a b (tcLam lamIdent bindTy body Check)
         pure tm
       -- Otherwise, we have the wrong kind of pi.
       _ => tcError ctx (WrongPiMode (fst piIdent) resolvedPi)
@@ -505,6 +511,18 @@ tcPrim {cz = cz} p args = switch $ \ctx, stage => do
       )
   sp <- tcSpine ctx args pParams
   adjustStageIfNeeded ctx (prim p (map (.tm) sp) pRet) stage
+
+-- Check a primitive, knowing that the arguments have the right arity
+public export
+tcPrimKnown : HasTc m
+  => {r : PrimitiveReducibility}
+  -> {ar : _}
+  -> {k : PrimitiveClass}
+  -> {l : PrimitiveLevel}
+  -> Primitive k r l ar
+  -> DispList ar (TcAll m)
+  -> TcAll m
+tcPrimKnown p l = tcPrim {cz = ar.count} p (dispToList l)
   
 -- Check a let statement.
 public export
