@@ -226,7 +226,7 @@ data Term where
 
   -- Normal primitives, never applied.
   SynPrimNormal : PrimitiveApplied PrimNorm Syntax NA ns -> Term Syntax ns
-  -- Fully simplified primitives, cannot be reduced further, stable under OPEs.
+  -- Fully simplified primitives, cannot be reduced further.
   SimpPrimNormal : PrimitiveApplied PrimNorm Value Simplified ns -> Term Value ns
 
 -- Some convenient shorthands

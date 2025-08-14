@@ -271,7 +271,6 @@ ensureKnownStage : HasTc m
 ensureKnownStage f ctx (Just s) = f ctx s
 ensureKnownStage f ctx Nothing = tcError ctx CannotInferStage
 
-
 -- Try to adjust the stage of an expression.
 tryAdjustStage : (HasTc m) => Context ns -> Expr ns -> (s : Stage) -> m (Maybe (ExprAt s ns))
 
@@ -359,13 +358,13 @@ checkSpine : HasTc m
   => Context ns
   -> List (Ident, TcAll m)
   -> Tel ar Annot ns
-  -> m (Spine ar Atom ns)
+  -> m (Spine ar Expr ns)
 checkSpine ctx tms [] = tcError ctx (TooManyApps (map fst tms).count)
 checkSpine ctx [] annots = tcError ctx (TooFewApps annots.count)
 checkSpine ctx ((_, tm) :: tms) ((Val _, annot) :: annots) = do -- @@Todo: spine name
   tm' <- tm {md = Check} ctx annot.f
   tms' <- checkSpine ctx tms (sub (ctx.defs :< tm') annots)
-  pure ((Val _, tm') :: tms')
+  pure ((Val _, MkExpr tm' annot) :: tms')
   
 -- Main combinators:
 
@@ -470,11 +469,18 @@ tcHole n = tcMeta {name = n}
 
 -- Check an application
 public export
-tcApp : HasTc m
-  => (subject : TcAll m)
+tcApps : HasTc m
+  => TcAll m
   -> List (Ident, TcAll m)
   -> TcAll m
-tcApp subject args = switch $ \ctx, stage => ?faj
+tcApps subject args = switch $ \ctx, reqStage => do
+  subject'@(MkExpr _ fnAnnot) <- maybePackStage <$> subject {md = Infer} ctx reqStage
+  case gatherPi fnAnnot (map fst args) of
+    Just (params, ret) => do
+      args' <- checkSpine ctx args params
+      let result = apps subject' args'
+      adjustStageIfNeeded ctx result reqStage
+    Nothing => ?error_too_many_params
 
 -- Check a primitive
 public export
@@ -488,7 +494,7 @@ tcPrim : HasTc m
 tcPrim p args = switch $ \ctx, stage => do
   let (pParams, _) = primAnnot p
   sp <- checkSpine ctx args pParams
-  adjustStageIfNeeded ctx (prim p sp) stage
+  adjustStageIfNeeded ctx (prim p ?sp) stage
   
 -- Check the unit type or term.
 public export

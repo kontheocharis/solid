@@ -196,7 +196,7 @@ pi piStage piIdent bindAnnot bodyAnnot = case piStage of
     let MkAnnotFor (ObjSort Sized ba) bindTy = bindAnnot in
     let MkAnnotFor (ObjSort Sized bb) bodyClosure = bodyAnnot in
     (obj (promote ptrLayout) (promote $ sObjPi piIdent ba.syn bb.syn bindTy.syn bodyClosure.open.syn)).f
-
+    
 -- The type of the callback that `ifForcePi` calls when it finds a matching
 -- type.
 public export
@@ -255,6 +255,9 @@ public export covering
 var : Size ns => Idx ns -> AnnotAt s ns -> ExprAt s ns
 var idx annot = MkExprAt (promote (varIdx idx)) annot
 
+public export covering
+apps : Size ns => Expr ns -> Spine ar Expr ns -> Expr ns
+
 -- Find a variable by its name in the context.
 public export covering
 v : Size ns => (n : String) -> {auto prf : In n ns} -> Atom ns
@@ -263,3 +266,6 @@ v n = promote (var n)
 public export covering
 mtaSigma : Size ns => (n : Ident) -> AtomTy ns -> Atom ns -> Atom ns
 mtaSigma piIdent bindTy bodyTy = ?ajajajaj
+
+public export covering
+gatherPi : Size ns => Annot ns -> (ar : Arity) -> Maybe (Tel ar Annot ns, Annot (ns ::< ar))
