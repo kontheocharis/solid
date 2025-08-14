@@ -210,7 +210,7 @@ Tc md m = forall ns . TcAt md m ns
 -- Typechecking at any mode and context.
 export
 0 TcAll : (m : Type -> Type) -> Type
-TcAll m = {md : TcMode} -> Tc md m
+TcAll m = (md : TcMode) -> Tc md m
 
 export
 runAt : (md : TcMode) -> TcAll m -> Tc md m
@@ -225,8 +225,8 @@ intercept f {md = Infer} x = \ctx, s => f (x ctx s)
 -- Map a parametric monadic operation over TcAll.
 public export
 interceptAll : HasTc m => (forall a . m a -> m a) -> TcAll m -> TcAll m
-interceptAll f x {md = Check} = \ctx, as => f (x {md = Check} ctx as)
-interceptAll f x {md = Infer} = \ctx, s => f (x {md = Infer} ctx s)
+interceptAll f x Check = \ctx, as => f (x Check ctx as)
+interceptAll f x Infer = \ctx, s => f (x Infer ctx s)
 
 public export
 mightKnowStage : HasTc m => (s : Maybe Stage) -> TcAll m -> TcAll m
@@ -369,7 +369,7 @@ tcSpine : HasTc m
 tcSpine ctx tms [] = tcError ctx (TooManyApps (map fst tms).count)
 tcSpine ctx [] annots = tcError ctx (TooFewApps annots.count)
 tcSpine ctx ((_, tm) :: tms) ((Val _, annot) :: annots) = do -- @@Todo: spine name
-  tm' <- tm {md = Check} ctx annot.f
+  tm' <- tm Check ctx annot.f
   tms' <- tcSpine ctx tms (sub (ctx.defs :< tm') annots)
   pure ((Val _, MkExpr tm' annot) :: tms')
   
@@ -400,14 +400,14 @@ tcPi x a b = switch $ ensureKnownStage $ \ctx, stage => case stage of
   -- This is more annoying here because of byte metas, but also I am not
   -- convinced that it is the right thing to do. It might lead to some weird elab results.
   Mta => do
-    a' <- a {md = Check} ctx mtaA.f
-    b' <- b {md = Check} (bind x (mta a').f.a ctx) mtaA.f
+    a' <- a Check ctx mtaA.f
+    b' <- b Check (bind x (mta a').f.a ctx) mtaA.f
     pure $ pi Mta x (MkAnnotFor MtaSort a') (MkAnnotFor MtaSort (close ctx.defs b'))
   Obj => do
     ba <- freshMeta ctx Nothing layoutA.f
     bb <- freshMeta ctx Nothing layoutA.f
-    a' <- a {md = Check} ctx (objA ba.tm).f
-    b' <- b {md = Check} (bind x (obj ba.tm a').a.f ctx) (wkS $ objA bb.tm).f
+    a' <- a Check ctx (objA ba.tm).f
+    b' <- b Check (bind x (obj ba.tm a').a.f ctx) (wkS $ objA bb.tm).f
     pure $ pi Obj x (MkAnnotFor (ObjSort Sized ba.tm) a') (MkAnnotFor (ObjSort Sized bb.tm) (close ctx.defs b'))
 
 -- Check a lambda abstraction.
@@ -417,15 +417,15 @@ tcLam : HasTc m
   -> (bindTy : Maybe (TcAll m))
   -> (body : TcAll m)
   -> TcAll m
-tcLam lamIdent bindTy body {md = Check} = \ctx, annot@(MkAnnotAt ty sort) => do
+tcLam lamIdent bindTy body Check = \ctx, annot@(MkAnnotAt ty sort) => do
   let stage = annot.p.stage
   resolve ty >>= \ty' => case forcePi stage lamIdent ty' of
     Matching (MkPiData resolvedPi piIdent a b) => do
       -- Pi matches
       whenJust bindTy $ \bindTy' => do
-        MkExprAt bindPi _ <- tcPi lamIdent bindTy' tcMeta {md = Infer} ctx (Just stage)
+        MkExprAt bindPi _ <- tcPi lamIdent bindTy' tcMeta Infer ctx (Just stage)
         unify ctx resolvedPi bindPi
-      body' <- body {md = Check}
+      body' <- body Check
         (bind lamIdent (a.asAnnot) ctx)
         (b.open.asAnnot)
       pure $ (lam stage piIdent lamIdent a b (close ctx.defs body')).tm
@@ -438,14 +438,14 @@ tcLam lamIdent bindTy body {md = Check} = \ctx, annot@(MkAnnotAt ty sort) => do
       _ => tcError ctx (WrongPiMode (fst piIdent) resolvedPi)
     Otherwise other => do
       -- Otherwise try unify with a constructed pi
-      createdPi <- tcPi lamIdent tcMeta tcMeta {md = Infer} ctx (Just stage)
+      createdPi <- tcPi lamIdent tcMeta tcMeta Infer ctx (Just stage)
       unify ctx other createdPi.tm
-      tcLam {md = Check} lamIdent bindTy body ctx {s = stage} createdPi.a
-tcLam lamIdent bindTy body {md = Infer} = ensureKnownStage $ \ctx, stage => do
+      tcLam lamIdent bindTy body Check ctx {s = stage} createdPi.a
+tcLam lamIdent bindTy body Infer = ensureKnownStage $ \ctx, stage => do
   -- @@Reconsider: Same remark as for pis.
   -- We have a stage, but no type, so just instantiate a meta..
   annot <- freshMetaAnnot ctx stage Sized
-  res <- tcLam {md = Check} lamIdent bindTy body ctx annot
+  res <- tcLam lamIdent bindTy body Check ctx annot
   pure $ MkExprAt res annot
 
 -- Check a variable, by looking up in the context
@@ -472,7 +472,7 @@ tcApps : HasTc m
   -> List (Ident, TcAll m)
   -> TcAll m
 tcApps subject args = switch $ \ctx, reqStage => do
-  subject'@(MkExpr _ fnAnnot) <- maybePackStage <$> subject {md = Infer} ctx reqStage
+  subject'@(MkExpr _ fnAnnot) <- maybePackStage <$> subject Infer ctx reqStage
   case gatherPis fnAnnot (map fst args) of
     Gathered params ret => do
       args' <- tcSpine ctx args params

@@ -59,7 +59,8 @@ elab (PPi (MkPTel ((MkPParam l n ty) :: xs)) t) =
   tcPi n (interceptAll {m = m} (enterLoc l) ty) t'
 elab (PApp subject sp) = tcApps (elab subject) (elabSpine sp)
 elab (PHole n) = tcHole n
-elab PUnit = tcPrim PrimUNIT []
+elab PUnit = switch $ \ctx, maybeStage => do
+  ?fajajj
 elab (PSigmas (MkPTel [])) = elab PUnit
 elab (PSigmas (MkPTel ((MkPParam l n ty) :: xs))) =
   let t' = elab {m = m} (PSigmas (MkPTel xs)) in
