@@ -285,7 +285,7 @@ interface Weak (0 tm : Ctx -> Type) where
 -- Weakening when knowing the size of the source context.
 public export
 interface WeakSized (0 tm : Ctx -> Type) where
-  weakS : Size ns => Size ms => Wk ns ms -> tm ms -> tm ns
+  weakS : (sz : Size ns) => (sz' : Size ms) => Wk ns ms -> tm ms -> tm ns
   
 public export
 Weak tm => WeakSized tm where
@@ -330,6 +330,12 @@ liftS : (WeakSized tm, Vars tm) => (sz : Size ns) => Sub ns tm ms -> Sub (ns :< 
 liftS env = env `o` (Drop Id) :< here
 
 public export
+liftSMany : (WeakSized tm, Vars tm) => (sz : Size ns) => (cz : Count ar)
+  => Sub ns tm ms -> Sub (ns ::< ar) tm (ms ::< ar)
+liftSMany {cz = CZ} env = env
+liftSMany {cz = CS cz} env = liftSMany (liftS env)
+
+public export
 id : (Weak tm, Vars tm) => (sz : Size ns) => Sub ns tm ns
 id {sz = SZ} = [<]
 id {sz = SS k} = lift {sz = k} (id {sz = k})
@@ -363,7 +369,7 @@ interface Eval (0 over : Ctx -> Type) (0 tm : Ctx -> Type) (0 val : Ctx -> Type)
   
 public export
 interface EvalSized (0 over : Ctx -> Type) (0 tm : Ctx -> Type) (0 val : Ctx -> Type) | tm, val where
-  evalS : Size ns => Size ms => Sub ns over ms -> tm ms -> val ns
+  evalS : (sz : Size ns) => (sz' : Size ms) => Sub ns over ms -> tm ms -> val ns
   
 -- Shorthand for evaluation when src and target are the same.
 public export
@@ -377,7 +383,6 @@ Eval over tm val => EvalSized over tm val where
 public export
 interface Quote (0 val : Ctx -> Type) (0 tm : Ctx -> Type) where
   quote : (sz : Size ns) => val ns -> tm ns
-  
 
 -- Supporting evaluation and quoting gives us normalisation
 nf : (Weak over, Vars over, EvalSized over tm val, Quote val tm) => Size ns => tm ns -> tm ns

@@ -55,6 +55,9 @@ data Primitive : PrimitiveClass -> PrimitiveReducibility -> PrimitiveLevel -> Ar
   PrimIdxLayout : Primitive PrimNorm PrimIrreducible PrimNative []
   PrimPtrLayout : Primitive PrimNorm PrimIrreducible PrimNative []
 
+  PrimUNIT : Primitive PrimNorm PrimIrreducible PrimDeclared []
+  PrimTT : Primitive PrimNorm PrimIrreducible PrimDeclared []
+
 -- Can't be DecEq without writing out all cases smh
 export
 primEq : (a : Primitive k r na ar) -> (b : Primitive k' r' na' ar') -> Maybe (a ~=~ b)
@@ -88,6 +91,8 @@ primName PrimSta = "sta"
 primName PrimTypeDyn = "Type?"
 primName PrimSeqLayout = "seq"
 primName PrimSeqLayoutDyn = "seq-dyn"
+primName PrimUNIT = "()"
+primName PrimTT = "()"
 
 public export
 Eq (Primitive k r na ar) where

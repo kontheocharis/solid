@@ -478,7 +478,7 @@ tcApps subject args = switch $ \ctx, reqStage => do
       args' <- tcSpine ctx args params
       let result = apps subject' args'
             -- @@Refactor: why does it have to be like this :((
-            (sub {tm = Annot} @{%search} @{%search}
+            (sub {tm = Annot} @{%search} @{ctx.size}
               @{ctx.size + args'.count}
               (ctx.defs ::< (map (.tm) args')) ret)
       adjustStageIfNeeded ctx result reqStage
@@ -487,26 +487,24 @@ tcApps subject args = switch $ \ctx, reqStage => do
 -- Check a primitive
 public export
 tcPrim : HasTc m
-  => Count ar
+  => (cz : Count ar)
   => {r : PrimitiveReducibility}
   -> {k : PrimitiveClass}
-  -> Primitive k r PrimNative ar
+  -> {l : PrimitiveLevel}
+  -> Primitive k r l ar
   -> List (Ident, TcAll m)
   -> TcAll m
-tcPrim p args = switch $ \ctx, stage => do
-  let (pParams, _) = primAnnot p
+tcPrim {cz = cz} p args = switch $ \ctx, stage => do
+  (pParams, pRet) : Op _ _ <- case l of
+    PrimNative => pure $ primAnnot p
+    PrimDeclared => do
+     (pParams, pRet) <- definedPrimAnnot p
+     pure (
+        evalS {over = Atom} [<] pParams,
+        evalS {over = Atom} {sz = ctx.size + cz} {sz' = SZ + cz} (liftSMany [<]) pRet
+      )
   sp <- tcSpine ctx args pParams
-  adjustStageIfNeeded ctx (prim p (map (.tm) sp)) stage
-  
--- Check the unit type or term.
-public export
-tcUnit : HasTc m => TcAll m
-tcUnit {md = Check} = \ctx, annot => do
-  ?fa
-tcUnit {md = Infer} = \ctx, annot => do
-  ?fb
-  -- let stage = (packStage annot).stage
-  -- adjustStageIfNeeded ctx (unitForStage stage) stage
+  adjustStageIfNeeded ctx (prim p (map (.tm) sp) pRet) stage
   
 -- Check a let statement.
 public export
