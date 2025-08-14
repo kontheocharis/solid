@@ -33,7 +33,7 @@ elab : (HasTc m) => PTm -> Elab (TcAll m)
 -- The annotation of the entry point of the program
 export
 mainAnnot : AnnotAt Obj [<]
-mainAnnot = (ioTy (unitTy Obj)).a
+-- mainAnnot = (ioTy (unitTy Obj)).a
 
 export
 runElab : Elab a -> a
@@ -60,7 +60,7 @@ elab (PPi (MkPTel ((MkPParam l n ty) :: xs)) t) = do
   let ty' = fromMaybe (PHole Nothing) ty
   ty <- elab ty'
   pure $ tcPi n (interceptAll {m = m} (enterLoc l) ty) t'
-elab (PApp subject sp) = pure $ tcApp !(elab subject) !(elabSpine sp)
+elab (PApp subject sp) = pure $ tcApps !(elab subject) !(elabSpine sp)
 elab (PHole n) = pure $ tcHole n
 elab PUnit = pure $ tcUnit
 elab (PSigmas (MkPTel [])) = elab PUnit

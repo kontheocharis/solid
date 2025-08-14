@@ -43,7 +43,7 @@ localUnelab : (forall m . (HasUnelab m) => m t) -> t
 localUnelab op = evalState 0 (op @{stateUnelab})
 
 export
-Unelab Tm PTm
+{d : Domain} -> Unelab (Term d) PTm
   
 export
 {n : Ident} -> Unelab (Body Syntax n) PTm where
@@ -94,14 +94,11 @@ Unelab (HeadApplied Syntax NA) PTm where
   unelab (x $$ sp) = pure $ pApps !(unelab x) !(unelab sp)
   
 public export
-Unelab Tm PTm where
-  unelab (SynApps x) = unelab x
-  unelab (RigidBinding _ b) = unelab b
-  unelab (SynPrimNormal x) = unelab x
-  
-export
-Unelab Val PTm where
-  unelab {ns = ns} v = unelab (quote {tm = Tm} {sz = ns.size} v)
+{d : Domain} -> Unelab (Term d) PTm where
+  unelab {d = Syntax} (SynApps x) = unelab x
+  unelab {d = Syntax} (RigidBinding _ b) = unelab b
+  unelab {d = Syntax} (SynPrimNormal x) = unelab x
+  unelab {d = Value} {ns = ns} v = unelab (quote {tm = Tm} {sz = ns.size} v)
   
 public export
 Unelab Atom PTm where
@@ -125,4 +122,4 @@ showUnelabVal = showUnelab
 public export
 %hint
 showSyntax : ShowSyntax
-showSyntax = ?showSyntax_impl
+showSyntax = (showUnelab, showUnelab)

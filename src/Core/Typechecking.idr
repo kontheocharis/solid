@@ -496,7 +496,7 @@ tcPrim : HasTc m
 tcPrim p args = switch $ \ctx, stage => do
   let (pParams, _) = primAnnot p
   sp <- tcSpine ctx args pParams
-  adjustStageIfNeeded ctx (prim p ?sp) stage
+  adjustStageIfNeeded ctx (prim p (map (.tm) sp)) stage
   
 -- Check the unit type or term.
 public export

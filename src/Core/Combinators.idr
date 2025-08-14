@@ -71,22 +71,6 @@ objZOrMta : Size ns => Stage -> Atom ns -> Expr ns
 objZOrMta Obj a = objZ a
 objZOrMta Mta a = mta a
 
-public export
-unitTy : Size ns => (s : Stage) -> ExprAt s ns
-unitTy = ?unitTyImpl
-
--- public export
--- irrTy : Size ns => Atom ns -> AtomTy ns -> ExprAt Obj ns
--- irrTy = ?irrTyImpl
-  
-public export
-ioTy : Size ns => ExprAt Obj ns -> ExprAt Obj ns
-ioTy = ?ioTyImpl
-
--- public export covering
--- app : Size ns => Atom ns -> Ident -> Atom ns -> Atom ns
--- app f a x = promote $ apps f.val [(Val a, x.val)]
-
 -- Sorts
 
 -- A sort can be either static (meta-level), dynamic (object-level with a
@@ -266,10 +250,6 @@ apps f xs a = MkExpr (promote $ sApps f.tm.syn (map (.tm.syn) xs)) a
 public export covering
 v : Size ns => (n : String) -> {auto prf : In n ns} -> Atom ns
 v n = promote (var n)
-
-public export covering
-mtaSigma : Size ns => (n : Ident) -> AtomTy ns -> Atom ns -> Atom ns
-mtaSigma piIdent bindTy bodyTy = ?ajajajaj
 
 public export
 data GatherPis : Arity -> Ctx -> Type where

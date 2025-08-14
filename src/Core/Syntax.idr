@@ -385,6 +385,6 @@ relabelBody n' (Closure sub t) = Closure sub (relabel (Change n' Id) t)
 public export
 0 ShowSyntax : Type
 ShowSyntax = (
-    forall d . (ns : Ctx) => Show (Term d ns),
-    forall d, ar . (ns : Ctx) => Show (Spine ar (Term d) ns)
+    {d : _} -> (ns : Ctx) => Show (Term d ns),
+    {d : _} -> forall ar . (ns : Ctx) => Show (Spine ar (Term d) ns)
   )
