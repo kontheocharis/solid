@@ -299,6 +299,12 @@ sPrim : {k : PrimitiveClass} -> {r : PrimitiveReducibility} -> Primitive k r na 
 sPrim {k = PrimNorm} p sp = SynPrimNormal (p $$ sp)
 sPrim {k = PrimNeu} p sp = SynApps (PrimNeutral (p $$ sp) $$ [])
 
+public export
+sApps : Tm ns -> Spine ar Tm ns -> Tm ns
+sApps (SynApps (h $$ sp')) sp = SynApps (h $$ sp' ++ sp)
+sApps (RigidBinding md x) sp = error "ill-typed"
+sApps (SynPrimNormal x) sp = error "ill-typed"
+
 -- We can extend the variable search machinery to the syntax:
 
 public export

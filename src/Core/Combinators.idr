@@ -14,6 +14,7 @@ import Core.Primitives.Rules
 import Core.Atoms
 
 -- Annotation versions of syntax
+-- All these should only be called on *well-typed terms!*
 
 public export covering
 ($>) : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility}
@@ -197,10 +198,8 @@ pi piStage piIdent bindAnnot bodyAnnot = case piStage of
     let MkAnnotFor (ObjSort Sized bb) bodyClosure = bodyAnnot in
     (obj (promote ptrLayout) (promote $ sObjPi piIdent ba.syn bb.syn bindTy.syn bodyClosure.open.syn)).f
     
--- The type of the callback that `ifForcePi` calls when it finds a matching
--- type.
 public export
-record PiData  (stage : Stage) (ns : Ctx) where
+record PiData (stage : Stage) (ns : Ctx) where
   constructor MkPiData
   resolvedPi : AtomTy ns
   piIdent : Ident
@@ -208,23 +207,23 @@ record PiData  (stage : Stage) (ns : Ctx) where
   b : AnnotFor stage Sized (AtomBody piIdent) ns
 
 public export
-data IfForcePi : Stage -> Ctx -> Type where
+data ForcePi : Stage -> Ctx -> Type where
   -- Matching pi
-  Matching : PiData stage ns -> IfForcePi stage ns
+  Matching : PiData stage ns -> ForcePi stage ns
   -- Mismatching pi with the given stage
-  Mismatching : (stage' : Stage) -> PiData stage' ns -> IfForcePi stage ns
+  Mismatching : (stage' : Stage) -> PiData stage' ns -> ForcePi stage ns
   -- Not a pi
-  Otherwise : AtomTy ns -> IfForcePi stage ns
+  Otherwise : AtomTy ns -> ForcePi stage ns
 
 -- Given a `potentialPi`, try to match it given that we expect something in
 -- `mode` and `stage`.
 public export covering
-ifForcePi : Size ns
+forcePi : Size ns
   => (stage : Stage)
   -> (ident : Ident)
   -> (potentialPi : AtomTy ns)
-  -> IfForcePi stage ns
-ifForcePi stage (mode, name) potentialPi
+  -> ForcePi stage ns
+forcePi stage (mode, name) potentialPi
   = case potentialPi.val of
     -- object-level pi
     resolvedPi@(RigidBinding piStage@Obj (Bound _ (BindObjPi (piMode, piName) ba bb a) b)) => 
@@ -260,7 +259,8 @@ var : Size ns => Idx ns -> AnnotAt s ns -> ExprAt s ns
 var idx annot = MkExprAt (promote (varIdx idx)) annot
 
 public export covering
-apps : Size ns => Expr ns -> Spine ar Expr ns -> Expr ns
+apps : Size ns => Expr ns -> Spine ar Expr ns -> Annot ns -> Expr ns
+apps f xs a = MkExpr (promote $ sApps f.tm.syn (map (.tm.syn) xs)) a
 
 -- Find a variable by its name in the context.
 public export covering
@@ -271,5 +271,21 @@ public export covering
 mtaSigma : Size ns => (n : Ident) -> AtomTy ns -> Atom ns -> Atom ns
 mtaSigma piIdent bindTy bodyTy = ?ajajajaj
 
+public export
+data GatherPis : Arity -> Ctx -> Type where
+  Gathered : Tel ar Annot ns -> Annot (ns ::< ar) -> GatherPis ar ns
+  TooMany : (extra : Count ar) -> (under : Count ar') -> AtomTy (ns ::< ar') -> GatherPis ar ns
+
 public export covering
-gatherPi : Size ns => Annot ns -> (ar : Arity) -> Maybe (Tel ar Annot ns, Annot (ns ::< ar))
+gatherPis : Size ns => Annot ns -> (ar : Arity) -> GatherPis ar ns
+gatherPis x [] = Gathered [] x
+gatherPis x ar@(n :: ns) = case forcePi Mta n x.ty of
+  -- It doesn't matter what stage we put because we construct the telescope in either case
+  -- @@Refactor: maybe this is too ugly but it will work for now
+  Matching (MkPiData resolvedPi piIdent a b) => case gatherPis b.open.asAnnot.p ns of
+    Gathered params ret => Gathered ((Val _, a.asAnnot.p) :: params) ret
+    TooMany c u t => TooMany (CS ns.count) (CS u) t
+  Mismatching stage' (MkPiData resolvedPi piIdent a b) => case gatherPis b.open.asAnnot.p ns of
+    Gathered params ret => Gathered ((Val _, a.asAnnot.p) :: params) ret
+    TooMany c u t => TooMany (CS ns.count) (CS u) t
+  Otherwise t => TooMany (CS ns.count) CZ t

@@ -42,6 +42,8 @@ data TcErrorAt : Ctx -> Type where
   TooManyApps : (less : Count ar) -> TcErrorAt ns
   -- Not enough applications
   TooFewApps : (more : Count ar) -> TcErrorAt ns
+  -- Tried to apply something that isn't a pi type
+  NotAPi : (subj : AtomTy ns) -> (extra : Count ar) -> TcErrorAt ns
 
 
 -- Context for typechecking
@@ -120,16 +122,21 @@ export
   show AreSame = "terms are the same"
   show AreDifferent = "terms are different"
   show DontKnow = "terms are not the same"
-  show (Error x) = "unification error: " ++ show x
+  show (Error x) = "unification error: \{show x}"
 
 export
 (ns : Ctx) => ShowSyntax => Show (TcErrorAt ns) where
-  show (WhenUnifying x y z) = "When unifying " ++ show x ++ " with " ++ show y ++ ": " ++ show z
-  show (WrongPiMode mode ty) = "Wrong pi mode " ++ show mode ++ " for type " ++ show ty
+  show (WhenUnifying x y z) = "When unifying \{show x} with \{show y}: \{show z}"
+  show (WrongPiMode mode ty) = "Wrong pi mode \{show mode} for type \{show ty}"
   show CannotInferStage = "Cannot infer stage"
-  show (UnknownName name) = "Unknown name: " ++ show name
-  show (TooManyApps count) = "Too many applications (expected " ++ show count ++ " fewer)"
-  show (TooFewApps count) = "Too few applications (expected " ++ show count ++ " more)"
+  show (UnknownName name) = "Unknown name: \{show name}"
+  show (TooManyApps count) = "Too many applications (expected \{show count} fewer)"
+  show (TooFewApps count) = "Too few applications (expected \{show count} more)"
+  show (NotAPi subj extra) = "The type of the subject is \{
+      show subj
+    } but tried to apply it to \{
+      show extra
+    } argument(s), which is too many"
   
 export
 ShowSyntax => Show TcError where
@@ -354,16 +361,16 @@ inferAnnot ctx kind ty = do
 -- Check a spine against a telescope.
 --
 -- Returns the checked spine and the remaining terms in the input.
-checkSpine : HasTc m
+tcSpine : HasTc m
   => Context ns
   -> List (Ident, TcAll m)
   -> Tel ar Annot ns
   -> m (Spine ar Expr ns)
-checkSpine ctx tms [] = tcError ctx (TooManyApps (map fst tms).count)
-checkSpine ctx [] annots = tcError ctx (TooFewApps annots.count)
-checkSpine ctx ((_, tm) :: tms) ((Val _, annot) :: annots) = do -- @@Todo: spine name
+tcSpine ctx tms [] = tcError ctx (TooManyApps (map fst tms).count)
+tcSpine ctx [] annots = tcError ctx (TooFewApps annots.count)
+tcSpine ctx ((_, tm) :: tms) ((Val _, annot) :: annots) = do -- @@Todo: spine name
   tm' <- tm {md = Check} ctx annot.f
-  tms' <- checkSpine ctx tms (sub (ctx.defs :< tm') annots)
+  tms' <- tcSpine ctx tms (sub (ctx.defs :< tm') annots)
   pure ((Val _, MkExpr tm' annot) :: tms')
   
 -- Main combinators:
@@ -412,7 +419,7 @@ tcLam : HasTc m
   -> TcAll m
 tcLam lamIdent bindTy body {md = Check} = \ctx, annot@(MkAnnotAt ty sort) => do
   let stage = annot.p.stage
-  resolve ty >>= \ty' => case ifForcePi stage lamIdent ty' of
+  resolve ty >>= \ty' => case forcePi stage lamIdent ty' of
     Matching (MkPiData resolvedPi piIdent a b) => do
       -- Pi matches
       whenJust bindTy $ \bindTy' => do
@@ -466,12 +473,16 @@ tcApps : HasTc m
   -> TcAll m
 tcApps subject args = switch $ \ctx, reqStage => do
   subject'@(MkExpr _ fnAnnot) <- maybePackStage <$> subject {md = Infer} ctx reqStage
-  case gatherPi fnAnnot (map fst args) of
-    Just (params, ret) => do
-      args' <- checkSpine ctx args params
+  case gatherPis fnAnnot (map fst args) of
+    Gathered params ret => do
+      args' <- tcSpine ctx args params
       let result = apps subject' args'
+            -- @@Refactor: why does it have to be like this :((
+            (sub {tm = Annot} @{%search} @{%search}
+              @{ctx.size + args'.count}
+              (ctx.defs ::< (map (.tm) args')) ret)
       adjustStageIfNeeded ctx result reqStage
-    Nothing => ?error_too_many_params
+    TooMany extra under p => tcError ctx $ NotAPi fnAnnot.ty extra
 
 -- Check a primitive
 public export
@@ -484,7 +495,7 @@ tcPrim : HasTc m
   -> TcAll m
 tcPrim p args = switch $ \ctx, stage => do
   let (pParams, _) = primAnnot p
-  sp <- checkSpine ctx args pParams
+  sp <- tcSpine ctx args pParams
   adjustStageIfNeeded ctx (prim p ?sp) stage
   
 -- Check the unit type or term.

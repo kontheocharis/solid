@@ -239,3 +239,7 @@ Relabel (Op ar) where
 export covering
 Show (Term Syntax ns) => Show (Atom ns) where
   show a = show a.syn
+  
+export covering
+Show (Spine ar (Term Syntax) ns) => Show (Spine ar Atom ns) where
+  show a = show a.syn

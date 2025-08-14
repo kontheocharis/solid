@@ -27,6 +27,7 @@ public export
 Arity = List Ident
 
 export infixl 7 ::<
+export infixl 7 >::
 
 public export
 arityToCtx : Arity -> Ctx
@@ -93,6 +94,7 @@ public export
 [] .count = CZ
 (a :: as) .count = CS (as .count)
   
+%hint
 public export
 (+) : Size ns -> Count ar -> Size (ns ::< ar)
 s + CZ = s
