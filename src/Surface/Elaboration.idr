@@ -47,33 +47,33 @@ elabSpine (MkPSpine (MkPArg l n v :: xs)) = (
 elab (PLoc l t) = interceptAll (enterLoc l) $ elab t
 elab (PName n) = tcVar n
 elab (PLam (MkPTel []) t) = elab t
-elab (PLam (MkPTel ((MkPParam l n ty) :: xs)) t) = do
-  let t' = elab {m = m} (PLam (MkPTel xs) t)
-  let ty = elab <$> ty
+elab (PLam (MkPTel ((MkPParam l n ty) :: xs)) t) =
+  let t' = elab {m = m} (PLam (MkPTel xs) t) in
+  let ty = elab <$> ty in
   tcLam n (interceptAll (enterLoc l) <$> ty) t'
 elab (PPi (MkPTel []) t) = elab t
-elab (PPi (MkPTel ((MkPParam l n ty) :: xs)) t) = do
-  let t' = elab {m = m} (PPi (MkPTel xs) t)
-  let ty' = fromMaybe (PHole Nothing) ty
-  let ty = elab ty'
+elab (PPi (MkPTel ((MkPParam l n ty) :: xs)) t) =
+  let t' = elab {m = m} (PPi (MkPTel xs) t) in
+  let ty' = fromMaybe (PHole Nothing) ty in
+  let ty = elab ty' in
   tcPi n (interceptAll {m = m} (enterLoc l) ty) t'
 elab (PApp subject sp) = tcApps (elab subject) (elabSpine sp)
 elab (PHole n) = tcHole n
 elab PUnit = tcPrim PrimUNIT []
 elab (PSigmas (MkPTel [])) = elab PUnit
-elab (PSigmas (MkPTel ((MkPParam l n ty) :: xs))) = do
-  let t' = elab {m = m} (PSigmas (MkPTel xs))
-  let ty' = fromMaybe (PHole Nothing) ty
+elab (PSigmas (MkPTel ((MkPParam l n ty) :: xs))) =
+  let t' = elab {m = m} (PSigmas (MkPTel xs)) in
+  let ty' = fromMaybe (PHole Nothing) ty in
   ?tcSigma n (interceptAll {m = m} (enterLoc l) (elab ty')) t'
 elab (PPairs ps) = ?tcPairs -- <$> elabSpine ps
 elab (PProj v n) = ?tcProj -- !(elab v) n
 elab (PBlock t []) = elab PUnit
-elab (PBlock t (PLet l n ty tm :: bs)) = do
-  let ty' = elab <$> ty
-  let statement = tcLet n ?stage ty' (elab tm) (elab (PBlock t bs))
+elab (PBlock t (PLet l n ty tm :: bs)) =
+  let ty' = elab <$> ty in
+  let statement = tcLet n ?stage ty' (elab tm) (elab (PBlock t bs)) in
   interceptAll (enterLoc l) statement
-elab (PBlock t (PLetRec l n ty tm :: bs)) = do
-  let statement = tcLetRec n ?stage2 (elab ty) (elab tm) (elab (PBlock t bs))
+elab (PBlock t (PLetRec l n ty tm :: bs)) =
+  let statement = tcLetRec n ?stage2 (elab ty) (elab tm) (elab (PBlock t bs)) in
   interceptAll (enterLoc l) statement
 elab (PBlock t (PBlockTm l tm :: [])) = elab tm
 elab (PBlock t (PDecl l n ty :: bs)) = ?todoDecl
