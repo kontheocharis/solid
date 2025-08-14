@@ -412,37 +412,28 @@ tcLam : HasTc m
   -> TcAll m
 tcLam lamIdent bindTy body {md = Check} = \ctx, annot@(MkAnnotAt ty sort) => do
   let stage = annot.p.stage
-  -- We must switch that the type we have is a pi
-  resolve ty >>= \ty' => ifForcePi stage lamIdent ty'
-    (\resolvedPi, piIdent, a, b => do
-      -- Great, it is a pi. Now first reconcile this with the annotation type
-      -- of the lambda.
+  resolve ty >>= \ty' => case ifForcePi stage lamIdent ty' of
+    Matching (MkPiData resolvedPi piIdent a b) => do
+      -- Pi matches
       whenJust bindTy $ \bindTy' => do
         MkExprAt bindPi _ <- tcPi lamIdent bindTy' tcMeta {md = Infer} ctx (Just stage)
         unify ctx resolvedPi bindPi
-
-      -- Then switch the body with the computed annotation type.
       body' <- body {md = Check}
         (bind lamIdent (a.asAnnot) ctx)
         (b.open.asAnnot)
-      
-      -- Produce the appropriate lambda based on the stage.
       pure $ (lam stage piIdent lamIdent a b (close ctx.defs body')).tm
-    )
-    (\piStage, resolvedPi, piIdent, a, b => case fst piIdent of
-      -- It wasn't the right kind of pi; if it was implicit, insert a lambda
+    Mismatching piStage (MkPiData resolvedPi piIdent a b) => case fst piIdent of
+      -- Wasn't the right kind of pi; if it was implicit, insert a lambda
       Implicit => do
         MkExprAt tm _ <- insertLam ctx piStage piIdent a b (tcLam {md = Check} lamIdent bindTy body)
         pure tm
       -- Otherwise, we have the wrong kind of pi.
       _ => tcError ctx (WrongPiMode (fst piIdent) resolvedPi)
-    )
-    (\other => do
+    Otherwise other => do
       -- Otherwise try unify with a constructed pi
       createdPi <- tcPi lamIdent tcMeta tcMeta {md = Infer} ctx (Just stage)
       unify ctx other createdPi.tm
       tcLam {md = Check} lamIdent bindTy body ctx {s = stage} createdPi.a
-    )
 tcLam lamIdent bindTy body {md = Infer} = ensureKnownStage $ \ctx, stage => do
   -- @@Reconsider: Same remark as for pis.
   -- We have a stage, but no type, so just instantiate a meta..

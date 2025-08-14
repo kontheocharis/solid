@@ -200,50 +200,54 @@ pi piStage piIdent bindAnnot bodyAnnot = case piStage of
 -- The type of the callback that `ifForcePi` calls when it finds a matching
 -- type.
 public export
-0 ForcePiCallback : (r : Type) -> Stage -> Ctx -> Type
-ForcePiCallback r stage ns = (resolvedPi : AtomTy ns)
-  -> (piIdent : Ident)
-  -> (a : AnnotFor stage Sized Atom ns)
-  -> (b : AnnotFor stage Sized (AtomBody piIdent) ns)
-  -> r
+record PiData  (stage : Stage) (ns : Ctx) where
+  constructor MkPiData
+  resolvedPi : AtomTy ns
+  piIdent : Ident
+  a : AnnotFor stage Sized Atom ns
+  b : AnnotFor stage Sized (AtomBody piIdent) ns
+
+public export
+data IfForcePi : Stage -> Ctx -> Type where
+  -- Matching pi
+  Matching : PiData stage ns -> IfForcePi stage ns
+  -- Mismatching pi with the given stage
+  Mismatching : (stage' : Stage) -> PiData stage' ns -> IfForcePi stage ns
+  -- Not a pi
+  Otherwise : AtomTy ns -> IfForcePi stage ns
 
 -- Given a `potentialPi`, try to match it given that we expect something in
 -- `mode` and `stage`.
---
--- If it matches, call `ifMatching` with the appropriate information, otherwise
--- call `ifMismatching` with the appropriate information.
 public export covering
 ifForcePi : Size ns
   => (stage : Stage)
   -> (ident : Ident)
   -> (potentialPi : AtomTy ns)
-  -> (ifMatching : ForcePiCallback r stage ns)
-  -> (ifMismatching : (stage' : Stage) -> ForcePiCallback r stage' ns)
-  -> (otherwise : AtomTy ns -> r)
-  -> r
-ifForcePi stage (mode, name) potentialPi ifMatching ifMismatching otherwise
+  -> IfForcePi stage ns
+ifForcePi stage (mode, name) potentialPi
   = case potentialPi.val of
     -- object-level pi
     resolvedPi@(RigidBinding piStage@Obj (Bound _ (BindObjPi (piMode, piName) ba bb a) b)) => 
-      let res = case decEq (piMode, piStage) (mode, stage) of
-            Yes Refl => ifMatching 
-            _ => ifMismatching Obj
-      in let
+      let
         ba' = promote ba
         bb' = promote bb
-      in res (promote resolvedPi) (piMode, piName)
+        piData = MkPiData (promote resolvedPi) (piMode, piName)
           (MkAnnotFor (ObjSort Sized ba') (promote a))
           (MkAnnotFor (ObjSort Sized bb') (promoteBody b))
+      in case decEq (piMode, piStage) (mode, stage) of
+        Yes Refl => Matching piData
+        _ => Mismatching Obj piData
     -- meta-level pi
     resolvedPi@(RigidBinding piStage@Mta (Bound _ (BindMtaPi (piMode, piName) a) b)) =>
-      let res = case decEq (piMode, piStage) (mode, stage) of
-            Yes Refl => ifMatching
-            _ => ifMismatching Mta
-      in res (promote resolvedPi) (piMode, piName)
+      let
+        piData = MkPiData (promote resolvedPi) (piMode, piName)
           (MkAnnotFor MtaSort (promote a))
           (MkAnnotFor MtaSort (promoteBody b))
+      in case decEq (piMode, piStage) (mode, stage) of
+        Yes Refl => Matching piData
+        _ => Mismatching Mta piData
     -- fail
-    resolvedPi => otherwise (promote resolvedPi)
+    resolvedPi => Otherwise (promote resolvedPi)
 
 -- Shorthand for meta-level pis.
 public export covering
