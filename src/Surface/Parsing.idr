@@ -465,15 +465,18 @@ dirTm = located PLoc $ do
   d <- directive
   t <- tm
   pure $ PDirTm d t
+  
+oneOf : List (Lazy (Parse a)) -> Parse a
+oneOf = choice
 
 singleTm = do
-  hd <- atom $ choice [block, parens tm, name, literal, unit, sigma, pairs, hole]
+  hd <- atom $ oneOf [block, parens tm, name, literal, unit, sigma, pairs, hole]
   n <- optional (string ".")
   case n of
     Nothing => pure hd
     Just _ => identifier >>= \n => pure $ PProj hd n
 
-tm = atom $ choice [dirTm, lam, pi, app]
+tm = atom $ oneOf [dirTm, lam, pi, app]
 
 -- This is what should be parsed at the top level
 public export

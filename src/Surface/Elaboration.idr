@@ -15,6 +15,7 @@ import Core.Metavariables
 import Core.Typechecking
 import Core.Primitives.Definitions
 import Core.Primitives.Rules
+import Core.Primitives.Typing
 import Surface.Presyntax
 import Core.Syntax
 import Data.Maybe
@@ -28,14 +29,10 @@ export covering
 elab : (HasElab m) => PTm -> TcAll m
 
 -- The annotation of the entry point of the program
-export
+export covering
 mainAnnot : AnnotAt Obj [<]
--- mainAnnot = (ioTy (unitTy Obj)).a
-
--- export
--- runElab : (HasElab m) => Elab m a -> m a
--- runElab = evalStateT (MkElabState Nothing)
-
+mainAnnot = (objZ (aPrim PrimIO [(Val _, aPrim PrimZeroLayout []), (Val _, aPrim PrimUnit [])])).f.a
+ 
 export
 whenInStage : (Maybe Stage -> TcAll m) -> TcAll m
 whenInStage f Infer = \ctx, maybeStage => f maybeStage Infer ctx maybeStage
@@ -68,16 +65,16 @@ elab (PPi (MkPTel ((MkPParam l n ty) :: xs)) t) =
   tcPi n (interceptAll {m = m} (enterLoc l) ty) t'
 elab (PApp subject sp) = tcApps (elab subject) (elabSpine sp)
 elab (PHole n) = tcHole n
-elab PUnit = whenInStage $ \case
-  Just Obj => tcPrimKnown PrimTt []
-  _ => tcPrimKnown PrimTT []
+elab PUnit = whenInStage \case
+  Just Obj => tcPrim PrimTt []
+  _ => tcPrim PrimTT []
 elab (PSigmas (MkPTel [])) = elab PUnit
 elab (PSigmas (MkPTel ((MkPParam l n ty) :: xs))) =
   let ty' = elab (fromMaybe (PHole Nothing) ty) in
   let t' = elab (PSigmas (MkPTel xs)) in
-  whenInStage $ \case
-    Just Obj => tcPrimKnown PrimSigma [hole, hole, ty', t']
-    _ => tcPrimKnown PrimSIGMA [ty', t']
+  whenInStage \case
+    Just Obj => tcPrim PrimSigma [hole, hole, ty', t']
+    _ => tcPrim PrimSIGMA [ty', t']
 elab (PPairs ps) = ?tcPairs -- <$> elabSpine ps
 elab (PProj v n) = ?tcProj -- !(elab v) n
 elab (PBlock t []) = elab PUnit

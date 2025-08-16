@@ -75,6 +75,7 @@ export
 Show Loc where
   show m = "line " ++ show m.row ++ ", column " ++ show m.col
 
+namespace Foo
 public export
 data DispList : List a -> Type -> Type where
   Nil : DispList [] b

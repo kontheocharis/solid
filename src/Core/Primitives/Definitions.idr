@@ -63,23 +63,51 @@ data Primitive : PrimitiveClass -> PrimitiveReducibility -> PrimitiveLevel -> Ar
   PrimSIGMA : Primitive PrimNorm PrimIrreducible PrimDeclared [(Explicit, "a"), (Explicit, "b")]
   PrimSigma : Primitive PrimNorm PrimIrreducible PrimDeclared [(Implicit, "ba"), (Implicit, "bb"), (Explicit, "a"), (Explicit, "b")]
 
+  PrimIO : Primitive PrimNorm PrimIrreducible PrimDeclared [(Implicit, "ba"), (Explicit, "a")]
+
 -- Can't be DecEq without writing out all cases smh
 export
 primEq : (a : Primitive k r na ar) -> (b : Primitive k' r' na' ar') -> Maybe (a ~=~ b)
 primEq PrimTYPE PrimTYPE = Just Refl
+primEq PrimTYPE _ = Nothing
 primEq PrimCode PrimCode = Just Refl
+primEq PrimCode _ = Nothing
 primEq PrimQuote PrimQuote = Just Refl
+primEq PrimQuote _ = Nothing
 primEq PrimSplice PrimSplice = Just Refl
+primEq PrimSplice _ = Nothing
 primEq PrimSta PrimSta = Just Refl
+primEq PrimSta _ = Nothing
 primEq PrimTypeDyn PrimTypeDyn = Just Refl
+primEq PrimTypeDyn _ = Nothing
 primEq PrimLayout PrimLayout = Just Refl
+primEq PrimLayout _ = Nothing
 primEq PrimLayoutDyn PrimLayoutDyn = Just Refl
+primEq PrimLayoutDyn _ = Nothing
 primEq PrimSeqLayout PrimSeqLayout = Just Refl
+primEq PrimSeqLayout _ = Nothing
 primEq PrimSeqLayoutDyn PrimSeqLayoutDyn = Just Refl
+primEq PrimSeqLayoutDyn _ = Nothing
 primEq PrimZeroLayout PrimZeroLayout = Just Refl
+primEq PrimZeroLayout _ = Nothing
 primEq PrimIdxLayout PrimIdxLayout = Just Refl
+primEq PrimIdxLayout _ = Nothing
 primEq PrimPtrLayout PrimPtrLayout = Just Refl
-primEq _ _ = Nothing
+primEq PrimPtrLayout _ = Nothing
+primEq PrimUNIT PrimUNIT = Just Refl
+primEq PrimUNIT _ = Nothing
+primEq PrimTT PrimTT = Just Refl
+primEq PrimTT _ = Nothing
+primEq PrimUnit PrimUnit = Just Refl
+primEq PrimUnit _ = Nothing
+primEq PrimTt PrimTt = Just Refl
+primEq PrimTt _ = Nothing
+primEq PrimSIGMA PrimSIGMA = Just Refl
+primEq PrimSIGMA _ = Nothing
+primEq PrimSigma PrimSigma = Just Refl
+primEq PrimSigma _ = Nothing
+primEq PrimIO PrimIO = Just Refl
+primEq PrimIO _ = Nothing
 
 public export
 primName : Primitive k r na ar -> String
@@ -102,6 +130,7 @@ primName PrimUnit = "Unit"
 primName PrimTt = "tt"
 primName PrimSIGMA = "SIGMA"
 primName PrimSigma = "Sigma"
+primName PrimIO = "IO"
 
 public export
 Eq (Primitive k r na ar) where

@@ -82,3 +82,11 @@ prim @{s} p sp pRet =
   let ret = sub {sms = s + sp.count} (idS ::< sp) pRet.ty in
   let retSort = sub {sms = s + sp.count} (idS ::< sp) pRet.sort in
   MkExpr (Choice (sPrim p sp.syn) (vPrim p sp.val)) (MkAnnot ret retSort pRet.stage)
+
+-- Create a primitive atom with the given data.
+public export covering
+aPrim : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility}
+  -> Primitive k r l ar
+  -> Spine ar Atom ns
+  -> Atom ns
+aPrim @{s} p sp = Choice (sPrim p sp.syn) (vPrim p sp.val)

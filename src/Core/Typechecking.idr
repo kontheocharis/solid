@@ -493,36 +493,24 @@ tcApps subject args = switch $ \ctx, reqStage => do
 -- Check a primitive
 public export
 tcPrim : HasTc m
-  => (cz : Count ar)
-  => {r : PrimitiveReducibility}
+  => {ar : _}
+  -> {r : PrimitiveReducibility}
   -> {k : PrimitiveClass}
   -> {l : PrimitiveLevel}
   -> Primitive k r l ar
-  -> List (Ident, TcAll m)
+  -> DispList ar (TcAll m)
   -> TcAll m
-tcPrim {cz = cz} p args = switch $ \ctx, stage => do
+tcPrim p args = switch $ \ctx, stage => do
   (pParams, pRet) : Op _ _ <- case l of
     PrimNative => pure $ primAnnot p
     PrimDeclared => do
      (pParams, pRet) <- definedPrimAnnot p
      pure (
         evalS {over = Atom} [<] pParams,
-        evalS {over = Atom} {sz = ctx.size + cz} {sz' = SZ + cz} (liftSMany [<]) pRet
+        evalS {over = Atom} {sz = ctx.size + ar.count} {sz' = SZ + ar.count} (liftSMany [<]) pRet
       )
-  sp <- tcSpine ctx args pParams
+  sp <- tcSpine ctx (dispToList args) pParams
   adjustStageIfNeeded ctx (prim p (map (.tm) sp) pRet) stage
-
--- Check a primitive, knowing that the arguments have the right arity
-public export
-tcPrimKnown : HasTc m
-  => {r : PrimitiveReducibility}
-  -> {ar : _}
-  -> {k : PrimitiveClass}
-  -> {l : PrimitiveLevel}
-  -> Primitive k r l ar
-  -> DispList ar (TcAll m)
-  -> TcAll m
-tcPrimKnown p l = tcPrim {cz = ar.count} p (dispToList l)
   
 -- Check a let statement.
 public export
