@@ -26,7 +26,7 @@ BytesS : Static
 0S : BytesS
 ptrS : BytesS
 sizeS : BytesS
-if0S : {A : Static} -> BytesS -> A -> A -> A
+if0S : [A : Static] -> BytesS -> A -> A -> A
 addS : BytesS -> BytesS -> BytesS
 
 -- Fwd decl
@@ -38,19 +38,19 @@ Dynamic : Bytes -> Dynamic 0
 
 -- Partially static stuff
 Data : Bytes -> Static
-Data b = (Sta : Static ** Dyn : Dynamic b ** emb : D -> S)
+Data b = (Sta : Static, Dyn : Dynamic b, emb : D -> S)
 
 -- inductive basically
-PS : {b} -> Data b -> Static
-sta : {b} {d : Data b} -> d.Sta -> PS d
-dyn : {b} {d : Data b} -> d.Dyn -> PS d
-inspect : {b} {d : Data b} (P : PS d -> Static)
+PS : [b] -> Data b -> Static
+sta : [b] [d : Data b] -> d.Sta -> PS d
+dyn : [b] [d : Data b] -> d.Dyn -> PS d
+inspect : [b] [d : Data b] (P : PS d -> Static)
   (z : PS d)
   (st : (x : d.Sta) -> P (sta x))
   (dy : (y : d.Dyn) -> P (dyn x)) -> P z
-switch : {b} {d : Data b} {P : Static} (z : PS d) (st : d.Sta -> P) (dy : d.Dyn -> P) -> P
+switch : [b] [d : Data b] [P : Static] (z : PS d) (st : d.Sta -> P) (dy : d.Dyn -> P) -> P
 
-inj : {d} -> PS d -> d.Dyn
+inj : [d] -> PS d -> d.Dyn
 inj p = switch p emb id
 
 -- dynamic bytes
@@ -63,7 +63,7 @@ BytesData = (Sta = BytesS, Dyn = BytesD, emb = embBytes)
 
 -- now we define bytes
 Bytes = PS BytesData
-0 = sta 0S
+Z = sta 0S
 
 size : Bytes
 size = sta sizeS
@@ -80,7 +80,7 @@ add x y = switch x
 NatS : Static
 zeroS : NatS
 succS : NatS -> NatS
-rec-natS : {T : Static} -> NatS -> T -> (NatS -> T -> T) -> T
+rec-natS : [T : Static] -> NatS -> T -> (NatS -> T -> T) -> T
 ind-natS : (P : NatS -> Static) -> (n : NatS) -> P zeroS -> ((m : NatS) -> P m -> P (succS m)) -> P n
 
 NatD : Dynamic size
@@ -90,8 +90,8 @@ zeroD : NatD
 zeroD = embNat zeroS
 
 succD : NatD -> NatD
-rec-natD : {b} {T : Dynamic (sta b)} -> NatD -> T -> (NatD -> T -> T) -> T
-ind-natD : {b} (P : NatD -> Dynamic (sta b)) -> (n : NatD) -> P zeroD -> ((m : NatD) -> P m -> P (succD m)) -> P n
+rec-natD : [b] [T : Dynamic (sta b)] -> NatD -> T -> (NatD -> T -> T) -> T
+ind-natD : [b] (P : NatD -> Dynamic (sta b)) -> (n : NatD) -> P zeroD -> ((m : NatD) -> P m -> P (succD m)) -> P n
 
 NatData : Data size
 NatData = (NatS, NatD, embNat)
@@ -105,34 +105,34 @@ zero = sta zeroS
 succ : Nat -> Nat
 succ n = switch n (\nS => sta (succS nS)) (\nD => dyn (succD nD))
 
-rec-nat : {b} {d : Data b} -> Nat -> PS d -> (Nat -> PS d -> PS d) -> PS d
-rec-nat {b} {d} n z s = switch n
-  (\nS => rec-natS {T = PS d} nS z s)
-  (\nD => dyn (rec-natD {b} {T = d.Dyn} nD (inj z) (\n' ih => inj (s (dyn n') (dyn ih)))))
+rec-nat : [b] [d : Data b] -> Nat -> PS d -> (Nat -> PS d -> PS d) -> PS d
+rec-nat [b] [d] n z s = switch n
+  (\nS => rec-natS [T = PS d] nS z s)
+  (\nD => dyn (rec-natD [b] [T = d.Dyn] nD (inj z) (\n' ih => inj (s (dyn n') (dyn ih)))))
 
-ind-nat : {b} (p : Nat -> Data b) -> (n : Nat) -> PS (p zero) -> ((m : Nat) -> PS (p m) -> PS (p (succ m))) -> PS (p n)
-ind-nat {b} {p} n z s = inspect (\n' => PS (p n')) n
-  (\nS => ind-natS {p = \n' => PS (p (sta n'))} nS z s)
-  (\nD => dyn (ind-natD {b} {p = \n' => (p (dyn n')).Dyn} nD (inj z) (\n' ih => inj (s (dyn n') (dyn ih)))))
+ind-nat : [b] (p : Nat -> Data b) -> (n : Nat) -> PS (p zero) -> ((m : Nat) -> PS (p m) -> PS (p (succ m))) -> PS (p n)
+ind-nat [b] [p] n z s = inspect (\n' => PS (p n')) n
+  (\nS => ind-natS [p = \n' => PS (p (sta n'))] nS z s)
+  (\nD => dyn (ind-natD [b] [p = \n' => (p (dyn n')).Dyn] nD (inj z) (\n' ih => inj (s (dyn n') (dyn ih)))))
 
 -- more primitives
 
 
-Make : {br} -> Data br -> Data ptr
-Make d = (Sta = d.Sta, Dyn = MakeD d.Dyn, emb = )
+Make : [br] -> Data br -> Data ptr
+Make d = (Sta = d.Sta, Dyn = MakeD d.Dyn, emb = ?f)
 
-give : {b} {A : Data (sta b)} -> PS A -> Make A
-unbox : {b} {A : Unsized b} -> Box A -> Make A
+give : [b] [A : Data (sta b)] -> PS A -> Make A
+unbox : [b] [A : Unsized b] -> Box A -> Make A
 
 mul : Nat -> Bytes -> Nat
 mul n b = rec-nat n 0 (\_ b' => b + b')
 
 -- support both these kind of definitions
-Array : {b} (T : Type b) (n : Nat) -> Unsized (n * emb b)
+Array : [b] (T : Type b) (n : Nat) -> Unsized (n * emb b)
 Array T n = ind-nat (\n' => Unsized (n' * b)) n () (\n' Arr => T ** Arr)
 
-zeros : {b} {n : Nat} {T : Type b} -> Make (Array n T)
-zeros {n} {T} = ind-nat (Array T) n (give ()) (\n' arr => (give zero, arr))
+zeros : [b] [n : Nat] [T : Type b] -> Make (Array n T)
+zeros [n] [T] = ind-nat (Array T) n (give ()) (\n' arr => (give zero, arr))
 
 -- semicolons not needed after lets if there is a newline
 
@@ -148,6 +148,7 @@ main = {
 -- Sugar:
 
 x : T
+
 x a1..an = t
 
 -- means
@@ -157,22 +158,22 @@ x : T = \a1..an => t
 
 -- lets are
 
-{
+[
   x1 : T1 = u1
   y
-}
+]
 
 -- could have modifiers
-{
+[
   rec irr x1 : T1 = u1
   y
-}
+]
 
 -- could be monadic
-{
+[
   x1 : T1 <- u1
   y
-}
+]
 
 -- means
 bind u1 (\(x1 : T1) => y)

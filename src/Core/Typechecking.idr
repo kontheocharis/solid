@@ -515,12 +515,14 @@ tcPrim p args = switch $ \ctx, stage => do
 -- Check a let statement.
 public export
 tcLet : HasTc m
-  => Name
-  -> Maybe Stage
-  -> (Maybe (TcAll m))
+  => (name : Name)
+  -> (stage : Maybe Stage)
+  -> (ty : (Maybe (TcAll m)))
+  -> (tm : TcAll m)
+  -> (rest : TcAll m)
   -> TcAll m
-  -> TcAll m
-  -> TcAll m
+tcLet name stage ty tm rest md ctx = do
+  ?fakk
   
 -- Check a let-rec statement.
 public export

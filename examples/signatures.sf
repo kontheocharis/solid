@@ -1,5 +1,5 @@
 Symbol : TYPE
-`foo` : Symbol
+-- `foo` : Symbol
 
 --
 
@@ -21,13 +21,13 @@ sort-obj-ps = ((b ** Data b), \(_, T) => PS T)
 Tel : SORT -> TYPE
 empty-tel : Tel s
 extend-tel : (a : s.U) -> (s.EL a -> Tel s) -> Tel s
-elim-tel : (P : {s} -> Tel s -> TYPE)
+elim-tel : (P : [s] -> Tel s -> TYPE)
     -> (empty-telM : P empty-tel)
     -> (extend-telM : (a : s.U) -> (t : s.EL a -> Tel s) -> (fM : (x : s.EL a) -> P (t x)) -> P (extend-tel a t))
     -> (t : Tel s) -> P t
 
 Spine : Tel s -> TYPE
-empty-spine : Spine {s} empty-tel
+empty-spine : Spine [s] empty-tel
 extend-spine : (x : s.EL a) -> (xs : Spine (t x)) -> Spine (extend-tel a t)
 
 TEL : TYPE
@@ -61,15 +61,14 @@ alg : Sig s t -> (X : Spine t -> s.U) -> TEL
 
 
 Nat : TYPE
-Nat = data (zero : Nat, succ : Nat -> Nat) as (N, z, s, elim-N)
+-- Nat = data (zero : Nat, succ : Nat -> Nat) as (N, z, s, elim-N)
 
 -- same as
 
 NatSig : Sig sort-meta empty-tel
-NatSig = (`zero` => ret (), `succ` => int () (\() => ret ())))
+-- NatSig = (`zero` => ret (), `succ` => int () (\() => ret ())))
 
 nat-repr : Spine (ind-alg NatSig)
-nat-repr =
 
 Nat : TYPE
-Nat = data NatSig as ${nat-repr}
+-- Nat = data NatSig as $[nat-repr]

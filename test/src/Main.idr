@@ -7,6 +7,7 @@ import System.Directory.Tree
 
 %default covering
 
+
 error : String -> IO a
 error e = do
   putStrLn e
