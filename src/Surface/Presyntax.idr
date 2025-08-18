@@ -84,6 +84,18 @@ public export
 record Directive where
   constructor MkDirective
   name : String
+  
+-- All known directives
+public export
+data KnownDirective : Directive -> Type where
+  MtaDir : KnownDirective (MkDirective "mta")
+  ObjDir : KnownDirective (MkDirective "obj")
+  
+public export
+parseDirective : (d : Directive) -> Maybe (KnownDirective d)
+parseDirective (MkDirective "mta") = Just MtaDir
+parseDirective (MkDirective "obj") = Just ObjDir
+parseDirective _ = Nothing
 
 -- A block is a sequence of assignment-like things. It is written like
 -- { x1 := a1; ... ; xn := an; y }, similar to Rust.

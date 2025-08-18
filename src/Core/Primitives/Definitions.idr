@@ -61,7 +61,12 @@ data Primitive : PrimitiveClass -> PrimitiveReducibility -> PrimitiveLevel -> Ar
   PrimTt : Primitive PrimNorm PrimIrreducible PrimDeclared []
 
   PrimSIGMA : Primitive PrimNorm PrimIrreducible PrimDeclared [(Explicit, "a"), (Explicit, "b")]
+  PrimPAIR : Primitive PrimNorm PrimIrreducible PrimDeclared
+    [(Implicit, "a"), (Implicit, "b"), (Explicit, "x"), (Explicit, "y")]
+
   PrimSigma : Primitive PrimNorm PrimIrreducible PrimDeclared [(Implicit, "ba"), (Implicit, "bb"), (Explicit, "a"), (Explicit, "b")]
+  PrimPair : Primitive PrimNorm PrimIrreducible PrimDeclared
+     [(Implicit, "ba"), (Implicit, "bb"), (Implicit, "a"), (Implicit, "b"), (Explicit, "x"), (Explicit, "y")]
 
   PrimIO : Primitive PrimNorm PrimIrreducible PrimDeclared [(Implicit, "ba"), (Explicit, "a")]
 
@@ -108,6 +113,10 @@ primEq PrimSigma PrimSigma = Just Refl
 primEq PrimSigma _ = Nothing
 primEq PrimIO PrimIO = Just Refl
 primEq PrimIO _ = Nothing
+primEq PrimPAIR PrimPAIR = Just Refl
+primEq PrimPAIR _ = Nothing
+primEq PrimPair PrimPair = Just Refl
+primEq PrimPair _ = Nothing
 
 public export
 primName : Primitive k r na ar -> String
@@ -131,6 +140,8 @@ primName PrimTt = "tt"
 primName PrimSIGMA = "SIGMA"
 primName PrimSigma = "Sigma"
 primName PrimIO = "IO"
+primName PrimPAIR = "PAIR"
+primName PrimPair = "pair"
 
 public export
 Eq (Primitive k r na ar) where

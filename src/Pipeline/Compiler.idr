@@ -55,7 +55,7 @@ emptyCompilerState = MkCompilerState emptyMetaState dummyLoc [<] empty
 
 public export
 compilerErrors : List Error
-compilerErrors = [ParseError, TcError, AppHasIO]
+compilerErrors = [ParseError, TcError, ElabError, AppHasIO]
   
 -- Setup monads:
 
@@ -234,8 +234,11 @@ parse input = case parse topLevelBlock input of
 covering
 elaborate : PTm -> Comp (Atom [<])
 elaborate ptm = do
-  res <- runAt Check (runElab $ elab ptm) emptyContext (CheckInput _ mainAnnot)
-  pure $ res.tm
+  case runElab (elab ptm) of
+    Right ok => do
+      res <- runAt Check ok emptyContext (CheckInput _ mainAnnot)
+      pure $ res.tm
+    Left err => lift $ throw err
 
 covering
 stage : Atom [<] -> Comp (Val [<])
@@ -264,6 +267,8 @@ compileUntil input (Val k, o)
     execCompiler : Comp a -> IO a
     execCompiler c = run
       (handle
-        (handle (evalStateT emptyCompilerState c)
+        (handle
+          (handle
+            (evalStateT emptyCompilerState c) pure exitError)
+            pure exitError)
           pure exitError)
-        pure exitError)

@@ -20,22 +20,31 @@ import Surface.Presyntax
 import Core.Syntax
 import Data.Maybe
 import Control.Monad.State
+import Control.Monad.Error.Either
 
+export
 record ElabState where
   constructor MkElabState
   stageHint : Maybe Stage
+  
+export
+data ElabError : Type where
+  
+export
+Show ElabError where
+  show t impossible
 
 export
 0 Elab : Type -> Type
-Elab a = State ElabState a
+Elab a = EitherT ElabError (State ElabState) a
 
 export
 initialElabState : ElabState
 initialElabState = MkElabState Nothing
 
 export
-runElab : Elab a -> a
-runElab = evalState initialElabState
+runElab : forall a . Elab a -> Either ElabError a
+runElab = evalState initialElabState . runEitherT 
 
 -- Elaborate a presyntax term into a typechecking operation.
 export covering
@@ -82,28 +91,43 @@ elab PUnit = pure $ whenInStage $ \case
   Just Obj => tcPrim PrimTt []
   _ => tcPrim PrimTT []
 elab (PSigmas (MkPTel [])) = elab PUnit
-elab (PSigmas (MkPTel ((MkPParam l n ty) :: xs))) = do
-  ty' <- elab (fromMaybe (PHole Nothing) ty)
-  t' <- elab (PSigmas (MkPTel xs))
+elab (PSigmas (MkPTel ((MkPParam l n ty) :: ts))) = do
+  ty' <- interceptAll (enterLoc l) <$> elab (fromMaybe (PHole Nothing) ty)
+  ts' <- elab (PSigmas (MkPTel ts))
   pure . whenInStage $ \case
-    Just Obj => tcPrim PrimSigma [hole, hole, ty', t']
-    _ => tcPrim PrimSIGMA [ty', t']
-elab (PPairs ps) = ?tcPairs -- <$> elabSpine ps
-elab (PProj v n) = ?tcProj -- !(elab v) n
+    Just Obj => tcPrim PrimSigma [hole, hole, ty', ts']
+    _ => tcPrim PrimSIGMA [ty', ts']
+elab (PPairs (MkPSpine [])) = elab PUnit
+elab (PPairs (MkPSpine ((MkPArg l n t) :: ts))) = do
+  t' <- interceptAll (enterLoc l) <$> elab t
+  ts' <- elab (PPairs (MkPSpine ts))
+  pure . whenInStage $ \case
+    Just Obj => tcPrim PrimPair [hole, hole, hole, hole, t', ts']
+    _ => tcPrim PrimPAIR [hole, hole, t', ts']
+elab (PProj v n) = ?tcProj
 elab (PBlock t []) = elab PUnit
 elab (PBlock t (PLet l n ty tm :: bs)) = do
+  s <- gets stageHint
   ty' <- traverse elab ty
-  let statement = tcLet n ?stage ty' !(elab tm) !(elab (PBlock t bs))
+  let statement = tcLet n s ty' !(elab tm) !(elab (PBlock t bs))
   pure $ interceptAll (enterLoc l) statement
-elab (PBlock t (PLetRec l n ty tm :: bs)) =
-  let statement = tcLetRec n ?stage2 !(elab ty) !(elab tm) !(elab (PBlock t bs)) in
+elab (PBlock t (PLetRec l n ty tm :: bs)) = do
+  s <- gets stageHint
+  let statement = tcLetRec n s !(elab ty) !(elab tm) !(elab (PBlock t bs))
   pure $ interceptAll (enterLoc l) statement
 elab (PBlock t (PBlockTm l tm :: [])) = elab tm
-elab (PBlock t (PDecl l n ty :: bs)) = ?todoDecl
-elab (PBlock t (PLet l n ty tm :: bs)) = ?todoIrrLet
-elab (PBlock t (PLetRec l n ty tm :: bs)) = ?todoIrrLetRec
+elab (PBlock t (PDecl l n ty :: bs)) = do
+  s <- gets stageHint
+  let statement = tcDecl n s !(elab ty) !(elab (PBlock t bs))
+  pure $ interceptAll (enterLoc l) statement
 elab (PBlock t (PBind l n ty tm :: bs)) = ?todoBind
-elab (PBlock t (PBlockTm l tm :: bs)) = ?todoNamelessBind
-elab (PBlock t (PDirSt d b :: bs)) = elab (PBlock t (b :: bs)) -- @@TODO
+elab (PBlock t (PBlockTm l tm :: bs)) =
+  elab (PBlock t (PBind l "_" Nothing tm :: bs))
+elab (PBlock t (PDirSt d b :: bs)) = ?fajj
+  -- case parseDirective d of
+  --     Nothing => ?fa_1
+  --     Just MtaDir => ?fa_3
+  --     Just ObjDir => ?fa_4
+  -- elab (PBlock t (b :: bs)) -- @@TODO
 elab (PLit l) = ?todoLit
 elab (PDirTm d t) = elab t -- @@TODO

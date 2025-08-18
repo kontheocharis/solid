@@ -537,6 +537,17 @@ tcLet : HasTc m
 tcLet name stage ty tm rest md ctx = do
   ?fakk
   
+-- Check a declaration statement.
+public export
+tcDecl : HasTc m
+  => (name : Name)
+  -> (stage : Maybe Stage)
+  -> (ty : TcAll m)
+  -> (rest : TcAll m)
+  -> TcAll m
+tcDecl name stage tm rest md ctx = do
+  ?fakkj
+  
 -- Check a let-rec statement.
 public export
 tcLetRec : HasTc m
