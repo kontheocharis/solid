@@ -39,6 +39,10 @@ data ElabErrorKind : Type where
   UnknownDirective : Directive -> ElabErrorKind
   
 export
+Show ElabErrorKind where
+  show (UnknownDirective (MkDirective d)) = "Unknown directive `#\{d}`"
+  
+export
 record ElabError where
   constructor MkElabError
   kind : ElabErrorKind
@@ -46,7 +50,7 @@ record ElabError where
   
 export
 Show ElabError where
-  show t = ?showElabError
+  show (MkElabError l k) = "Elaboration error at \{show l}:\n\{show k}"
 
 export
 0 Elab : Type -> Type
