@@ -34,9 +34,9 @@ mainAnnot : AnnotAt Obj [<]
 mainAnnot = (objZ (aPrim PrimIO [(Val _, aPrim PrimZeroLayout []), (Val _, aPrim PrimUnit [])])).f.a
  
 export
-whenInStage : (Maybe Stage -> TcAll m) -> TcAll m
-whenInStage f Infer = \ctx, maybeStage => f maybeStage Infer ctx maybeStage
-whenInStage f Check = \ctx, annot => f (Just annot.p.stage) Check ctx annot
+whenInStage : HasElab m => (Maybe Stage -> TcAll m) -> TcAll m
+whenInStage f Infer = \ctx, (InferInput maybeStage) => f maybeStage Infer ctx (InferInput maybeStage)
+whenInStage f Check = \ctx, (CheckInput stage annot) => f (Just stage) Check ctx (CheckInput stage annot)
 
 covering
 elabSpine : (HasElab m) => PSpine k -> List (Ident, TcAll m)
@@ -65,14 +65,14 @@ elab (PPi (MkPTel ((MkPParam l n ty) :: xs)) t) =
   tcPi n (interceptAll {m = m} (enterLoc l) ty) t'
 elab (PApp subject sp) = tcApps (elab subject) (elabSpine sp)
 elab (PHole n) = tcHole n
-elab PUnit = whenInStage \case
+elab PUnit = whenInStage $ \case
   Just Obj => tcPrim PrimTt []
   _ => tcPrim PrimTT []
 elab (PSigmas (MkPTel [])) = elab PUnit
 elab (PSigmas (MkPTel ((MkPParam l n ty) :: xs))) =
   let ty' = elab (fromMaybe (PHole Nothing) ty) in
   let t' = elab (PSigmas (MkPTel xs)) in
-  whenInStage \case
+  whenInStage $ \case
     Just Obj => tcPrim PrimSigma [hole, hole, ty', t']
     _ => tcPrim PrimSIGMA [ty', t']
 elab (PPairs ps) = ?tcPairs -- <$> elabSpine ps

@@ -183,7 +183,23 @@ interface (Monad m) => HasTc m where
   -- The signature of a declared primitive
   definedPrimAnnot : Primitive k r PrimDeclared ar -> m (Op ar [<])
   setDefinedPrimAnnot : Primitive k r PrimDeclared ar -> Op ar [<] -> m ()
-
+  
+-- What inputs a TC operation takes, depending on mode
+public export
+data TcInput : TcMode -> Ctx -> Type where
+  CheckInput : (s : Stage) -> AnnotAt s ms -> TcInput Check ms
+  InferInput : (s : Maybe Stage) -> TcInput Infer ms
+  
+public export
+(.stage) : TcInput md ns -> Maybe Stage
+(.stage) (CheckInput s _) = Just s
+(.stage) (InferInput s) = s
+  
+-- Outputs are expressions corresponding to the inputs
+public export
+0 TcOutput : (md : TcMode) -> (ms : Ctx) -> TcInput md ms -> Type
+TcOutput md ms i = ExprAtMaybe i.stage ms
+  
 -- This is the type over which we build the typechecking combinators.
 --
 -- `TcOp m md ns` is a typechecking operation in mode md.
@@ -191,8 +207,7 @@ interface (Monad m) => HasTc m where
 -- It can be executed to produce an elaborated expression, depending on what `md` is.
 public export
 0 TcOp : (md : TcMode) -> (0 m : Type -> Type) -> Ctx -> Type
-TcOp Check m ms = {s : Stage} -> AnnotAt s ms -> m (Atom ms)
-TcOp Infer m ms = (s : Maybe Stage) -> m (ExprAtMaybe s ms)
+TcOp md m ms = (i : TcInput md ms) -> m (TcOutput md ms i)
 
 -- Typechecking in a specific context
 public export
@@ -213,7 +228,7 @@ public export
 TcAll m = (md : TcMode) -> Tc md m
 
 public export
-runAt : (md : TcMode) -> TcAll m -> Tc md m
+runAt : HasTc m => (md : TcMode) -> TcAll m -> Tc md m
 runAt md f = f md
 
 -- Map a parametric monadic operation over Tc.
@@ -273,10 +288,10 @@ insertUntil : (HasTc m) => Context ns -> Name -> m (Expr ns) -> m (Expr ns)
 ensureKnownStage : HasTc m
   => (Context ns -> (s : Stage) -> m (ExprAt s ns))
   -> Context ns
-  -> (ms : Maybe Stage)
-  -> m (ExprAtMaybe ms ns)
-ensureKnownStage f ctx (Just s) = f ctx s
-ensureKnownStage f ctx Nothing = tcError ctx CannotInferStage
+  -> (i : TcInput Infer ns)
+  -> m (ExprAtMaybe i.stage ns)
+ensureKnownStage f ctx (InferInput (Just s)) = f ctx s
+ensureKnownStage f ctx (InferInput Nothing) = tcError ctx CannotInferStage
 
 -- Try to adjust the stage of an expression.
 tryAdjustStage : (HasTc m) => Context ns -> Expr ns -> (s : Stage) -> m (Maybe (ExprAt s ns))
@@ -312,10 +327,10 @@ areEqual @{tc} ctx a b = do
 public export
 switch : HasTc m => Tc Infer m -> TcAll m
 switch f Infer = f
-switch f Check = \ctx, annot => do
-  result <- insertAt ctx $ f ctx (Just annot.p.stage)
+switch f Check = \ctx, (CheckInput stage annot) => do
+  result <- insertAt ctx $ f ctx (InferInput (Just stage))
   unify ctx annot.ty result.annot.ty
-  pure result.tm
+  pure result
   
 -- Create a `SortData` instance for the given stage and sort kind, by instantiating metas
 -- for the unknown information (byte sizes).
@@ -354,13 +369,13 @@ insertLam : HasTc m => Context ns
   -> (subject : Tc Check m)
   -> m (ExprAt piStage ns)
 insertLam ctx piStage piIdent bindAnnot bodyAnnot subject = do
-  s <- subject (bind piIdent bindAnnot.asAnnot ctx) (objZOrMta piStage (bodyAnnot.inner.open)).a.f
-  pure $ lam piStage piIdent piIdent bindAnnot bodyAnnot (close ctx.defs s)
+  s <- subject (bind piIdent bindAnnot.asAnnot ctx) (CheckInput _ (objZOrMta piStage (bodyAnnot.inner.open)).a.f)
+  pure $ lam piStage piIdent piIdent bindAnnot bodyAnnot (close ctx.defs s.tm)
   
 -- Infer the given object as a type, also inferring its stage in the process.
 inferAnnot : HasTc m => Context ns -> (k : forall s . SortKind s) -> Tc Infer m -> m (s ** AnnotFor s k Atom ns)
 inferAnnot ctx kind ty = do
-  MkExpr t (MkAnnot univ _ stage) <- ty ctx Nothing
+  MkExpr t (MkAnnot univ _ stage) <- ty ctx (InferInput Nothing)
   res <- fitAnnot ctx stage kind {annotTy = AtomTy} (t, univ)
   pure (stage ** res)
 
@@ -375,19 +390,19 @@ tcSpine : HasTc m
 tcSpine ctx tms [] = tcError ctx (TooManyApps (map fst tms).count)
 tcSpine ctx [] annots = tcError ctx (TooFewApps annots.count)
 tcSpine ctx ((_, tm) :: tms) ((Val _, annot) :: annots) = do -- @@Todo: spine name
-  tm' <- tm Check ctx annot.f
-  tms' <- tcSpine ctx tms (sub (ctx.defs :< tm') annots)
-  pure ((Val _, MkExpr tm' annot) :: tms')
+  tm' <- tm Check ctx (CheckInput _ annot.f)
+  tms' <- tcSpine ctx tms (sub (ctx.defs :< tm'.tm) annots)
+  pure ((Val _, tm'.p) :: tms')
   
 -- Main combinators:
 
 -- Introduce a metavariable
 public export
 tcMeta : HasTc m => {default Nothing name : Maybe Name} -> TcAll m
-tcMeta {name = name} Check = \ctx, annot => do
-  mta <- freshMeta ctx name annot
-  whenJust name $ \n => addGoal (MkGoal (Just n) mta.p ctx)
-  pure mta.tm
+tcMeta {name = name} Check = \ctx, (CheckInput _ annot) => do
+  -- mta <- freshMeta ctx name annot
+  -- whenJust name $ \n => addGoal (MkGoal (Just n) mta.p ctx)
+  pure ?faj
 tcMeta {name = name} Infer = ensureKnownStage $ \ctx, stage => do
   annot <- freshMetaAnnot ctx stage Dyn -- remember, sized < dyn
   mta <- freshMeta ctx name annot
@@ -406,15 +421,15 @@ tcPi x a b = switch $ ensureKnownStage $ \ctx, stage => case stage of
   -- This is more annoying here because of byte metas, but also I am not
   -- convinced that it is the right thing to do. It might lead to some weird elab results.
   Mta => do
-    a' <- a Check ctx mtaA.f
-    b' <- b Check (bind x (mta a').f.a ctx) mtaA.f
-    pure $ pi Mta x (MkAnnotFor MtaSort a') (MkAnnotFor MtaSort (close ctx.defs b'))
+    a' <- a Check ctx (CheckInput _ mtaA.f)
+    b' <- b Check (bind x (mta a'.tm).f.a ctx) (CheckInput _ mtaA.f)
+    pure $ pi Mta x (MkAnnotFor MtaSort a'.tm) (MkAnnotFor MtaSort (close ctx.defs b'.tm))
   Obj => do
     ba <- freshMeta ctx Nothing layoutA.f
     bb <- freshMeta ctx Nothing layoutA.f
-    a' <- a Check ctx (objA ba.tm).f
-    b' <- b Check (bind x (obj ba.tm a').a.f ctx) (wkS $ objA bb.tm).f
-    pure $ pi Obj x (MkAnnotFor (ObjSort Sized ba.tm) a') (MkAnnotFor (ObjSort Sized bb.tm) (close ctx.defs b'))
+    a' <- a Check ctx (CheckInput _ (objA ba.tm).f)
+    b' <- b Check (bind x (obj ba.tm a'.tm).a.f ctx) (CheckInput _ (wkS $ objA bb.tm).f)
+    pure $ pi Obj x (MkAnnotFor (ObjSort Sized ba.tm) a'.tm) (MkAnnotFor (ObjSort Sized bb.tm) (close ctx.defs b'.tm))
 
 -- Check a lambda abstraction.
 public export
@@ -423,41 +438,39 @@ tcLam : HasTc m
   -> (bindTy : Maybe (TcAll m))
   -> (body : TcAll m)
   -> TcAll m
-tcLam lamIdent bindTy body Check = \ctx, annot@(MkAnnotAt ty sort) => do
-  let stage = annot.p.stage
+tcLam lamIdent bindTy body Check = \ctx, (CheckInput stage annot@(MkAnnotAt ty sort)) => do
   resolve ty >>= \ty' => case forcePi stage lamIdent ty' of
     Matching (MkPiData resolvedPi piIdent a b) => do
       -- Pi matches
       whenJust bindTy $ \bindTy' => do
-        MkExprAt bindPi _ <- tcPi lamIdent bindTy' tcMeta Infer ctx (Just stage)
+        MkExprAt bindPi _ <- tcPi lamIdent bindTy' tcMeta Infer ctx (InferInput (Just stage))
         unify ctx resolvedPi bindPi
       body' <- body Check
         (bind lamIdent (a.asAnnot) ctx)
-        (b.open.asAnnot)
-      pure $ (lam stage piIdent lamIdent a b (close ctx.defs body')).tm
+        (CheckInput _ (b.open.asAnnot))
+      pure $ lam stage piIdent lamIdent a b (close ctx.defs body'.tm)
     Mismatching piStage (MkPiData resolvedPi piIdent a b) => case fst piIdent of
       -- Wasn't the right kind of pi; if it was implicit, insert a lambda
       Implicit => do
-        MkExprAt tm _ <- insertLam ctx piStage piIdent a b (tcLam lamIdent bindTy body Check)
-        pure tm
+        tm' <- insertLam ctx piStage piIdent a b (tcLam lamIdent bindTy body Check)
+        adjustStage ctx tm'.p stage
       -- Otherwise, we have the wrong kind of pi.
       _ => tcError ctx (WrongPiMode (fst piIdent) resolvedPi)
     Otherwise other => do
       -- Otherwise try unify with a constructed pi
-      createdPi <- tcPi lamIdent tcMeta tcMeta Infer ctx (Just stage)
+      createdPi <- tcPi lamIdent tcMeta tcMeta Infer ctx (InferInput (Just stage))
       unify ctx other createdPi.tm
-      tcLam lamIdent bindTy body Check ctx {s = stage} createdPi.a
+      tcLam lamIdent bindTy body Check ctx (CheckInput stage createdPi.a)
 tcLam lamIdent bindTy body Infer = ensureKnownStage $ \ctx, stage => do
   -- @@Reconsider: Same remark as for pis.
   -- We have a stage, but no type, so just instantiate a meta..
   annot <- freshMetaAnnot ctx stage Sized
-  res <- tcLam lamIdent bindTy body Check ctx annot
-  pure $ MkExprAt res annot
+  tcLam lamIdent bindTy body Check ctx (CheckInput _ annot)
 
 -- Check a variable, by looking up in the context
 public export
 tcVar : HasTc m => Name -> TcAll m
-tcVar n = switch $ \ctx, stage' => case lookup ctx n of
+tcVar n = switch $ \ctx, (InferInput stage') => case lookup ctx n of
     Nothing => tcError ctx $ UnknownName n
     Just idx => do
       let tm = var idx (MkAnnotAt {s = ctx.stages.indexS idx} (ctx.con.indexS idx) (ctx.sorts.indexS idx))
@@ -477,8 +490,8 @@ tcApps : HasTc m
   => TcAll m
   -> List (Ident, TcAll m)
   -> TcAll m
-tcApps subject args = switch $ \ctx, reqStage => do
-  subject'@(MkExpr _ fnAnnot) <- maybePackStage <$> subject Infer ctx reqStage
+tcApps subject args = switch $ \ctx, (InferInput reqStage) => do
+  subject'@(MkExpr _ fnAnnot) <- maybePackStage <$> subject Infer ctx (InferInput reqStage)
   case gatherPis fnAnnot (map fst args) of
     Gathered params ret => do
       args' <- tcSpine ctx args params
@@ -500,7 +513,7 @@ tcPrim : HasTc m
   -> Primitive k r l ar
   -> DispList ar (TcAll m)
   -> TcAll m
-tcPrim p args = switch $ \ctx, stage => do
+tcPrim p args = switch $ \ctx, (InferInput stage) => do
   (pParams, pRet) : Op _ _ <- case l of
     PrimNative => pure $ primAnnot p
     PrimDeclared => do
