@@ -108,6 +108,17 @@ record Lens (s : Type) (s' : Type) where
 export
 access : MonadState s m => Lens s s' -> m s'
 access (MkLens gt _) = gets gt
+  
+export
+set : MonadState s m => Lens s s' -> s' -> m ()
+set (MkLens gt st) v = modify (st v)
+  
+export
+reset : MonadState s m => Lens s (Maybe s') -> m (Maybe s')
+reset (MkLens gt st) = do
+  s <- get
+  put (st Nothing s)
+  pure $ gt s
 
 export
 enter : MonadState s m => Lens s s' -> s' -> m a -> m a

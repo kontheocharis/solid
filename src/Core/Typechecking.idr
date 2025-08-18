@@ -544,6 +544,7 @@ tcDecl : HasTc m
   => (name : Name)
   -> (stage : Maybe Stage)
   -> (ty : TcAll m)
+  -> (isPrimitive : Bool)
   -> (rest : TcAll m)
   -> TcAll m
 tcDecl name stage tm rest md ctx = do

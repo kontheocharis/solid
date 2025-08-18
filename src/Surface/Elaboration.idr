@@ -27,6 +27,7 @@ record ElabState where
   constructor MkElabState
   stageHint : Maybe Stage
   locHint : Maybe Loc
+  isPrimitive : Bool
   
 stageHintL : Lens ElabState (Maybe Stage)
 stageHintL = MkLens stageHint (\sh, s => { stageHint := sh } s)
@@ -34,13 +35,18 @@ stageHintL = MkLens stageHint (\sh, s => { stageHint := sh } s)
 locHintL : Lens ElabState (Maybe Loc)
 locHintL = MkLens locHint (\sh, s => { locHint := sh } s)
   
+isPrimitiveL : Lens ElabState Bool
+isPrimitiveL = MkLens isPrimitive (\sh, s => { isPrimitive := sh } s)
+  
 export
 data ElabErrorKind : Type where
   UnknownDirective : Directive -> ElabErrorKind
+  DirectiveNotAllowed : KnownDirective -> ElabErrorKind
   
 export
 Show ElabErrorKind where
   show (UnknownDirective (MkDirective d)) = "Unknown directive `#\{d}`"
+  show (DirectiveNotAllowed d) = "Directive `#\{d.asDirective.name}` is not allowed here"
   
 export
 record ElabError where
@@ -50,7 +56,7 @@ record ElabError where
   
 export
 Show ElabError where
-  show (MkElabError l k) = "Elaboration error at \{show l}:\n\{show k}"
+  show (MkElabError k l) = "Elaboration error at \{show l}:\n\{show k}"
 
 export
 0 Elab : Type -> Type
@@ -58,7 +64,7 @@ Elab a = EitherT ElabError (State ElabState) a
 
 export
 initialElabState : ElabState
-initialElabState = MkElabState Nothing Nothing
+initialElabState = MkElabState Nothing Nothing False
 
 export
 runElab : Elab x -> Either ElabError x
@@ -77,12 +83,17 @@ elab : (HasTc m) => PTm -> Elab (TcAll m)
 -- The annotation of the entry point of the program
 export covering
 mainAnnot : AnnotAt Obj [<]
-mainAnnot = (objZ (aPrim PrimIO [(Val _, aPrim PrimZeroLayout []), (Val _, aPrim PrimUnit [])])).f.a
+mainAnnot = (objZ (aPrim PrimIO [
+    (Val _, aPrim PrimZeroLayout []),
+    (Val _, aPrim PrimUnit [])])
+  ).f.a
  
 export
 whenInStage : HasTc m => (Maybe Stage -> TcAll m) -> TcAll m
-whenInStage f Infer = \ctx, (InferInput maybeStage) => f maybeStage Infer ctx (InferInput maybeStage)
-whenInStage f Check = \ctx, (CheckInput stage annot) => f (Just stage) Check ctx (CheckInput stage annot)
+whenInStage f Infer = \ctx, (InferInput maybeStage) =>
+  f maybeStage Infer ctx (InferInput maybeStage)
+whenInStage f Check = \ctx, (CheckInput stage annot) =>
+  f (Just stage) Check ctx (CheckInput stage annot)
 
 covering
 elabSpine : (HasTc m) => PSpine k -> Elab (List (Ident, TcAll m))
@@ -106,15 +117,24 @@ hole = tcHole Nothing
 enterLoc : Loc -> Elab x -> Elab x
 enterLoc l = enter locHintL (Just l)
 
-enterStage : Stage -> Elab x -> Elab x
-enterStage s = enter stageHintL (Just s)
+resetIsPrimitive : Elab Bool
+resetIsPrimitive = access isPrimitiveL <* set isPrimitiveL False
+
+ensureNotPrimitive : Elab ()
+ensureNotPrimitive = resetIsPrimitive >>= \case
+  True => elabError $ DirectiveNotAllowed PrimitiveDir
+  False => pure ()
+
+data DirectivePlacement = InTm | InBlockSt
 
 covering
-handleDirective : Directive -> Elab x -> Elab x
-handleDirective d b = case parseDirective d of
-  Nothing => elabError (UnknownDirective d)
-  Just MtaDir => enterStage Mta b
-  Just ObjDir => enterStage Obj b
+handleDirective : Directive -> DirectivePlacement -> Elab x -> Elab x
+handleDirective d p b = case (parseDirective d, p) of
+  (Nothing, _) => elabError (UnknownDirective d)
+  (Just MtaDir, InBlockSt) => enter stageHintL (Just Mta) b
+  (Just ObjDir, InBlockSt) => enter stageHintL (Just Obj) b
+  (Just PrimitiveDir, InBlockSt) => enter isPrimitiveL True b
+  (Just d, InTm) => elabError $ DirectiveNotAllowed d
 
 elab (PLoc l t) = enterLoc l $ elab t
 elab (PName n) = tc (tcVar n)
@@ -151,19 +171,27 @@ elab (PPairs (MkPSpine ((MkPArg l n t) :: ts))) = do
 elab (PProj v n) = ?tcProj
 elab (PBlock t []) = elab PUnit
 elab (PBlock t (PLet l n ty tm :: bs)) = enterLoc l $ do
-  s <- access stageHintL
+  ensureNotPrimitive
+  s <- reset stageHintL
   ty' <- traverse elab ty
   tc (tcLet n s ty' !(elab tm) !(elab (PBlock t bs)))
 elab (PBlock t (PLetRec l n ty tm :: bs)) = enterLoc l $ do
-  s <- access stageHintL
+  ensureNotPrimitive
+  s <- reset stageHintL
   tc $ tcLetRec n s !(elab ty) !(elab tm) !(elab (PBlock t bs))
-elab (PBlock t (PBlockTm l tm :: [])) = enterLoc l $ elab tm
+elab (PBlock t (PBlockTm l tm :: [])) = do
+  ensureNotPrimitive
+  enterLoc l $ elab tm
 elab (PBlock t (PDecl l n ty :: bs)) = enterLoc l $ do
-  s <- access stageHintL
-  tc $ tcDecl n s !(elab ty) !(elab (PBlock t bs))
-elab (PBlock t (PBind l n ty tm :: bs)) = ?todoBind
-elab (PBlock t (PBlockTm l tm :: bs)) =
+  s <- reset stageHintL
+  p <- resetIsPrimitive
+  tc $ tcDecl n s !(elab ty) p !(elab (PBlock t bs))
+elab (PBlock t (PBind l n ty tm :: bs)) = do
+  ensureNotPrimitive
+  ?todoBind
+elab (PBlock t (PBlockTm l tm :: bs)) = do
+  ensureNotPrimitive
   elab (PBlock t (PBind l "_" Nothing tm :: bs))
-elab (PBlock t (PDirSt d b :: bs)) = handleDirective d (elab (PBlock t bs))
+elab (PBlock t (PDirSt d b :: bs)) = handleDirective d InBlockSt (elab (PBlock t bs))
 elab (PLit l) = ?todoLit
-elab (PDirTm d t) = handleDirective d (elab t)
+elab (PDirTm d t) = handleDirective d InTm (elab t)

@@ -90,12 +90,26 @@ public export
 data KnownDirective : Type where
   MtaDir : KnownDirective 
   ObjDir : KnownDirective 
+  PrimitiveDir : KnownDirective
   
-export
+export covering
+(.asDirective) : KnownDirective -> Directive
+(.asDirective) MtaDir = MkDirective "mta"
+(.asDirective) ObjDir = MkDirective "obj"
+(.asDirective) PrimitiveDir = MkDirective "primitive"
+  
+export covering
 parseDirective : Directive -> Maybe KnownDirective
 parseDirective (MkDirective "mta") = Just MtaDir
 parseDirective (MkDirective "obj") = Just ObjDir
+parseDirective (MkDirective "primitive") = Just PrimitiveDir
 parseDirective _ = Nothing
+
+export covering
+0 directiveCoh : parseDirective k.asDirective = Just k
+directiveCoh {k = MtaDir} = Refl
+directiveCoh {k = ObjDir} = Refl
+directiveCoh {k = PrimitiveDir} = Refl
 
 -- A block is a sequence of assignment-like things. It is written like
 -- { x1 := a1; ... ; xn := an; y }, similar to Rust.
