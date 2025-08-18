@@ -151,8 +151,6 @@ HasTc Comp where
           := insert (MkPrimitiveAny _ _ _ _ p) v s.definedPrimitives } s)
     pure ()
     
-HasElab Comp where
-    
 -- Inputs and outputs of the compiler
   
 public export
@@ -236,7 +234,7 @@ parse input = case parse topLevelBlock input of
 covering
 elaborate : PTm -> Comp (Atom [<])
 elaborate ptm = do
-  res <- runAt Check (elab ptm) emptyContext (CheckInput _ mainAnnot)
+  res <- runAt Check (runElab $ elab ptm) emptyContext (CheckInput _ mainAnnot)
   pure $ res.tm
 
 covering
