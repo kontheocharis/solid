@@ -3,6 +3,7 @@ module Utils
 import Data.Singleton
 import Data.Fin
 import Data.String
+import Control.Monad.State
 
 %default total
 
@@ -95,3 +96,25 @@ public export
 dispToSnocList : {xs : SnocList a} -> DispSnocList xs b -> SnocList (a, b)
 dispToSnocList [<] = [<]
 dispToSnocList {xs = _ :< x} (ls :< l) = dispToSnocList ls :< (x, l)
+
+-- Some state utilities
+
+public export
+record Lens (s : Type) (s' : Type) where
+  constructor MkLens
+  get : s -> s'
+  set : s' -> s -> s
+  
+export
+access : MonadState s m => Lens s s' -> m s'
+access (MkLens gt _) = gets gt
+
+export
+enter : MonadState s m => Lens s s' -> s' -> m a -> m a
+enter (MkLens _ st) val f = do
+  s1 <- get
+  put (st val s1)
+  x <- f
+  s2 <- get
+  put (st val s2)
+  pure x

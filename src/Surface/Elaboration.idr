@@ -26,13 +26,27 @@ export
 record ElabState where
   constructor MkElabState
   stageHint : Maybe Stage
+  locHint : Maybe Loc
+  
+stageHintL : Lens ElabState (Maybe Stage)
+stageHintL = MkLens stageHint (\sh, s => { stageHint := sh } s)
+  
+locHintL : Lens ElabState (Maybe Loc)
+locHintL = MkLens locHint (\sh, s => { locHint := sh } s)
   
 export
-data ElabError : Type where
+data ElabErrorKind : Type where
+  UnknownDirective : Directive -> ElabErrorKind
+  
+export
+record ElabError where
+  constructor MkElabError
+  kind : ElabErrorKind
+  loc : Loc
   
 export
 Show ElabError where
-  show t impossible
+  show t = ?showElabError
 
 export
 0 Elab : Type -> Type
@@ -40,11 +54,17 @@ Elab a = EitherT ElabError (State ElabState) a
 
 export
 initialElabState : ElabState
-initialElabState = MkElabState Nothing
+initialElabState = MkElabState Nothing Nothing
 
 export
-runElab : forall a . Elab a -> Either ElabError a
+runElab : Elab x -> Either ElabError x
 runElab = evalState initialElabState . runEitherT 
+
+export
+elabError : ElabErrorKind -> Elab x
+elabError k = do
+  l <- gets locHint
+  throwE (MkElabError k (fromMaybe dummyLoc l))
 
 -- Elaborate a presyntax term into a typechecking operation.
 export covering
@@ -68,66 +88,78 @@ elabSpine (MkPSpine (MkPArg l n v :: xs)) = pure $ (
     interceptAll (enterLoc l) $ !(elab v)
   ) :: !(elabSpine (MkPSpine xs))
   
+tc : HasTc m => TcAll m -> Elab (TcAll m)
+tc f = do
+  l <- access locHintL
+  case l of
+    Just l' => pure $ interceptAll (enterLoc l') f
+    Nothing => pure f
+  
 covering
 hole : HasTc m => TcAll m
 hole = tcHole Nothing
 
-elab (PLoc l t) = pure $ interceptAll (enterLoc l) !(elab t)
-elab (PName n) = pure $ tcVar n
+enterLoc : Loc -> Elab x -> Elab x
+enterLoc l = enter locHintL (Just l)
+
+enterStage : Stage -> Elab x -> Elab x
+enterStage s = enter stageHintL (Just s)
+
+covering
+handleDirective : Directive -> Elab x -> Elab x
+handleDirective d b = case parseDirective d of
+  Nothing => elabError (UnknownDirective d)
+  Just MtaDir => enterStage Mta b
+  Just ObjDir => enterStage Obj b
+
+elab (PLoc l t) = enterLoc l $ elab t
+elab (PName n) = tc (tcVar n)
 elab (PLam (MkPTel []) t) = elab t
 elab (PLam (MkPTel ((MkPParam l n ty) :: xs)) t) = do
-  t' <- elab {m = m} (PLam (MkPTel xs) t)
-  ty <- traverse elab ty
-  pure $ tcLam n (interceptAll (enterLoc l) <$> ty) t'
+  t' <- elab (PLam (MkPTel xs) t)
+  ty <- enterLoc l $ traverse elab ty
+  tc $ tcLam n ty t'
 elab (PPi (MkPTel []) t) = elab t
 elab (PPi (MkPTel ((MkPParam l n ty) :: xs)) t) = do
-  t' <- elab {m = m} (PPi (MkPTel xs) t)
+  t' <- elab (PPi (MkPTel xs) t)
   let ty' = fromMaybe (PHole Nothing) ty
-  ty <- elab ty'
-  pure $ tcPi n (interceptAll {m = m} (enterLoc l) ty) t'
-elab (PApp subject sp) = pure $ tcApps !(elab subject) !(elabSpine sp)
-elab (PHole n) = pure $ tcHole n
-elab PUnit = pure $ whenInStage $ \case
+  ty <- enterLoc l $ elab ty'
+  tc $ tcPi n ty t'
+elab (PApp subject sp) = tc $ tcApps !(elab subject) !(elabSpine sp)
+elab (PHole n) = tc $ tcHole n
+elab PUnit = tc $ whenInStage $ \case
   Just Obj => tcPrim PrimTt []
   _ => tcPrim PrimTT []
 elab (PSigmas (MkPTel [])) = elab PUnit
 elab (PSigmas (MkPTel ((MkPParam l n ty) :: ts))) = do
-  ty' <- interceptAll (enterLoc l) <$> elab (fromMaybe (PHole Nothing) ty)
+  ty' <- enterLoc l $ elab (fromMaybe (PHole Nothing) ty)
   ts' <- elab (PSigmas (MkPTel ts))
-  pure . whenInStage $ \case
+  tc . whenInStage $ \case
     Just Obj => tcPrim PrimSigma [hole, hole, ty', ts']
     _ => tcPrim PrimSIGMA [ty', ts']
 elab (PPairs (MkPSpine [])) = elab PUnit
 elab (PPairs (MkPSpine ((MkPArg l n t) :: ts))) = do
-  t' <- interceptAll (enterLoc l) <$> elab t
+  t' <- enterLoc l $ elab t
   ts' <- elab (PPairs (MkPSpine ts))
-  pure . whenInStage $ \case
+  tc . whenInStage $ \case
     Just Obj => tcPrim PrimPair [hole, hole, hole, hole, t', ts']
     _ => tcPrim PrimPAIR [hole, hole, t', ts']
 elab (PProj v n) = ?tcProj
 elab (PBlock t []) = elab PUnit
-elab (PBlock t (PLet l n ty tm :: bs)) = do
-  s <- gets stageHint
+elab (PBlock t (PLet l n ty tm :: bs)) = enterLoc l $ do
+  s <- access stageHintL
   ty' <- traverse elab ty
-  let statement = tcLet n s ty' !(elab tm) !(elab (PBlock t bs))
-  pure $ interceptAll (enterLoc l) statement
-elab (PBlock t (PLetRec l n ty tm :: bs)) = do
-  s <- gets stageHint
-  let statement = tcLetRec n s !(elab ty) !(elab tm) !(elab (PBlock t bs))
-  pure $ interceptAll (enterLoc l) statement
-elab (PBlock t (PBlockTm l tm :: [])) = elab tm
-elab (PBlock t (PDecl l n ty :: bs)) = do
-  s <- gets stageHint
-  let statement = tcDecl n s !(elab ty) !(elab (PBlock t bs))
-  pure $ interceptAll (enterLoc l) statement
+  tc (tcLet n s ty' !(elab tm) !(elab (PBlock t bs)))
+elab (PBlock t (PLetRec l n ty tm :: bs)) = enterLoc l $ do
+  s <- access stageHintL
+  tc $ tcLetRec n s !(elab ty) !(elab tm) !(elab (PBlock t bs))
+elab (PBlock t (PBlockTm l tm :: [])) = enterLoc l $ elab tm
+elab (PBlock t (PDecl l n ty :: bs)) = enterLoc l $ do
+  s <- access stageHintL
+  tc $ tcDecl n s !(elab ty) !(elab (PBlock t bs))
 elab (PBlock t (PBind l n ty tm :: bs)) = ?todoBind
 elab (PBlock t (PBlockTm l tm :: bs)) =
   elab (PBlock t (PBind l "_" Nothing tm :: bs))
-elab (PBlock t (PDirSt d b :: bs)) = ?fajj
-  -- case parseDirective d of
-  --     Nothing => ?fa_1
-  --     Just MtaDir => ?fa_3
-  --     Just ObjDir => ?fa_4
-  -- elab (PBlock t (b :: bs)) -- @@TODO
+elab (PBlock t (PDirSt d b :: bs)) = handleDirective d (elab (PBlock t bs))
 elab (PLit l) = ?todoLit
-elab (PDirTm d t) = elab t -- @@TODO
+elab (PDirTm d t) = handleDirective d (elab t)

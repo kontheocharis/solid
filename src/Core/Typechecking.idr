@@ -160,6 +160,7 @@ bind : {s : Stage} -> (n : Ident) -> AnnotAt s ns -> Context ns -> Context (ns :
 bind n annot ctx = addToContext True n annot here ctx
 
 -- Typechecking has access to metas
+-- @@TODO: refactor to use lenses
 public export
 interface (Monad m) => HasTc m where
   

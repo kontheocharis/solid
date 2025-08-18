@@ -87,12 +87,12 @@ record Directive where
   
 -- All known directives
 public export
-data KnownDirective : Directive -> Type where
-  MtaDir : KnownDirective (MkDirective "mta")
-  ObjDir : KnownDirective (MkDirective "obj")
+data KnownDirective : Type where
+  MtaDir : KnownDirective 
+  ObjDir : KnownDirective 
   
-public export
-parseDirective : (d : Directive) -> Maybe (KnownDirective d)
+export
+parseDirective : Directive -> Maybe KnownDirective
 parseDirective (MkDirective "mta") = Just MtaDir
 parseDirective (MkDirective "obj") = Just ObjDir
 parseDirective _ = Nothing
