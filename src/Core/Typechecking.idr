@@ -535,8 +535,12 @@ tcLet : HasTc m
   -> (tm : TcAll m)
   -> (rest : TcAll m)
   -> TcAll m
-tcLet name stage ty tm rest md ctx = do
-  ?fakk
+tcLet name stage ty tm rest md ctx inp = case (stage, ty) of
+  (Just st, Just ty) => ?ajaj
+  (Nothing, Just ty) => ?ajakj
+  (st, Nothing) => do
+    tm' <- tm Infer ctx (InferInput st)
+    ?rest md (define ?a ?b ctx) ?inp
   
 -- Check a declaration statement.
 public export

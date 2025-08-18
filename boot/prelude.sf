@@ -34,8 +34,6 @@ Irr : [b] (A : Type? b) -> Type zero
 #primitive
 irr : [b] [A : Type b] (a : A) -> Irr A
 
-#variable (A : Type)
-
 -- Sigma
 #primitive
 SIGMA : (A : TYPE) -> (A -> TYPE) -> TYPE
