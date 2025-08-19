@@ -145,7 +145,13 @@ ShowSyntax => Show TcError where
 
 -- Add a potentially self-referencing definition to the context.
 addToContext : {s : Stage} -> (isBound : Bool) -> (n : Ident) -> AnnotAt s ns -> Atom (ns :< n) -> Context ns -> Context (ns :< n)
-addToContext {s = stage} isBound n (MkAnnotAt ty sort) tm (MkContext (Val idents) con sorts defs stages size (Evidence ar bounds)) =
+addToContext {s = stage}
+  isBound n
+  (MkAnnotAt ty sort)
+  tm
+  (MkContext (Val idents)
+  con sorts defs stages size
+  (Evidence ar bounds)) =
   MkContext
     (Val (idents :< n)) (con :< ty) (sorts :< sort) (defs `o` Drop Id :< tm) (stages :< stage) (SS size)
     (if isBound then (Evidence (ar ++ [n]) $ wkS bounds ++ [(Val _, tm)]) else (Evidence ar $ wkS bounds))
@@ -191,10 +197,23 @@ data TcInput : TcMode -> Ctx -> Type where
   CheckInput : (s : Stage) -> AnnotAt s ms -> TcInput Check ms
   InferInput : (s : Maybe Stage) -> TcInput Infer ms
   
+export
+WeakSized (TcInput md) where
+  weakS e (CheckInput s a) = CheckInput s (weakS e a)
+  weakS e (InferInput s) = InferInput s
+  
 public export
 (.stage) : TcInput md ns -> Maybe Stage
 (.stage) (CheckInput s _) = Just s
 (.stage) (InferInput s) = s
+  
+public export
+0 weakPreservesStage : Size ns => Size ms
+  => {e : Wk ns ms}
+  -> {i : TcInput md ms}
+  -> (weakS e i).stage = i.stage
+weakPreservesStage {i = CheckInput s a} = Refl
+weakPreservesStage {i = InferInput s} = Refl
   
 -- Outputs are expressions corresponding to the inputs
 public export
@@ -352,7 +371,12 @@ freshMetaAnnot ctx s k = do
   pure $ MkAnnotAt ty.tm tySort.ty
   
 -- Fit the given annotation to the given kind.
-fitAnnot : HasTc m => Context ns -> (s : Stage) -> (k : SortKind s) -> (annotTy ns, AtomTy ns) -> m (AnnotFor s k annotTy ns)
+fitAnnot : HasTc m
+  => Context ns
+  -> (s : Stage)
+  -> (k : SortKind s)
+  -> (annotTy ns, AtomTy ns)
+  -> m (AnnotFor s k annotTy ns)
 fitAnnot ctx s k (vty, univ) = do
   d <- freshSortData ctx s k
   unify ctx univ d.a.ty
@@ -370,11 +394,17 @@ insertLam : HasTc m => Context ns
   -> (subject : Tc Check m)
   -> m (ExprAt piStage ns)
 insertLam ctx piStage piIdent bindAnnot bodyAnnot subject = do
-  s <- subject (bind piIdent bindAnnot.asAnnot ctx) (CheckInput _ (objZOrMta piStage (bodyAnnot.inner.open)).a.f)
+  s <- subject
+    (bind piIdent bindAnnot.asAnnot ctx)
+    (CheckInput _ (objZOrMta piStage (bodyAnnot.inner.open)).a.f)
   pure $ lam piStage piIdent piIdent bindAnnot bodyAnnot (close ctx.defs s.tm)
   
 -- Infer the given object as a type, also inferring its stage in the process.
-inferAnnot : HasTc m => Context ns -> (k : forall s . SortKind s) -> Tc Infer m -> m (s ** AnnotFor s k Atom ns)
+inferAnnot : HasTc m
+  => Context ns
+  -> (k : forall s . SortKind s)
+  -> Tc Infer m
+  -> m (s ** AnnotFor s k Atom ns)
 inferAnnot ctx kind ty = do
   MkExpr t (MkAnnot univ _ stage) <- ty ctx (InferInput Nothing)
   res <- fitAnnot ctx stage kind {annotTy = AtomTy} (t, univ)
@@ -430,7 +460,9 @@ tcPi x a b = switch $ ensureKnownStage $ \ctx, stage => case stage of
     bb <- freshMeta ctx Nothing layoutA.f
     a' <- a Check ctx (CheckInput _ (objA ba.tm).f)
     b' <- b Check (bind x (obj ba.tm a'.tm).a.f ctx) (CheckInput _ (wkS $ objA bb.tm).f)
-    pure $ pi Obj x (MkAnnotFor (ObjSort Sized ba.tm) a'.tm) (MkAnnotFor (ObjSort Sized bb.tm) (close ctx.defs b'.tm))
+    pure $ pi Obj x
+      (MkAnnotFor (ObjSort Sized ba.tm) a'.tm)
+      (MkAnnotFor (ObjSort Sized bb.tm) (close ctx.defs b'.tm))
 
 -- Check a lambda abstraction.
 public export
@@ -474,7 +506,9 @@ tcVar : HasTc m => Name -> TcAll m
 tcVar n = switch $ \ctx, (InferInput stage') => case lookup ctx n of
     Nothing => tcError ctx $ UnknownName n
     Just idx => do
-      let tm = var idx (MkAnnotAt {s = ctx.stages.indexS idx} (ctx.con.indexS idx) (ctx.sorts.indexS idx))
+      let tm = var idx (MkAnnotAt {s = ctx.stages.indexS idx}
+            (ctx.con.indexS idx)
+            (ctx.sorts.indexS idx))
       adjustStageIfNeeded ctx tm.p stage'
 
 -- Infer or switch a user-supplied hole
@@ -492,7 +526,7 @@ tcApps : HasTc m
   -> List (Ident, TcAll m)
   -> TcAll m
 tcApps subject args = switch $ \ctx, (InferInput reqStage) => do
-  subject'@(MkExpr _ fnAnnot) <- maybePackStage <$> subject Infer ctx (InferInput reqStage)
+  subject'@(MkExpr _ fnAnnot) <- (.mp) <$> subject Infer ctx (InferInput reqStage)
   case gatherPis fnAnnot (map fst args) of
     Gathered params ret => do
       args' <- tcSpine ctx args params
@@ -526,6 +560,13 @@ tcPrim p args = switch $ \ctx, (InferInput stage) => do
   sp <- tcSpine ctx (dispToList args) pParams
   adjustStageIfNeeded ctx (prim p (map (.tm) sp) pRet) stage
   
+inferStageIfNone : HasTc m => Maybe Stage -> (Stage -> TcAll m) -> TcAll m
+inferStageIfNone (Just s) m = m s
+inferStageIfNone Nothing m = \md, ctx, inp => case inp of
+  CheckInput s _ => m s md ctx inp
+  InferInput (Just s) => m s md ctx inp
+  InferInput Nothing => tcError ctx CannotInferStage
+  
 -- Check a let statement.
 public export
 tcLet : HasTc m
@@ -535,12 +576,16 @@ tcLet : HasTc m
   -> (tm : TcAll m)
   -> (rest : TcAll m)
   -> TcAll m
-tcLet name stage ty tm rest md ctx inp = case (stage, ty) of
-  (Just st, Just ty) => ?ajaj
-  (Nothing, Just ty) => ?ajakj
-  (st, Nothing) => do
-    tm' <- tm Infer ctx (InferInput st)
-    ?rest md (define ?a ?b ctx) ?inp
+tcLet name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => do
+  let Val ns = ctx.idents
+  tm' : ExprAt stage ns <- case ty of
+    Just ty => do
+      ty' <- ty Check ctx (CheckInput stage (objZOrMtaA stage))
+      tm Check ctx (CheckInput stage ty'.a)
+    Nothing => tm Infer ctx (InferInput (Just stage))
+  rest' <- rest md (define (Explicit, name) tm' ctx) (wkS inp)
+  let result = sub @{evalExprAtMaybe} {sns = ctx.size} {sms = SS ctx.size} (ctx.defs :< tm'.tm) rest'
+  pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result
   
 -- Check a declaration statement.
 public export
@@ -551,15 +596,31 @@ tcDecl : HasTc m
   -> (isPrimitive : Bool)
   -> (rest : TcAll m)
   -> TcAll m
-tcDecl name stage tm rest md ctx = do
-  ?fakkj
+tcDecl name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => ?ajko
+  -- let Val ns = ctx.idents
+  -- tm' : ExprAt stage ns <- case ty of
+  --   Just ty => do
+  --     ty' <- ty Check ctx (CheckInput stage (objZOrMtaA stage))
+  --     tm Check ctx (CheckInput stage ty'.a)
+  --   Nothing => tm Infer ctx (InferInput (Just stage))
+  -- rest' <- rest md (define (Explicit, name) tm' ctx) (wkS inp)
+  -- let result = sub @{evalExprAtMaybe} {sns = ctx.size} {sms = SS ctx.size} (ctx.defs :< tm'.tm) rest'
+  -- pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result
   
 -- Check a let-rec statement.
 public export
 tcLetRec : HasTc m
-  => Name
-  -> Maybe Stage
+  => (name : Name)
+  -> (stage : Maybe Stage)
+  -> (ty : (TcAll m))
+  -> (tm : TcAll m)
+  -> (rest : TcAll m)
   -> TcAll m
-  -> TcAll m
-  -> TcAll m
-  -> TcAll m
+tcLetRec name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => do
+  let Val ns = ctx.idents
+  ty' <- ty Check ctx (CheckInput stage (objZOrMtaA stage))
+  tm' <- tm Check (bind (Explicit, name) ty'.a ctx) (CheckInput stage (wkS ty'.a))
+  ?ajaja
+  -- rest' <- rest md (define (Explicit, name) tm' ?ctx) (wkS inp)
+  -- let result = sub @{evalExprAtMaybe} {sns = ctx.size} {sms = SS ctx.size} (ctx.defs :< tm'.tm) rest'
+  -- pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result

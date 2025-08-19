@@ -175,9 +175,9 @@ ExprAtMaybe (Just s) = ExprAt s
 
 -- Turn `ExprAtMaybe` into `Expr`
 public export
-maybePackStage : {s : Maybe Stage} -> ExprAtMaybe s ns -> Expr ns
-maybePackStage {s = Just s} (MkExprAt tm (MkAnnotAt ty sort)) = MkExpr tm (MkAnnot ty sort s)
-maybePackStage {s = Nothing} x = x
+(.mp) : {s : Maybe Stage} -> ExprAtMaybe s ns -> Expr ns
+(.mp) {s = Just s} (MkExprAt tm (MkAnnotAt ty sort)) = MkExpr tm (MkAnnot ty sort s)
+(.mp) {s = Nothing} x = x
 
 -- Operations
 public export
@@ -231,6 +231,21 @@ WeakSized (ExprAt s) where
 public export covering
 EvalSized Atom (ExprAt s) (ExprAt s) where
   evalS env (MkExprAt tm a) = MkExprAt (evalS env tm) (evalS env a)
+
+public export covering
+[relabelExprAtMaybe] {s : Maybe Stage} -> Relabel (ExprAtMaybe s) where
+  relabel {s = Just s} r e = relabel {tm = ExprAt s} r e
+  relabel {s = Nothing} r e = relabel {tm = Expr} r e
+
+public export covering
+[weakExprAtMaybe] {s : Maybe Stage} -> WeakSized (ExprAtMaybe s) where
+  weakS {s = Just s} e t = weakS {tm = ExprAt s} e t
+  weakS {s = Nothing} e t = weakS {tm = Expr} e t
+
+public export covering
+[evalExprAtMaybe] {s : Maybe Stage} -> EvalSized Atom (ExprAtMaybe s) (ExprAtMaybe s) where
+  evalS {s = Just s} e t = evalS {tm = ExprAt s} e t
+  evalS {s = Nothing} e t = evalS {tm = Expr} e t
 
 public export covering
 Relabel (Op ar) where

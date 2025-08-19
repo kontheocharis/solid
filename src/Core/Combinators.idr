@@ -71,6 +71,11 @@ objZOrMta : Size ns => Stage -> Atom ns -> Expr ns
 objZOrMta Obj a = objZ a
 objZOrMta Mta a = mta a
 
+public export covering
+objZOrMtaA : Size ns => (s : Stage) -> AnnotAt s ns
+objZOrMtaA Obj = objZA.f
+objZOrMtaA Mta = mtaA.f
+
 -- Sorts
 
 -- A sort can be either static (meta-level), dynamic (object-level with a
