@@ -263,11 +263,6 @@ interceptAll : HasTc m => (forall a . m a -> m a) -> TcAll m -> TcAll m
 interceptAll f x Check = \ctx, as => f (x Check ctx as)
 interceptAll f x Infer = \ctx, s => f (x Infer ctx s)
 
-public export
-mightKnowStage : HasTc m => (s : Maybe Stage) -> TcAll m -> TcAll m
--- mightKnowStage Nothing f = f
--- mightKnowStage (Just s) f {md = Check} = 
-
 -- Some useful shorthands
 
 resolve : HasTc m => Size ns => Atom ns -> m (Atom ns)
@@ -292,6 +287,9 @@ freshMeta ctx n annot = do -- @@Todo: use type
 -- Insert all lambdas implicit lambdas in a type-directed manner, without regard
 -- for what the expression is.
 insertAll : (HasTc m) => Context ns -> m (Expr ns) -> m (Expr ns)
+insertAll ctx expr = do
+  MkExpr tm ty <- expr
+  resolve ty.ty >>= ?aj
 
 -- Insert all lambdas implicit lambdas in a type-directed manner, unless the given expression is a
 -- matching implicit lambda.
@@ -313,18 +311,18 @@ ensureKnownStage : HasTc m
 ensureKnownStage f ctx (InferInput (Just s)) = f ctx s
 ensureKnownStage f ctx (InferInput Nothing) = tcError ctx CannotInferStage
 
--- Try to adjust the stage of an expression.
-tryAdjustStage : (HasTc m) => Context ns -> Expr ns -> (s : Stage) -> m (Maybe (ExprAt s ns))
+-- Coerce an expression to a given type.
+coerce : (HasTc m) => Expr ns -> Annot ns -> m (Tm ns)
 
 -- Adjust the stage of an expression.
 adjustStage : (HasTc m) => Context ns -> Expr ns -> (s : Stage) -> m (ExprAt s ns)
 
+-- Try to adjust the stage of an expression.
+tryAdjustStage : (HasTc m) => Context ns -> Expr ns -> (s : Stage) -> m (Maybe (ExprAt s ns))
+
 adjustStageIfNeeded : (HasTc m) => Context ns -> Expr ns -> (s : Maybe Stage) -> m (ExprAtMaybe s ns)
 adjustStageIfNeeded ctx expr Nothing = pure expr
 adjustStageIfNeeded ctx expr (Just s) = adjustStage ctx expr s
-
--- Coerce an expression to a given type.
-coerce : (HasTc m) => Expr ns -> Annot ns -> m (Tm ns)
 
 -- Unify two values in the given context.
 --
@@ -431,9 +429,9 @@ tcSpine ctx ((_, tm) :: tms) ((Val _, annot) :: annots) = do -- @@Todo: spine na
 public export
 tcMeta : HasTc m => {default Nothing name : Maybe Name} -> TcAll m
 tcMeta {name = name} Check = \ctx, (CheckInput _ annot) => do
-  -- mta <- freshMeta ctx name annot
-  -- whenJust name $ \n => addGoal (MkGoal (Just n) mta.p ctx)
-  pure ?faj
+  mta <- freshMeta ctx name annot
+  whenJust name $ \n => addGoal (MkGoal (Just n) mta.p ctx)
+  pure mta
 tcMeta {name = name} Infer = ensureKnownStage $ \ctx, stage => do
   annot <- freshMetaAnnot ctx stage Dyn -- remember, sized < dyn
   mta <- freshMeta ctx name annot
@@ -472,8 +470,8 @@ tcLam : HasTc m
   -> (body : TcAll m)
   -> TcAll m
 tcLam lamIdent bindTy body Check = \ctx, (CheckInput stage annot@(MkAnnotAt ty sort)) => do
-  resolve ty >>= \ty' => case forcePi stage lamIdent ty' of
-    Matching (MkPiData resolvedPi piIdent a b) => do
+  resolve ty >>= \ty' => case forcePiAt stage lamIdent ty' of
+    MatchingAt (MkPiData resolvedPi piIdent a b) => do
       -- Pi matches
       whenJust bindTy $ \bindTy' => do
         MkExprAt bindPi _ <- tcPi lamIdent bindTy' tcMeta Infer ctx (InferInput (Just stage))
@@ -482,14 +480,14 @@ tcLam lamIdent bindTy body Check = \ctx, (CheckInput stage annot@(MkAnnotAt ty s
         (bind lamIdent (a.asAnnot) ctx)
         (CheckInput _ (b.open.asAnnot))
       pure $ lam stage piIdent lamIdent a b (close ctx.defs body'.tm)
-    Mismatching piStage (MkPiData resolvedPi piIdent a b) => case fst piIdent of
+    MismatchingAt piStage (MkPiData resolvedPi piIdent a b) => case fst piIdent of
       -- Wasn't the right kind of pi; if it was implicit, insert a lambda
       Implicit => do
         tm' <- insertLam ctx piStage piIdent a b (tcLam lamIdent bindTy body Check)
         adjustStage ctx tm'.p stage
       -- Otherwise, we have the wrong kind of pi.
       _ => tcError ctx (WrongPiMode (fst piIdent) resolvedPi)
-    Otherwise other => do
+    OtherwiseAt other => do
       -- Otherwise try unify with a constructed pi
       createdPi <- tcPi lamIdent tcMeta tcMeta Infer ctx (InferInput (Just stage))
       unify ctx other createdPi.tm

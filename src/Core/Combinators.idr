@@ -196,23 +196,25 @@ record PiData (stage : Stage) (ns : Ctx) where
   b : AnnotFor stage Sized (AtomBody piIdent) ns
 
 public export
-data ForcePi : Stage -> Ctx -> Type where
+data ForcePi : Ctx -> Type where
   -- Matching pi
-  Matching : PiData stage ns -> ForcePi stage ns
-  -- Mismatching pi with the given stage
-  Mismatching : (stage' : Stage) -> PiData stage' ns -> ForcePi stage ns
+  Matching : (stage : Stage) -> PiData stage ns -> ForcePi ns
   -- Not a pi
-  Otherwise : AtomTy ns -> ForcePi stage ns
+  Otherwise : AtomTy ns -> ForcePi ns
 
--- Given a `potentialPi`, try to match it given that we expect something in
--- `mode` and `stage`.
+public export
+data ForcePiAt : Stage -> Ctx -> Type where
+  -- Matching pi
+  MatchingAt : PiData s ns -> ForcePiAt s ns
+  -- Mismatching pi with the given stage
+  MismatchingAt : (stage' : Stage) -> PiData stage' ns -> ForcePiAt s ns
+  -- Not a pi
+  OtherwiseAt : AtomTy ns -> ForcePiAt s ns
+
+-- Given a `potentialPi`, try to force it to be a pi type
 public export covering
-forcePi : Size ns
-  => (stage : Stage)
-  -> (ident : Ident)
-  -> (potentialPi : AtomTy ns)
-  -> ForcePi stage ns
-forcePi stage (mode, name) potentialPi
+forcePi : Size ns => (potentialPi : AtomTy ns) -> ForcePi ns
+forcePi potentialPi
   = case potentialPi.val of
     -- object-level pi
     resolvedPi@(RigidBinding piStage@Obj (Bound _ (BindObjPi (piMode, piName) ba bb a) b)) => 
@@ -222,20 +224,30 @@ forcePi stage (mode, name) potentialPi
         piData = MkPiData (promote resolvedPi) (piMode, piName)
           (MkAnnotFor (ObjSort Sized ba') (promote a))
           (MkAnnotFor (ObjSort Sized bb') (promoteBody b))
-      in case decEq (piMode, piStage) (mode, stage) of
-        Yes Refl => Matching piData
-        _ => Mismatching Obj piData
-    -- meta-level pi
+      in Matching Obj piData
     resolvedPi@(RigidBinding piStage@Mta (Bound _ (BindMtaPi (piMode, piName) a) b)) =>
       let
         piData = MkPiData (promote resolvedPi) (piMode, piName)
           (MkAnnotFor MtaSort (promote a))
           (MkAnnotFor MtaSort (promoteBody b))
-      in case decEq (piMode, piStage) (mode, stage) of
-        Yes Refl => Matching piData
-        _ => Mismatching Mta piData
+      in Matching Mta piData
     -- fail
     resolvedPi => Otherwise (promote resolvedPi)
+
+-- Given a `potentialPi`, try to match it given that we expect something in
+-- `mode` and `stage`.
+public export covering
+forcePiAt : Size ns
+  => (stage : Stage)
+  -> (ident : Ident)
+  -> (potentialPi : AtomTy ns)
+  -> ForcePiAt stage ns
+forcePiAt stage (mode, name) potentialPi = case forcePi potentialPi of
+  Matching piStage piData@(MkPiData resolvedPi (piMode, piName) a b) =>
+    case decEq (piMode, piStage) (mode, stage) of
+      Yes Refl => MatchingAt piData
+      _ => MismatchingAt piStage piData
+  Otherwise tm => OtherwiseAt tm
 
 -- Shorthand for meta-level pis.
 public export covering
@@ -264,13 +276,8 @@ data GatherPis : Arity -> Ctx -> Type where
 public export covering
 gatherPis : Size ns => Annot ns -> (ar : Arity) -> GatherPis ar ns
 gatherPis x [] = Gathered [] x
-gatherPis x ar@(n :: ns) = case forcePi Mta n x.ty of
-  -- It doesn't matter what stage we put because we construct the telescope in either case
-  -- @@Refactor: maybe this is too ugly but it will work for now
-  Matching (MkPiData resolvedPi piIdent a b) => case gatherPis b.open.asAnnot.p ns of
-    Gathered params ret => Gathered ((Val _, a.asAnnot.p) :: params) ret
-    TooMany c u t => TooMany (CS ns.count) (CS u) t
-  Mismatching stage' (MkPiData resolvedPi piIdent a b) => case gatherPis b.open.asAnnot.p ns of
+gatherPis x ar@(n :: ns) = case forcePi x.ty of
+  Matching _ (MkPiData resolvedPi piIdent a b) => case gatherPis b.open.asAnnot.p ns of
     Gathered params ret => Gathered ((Val _, a.asAnnot.p) :: params) ret
     TooMany c u t => TooMany (CS ns.count) (CS u) t
   Otherwise t => TooMany (CS ns.count) CZ t
