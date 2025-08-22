@@ -71,6 +71,16 @@ public export
 public export
 (Relabel (tm Value), Relabel (tm Syntax)) => Relabel (AnyDomain tm) where
   relabel r (Choice syn val) = Choice (relabel r syn) (relabel r val)
+  
+-- Atom binders
+namespace AtomBinder
+  public export
+  0 AtomBinder : Stage -> Reducibility -> Ident -> Ctx -> Type
+  AtomBinder s r = BinderShape s r Atom
+  
+  public export covering
+  promoteBinder : Size ns => {d : Domain} -> Binder s r d n ns -> AtomBinder s r n ns
+  promoteBinder = mapBinder (\t => promote t)
 
 -- Atom bodies
 namespace AtomBody
