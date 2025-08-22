@@ -330,50 +330,6 @@ fitAnnot ctx s k (vty, univ) = do
   unify ctx univ d.a.ty
   pure $ MkAnnotFor d vty
 
--- Insert all implicit applications in a type-directed manner, without regard
--- for what the expression is.
-insertAll : HasTc m => Context ns -> m (Expr ns) -> m (Expr ns)
-insertAll ctx mExpr = mExpr >>= insertAll' ctx
-  where
-    insertAll' : forall ns, m . HasTc m => Context ns -> Expr ns -> m (Expr ns)
-    insertAll' ctx expr = do
-      let (MkExpr tm (MkAnnot ty sort st)) = expr
-      tyr <- resolve ty
-      case forcePi tyr of
-        MatchingPi stage (MkPiData resolvedPi (Implicit, piName) a b) => do
-          subject <- freshMeta ctx Nothing a.asAnnot
-          insertAll' ctx $ apps expr
-            [(Val (Implicit, piName), subject.p)]
-            (apply b subject.tm).asAnnot.p
-        _ => pure $ MkExpr tm (MkAnnot tyr sort st)
-
--- Insert all implicit applications in a type-directed manner, unless the given expression is a
--- matching implicit lambda.
-insert : (HasTc m) => Context ns -> m (Expr ns) -> m (Expr ns)
-insert ctx mExpr = do
-  expr@(MkExpr tm (MkAnnot ty sort st)) <- mExpr
-  tmr <- resolve tm
-  case forceLam tmr of
-    MatchingLam Mta (BindMtaLam (Implicit, name)) body => pure expr
-    MatchingLam Obj (BindObjLam (Implicit, name) domBytes codBytes) body => pure expr
-    _ => insertAll ctx (pure expr)
-
--- Stage-aware `insert`.
-insertAt : (HasTc m) => Context ns -> {s : Stage} -> m (ExprAt s ns) -> m (ExprAt s ns)
-
--- Insert until a given name is reached.
-insertUntil : (HasTc m) => Context ns -> Name -> m (Expr ns) -> m (Expr ns)
-
--- Force a typechecking operation to be in checking mode. This might involve unifying with an
--- inferred type.
-public export
-switch : HasTc m => Tc Infer m -> TcAll m
-switch f Infer = f
-switch f Check = \ctx, (CheckInput stage annot) => do
-  result <- insertAt ctx $ f ctx (InferInput (Just stage))
-  unify ctx annot.ty result.annot.ty
-  pure result
-
 -- Ensure that the given `Maybe Stage` is `Just _`, eliminating with the
 -- supplied method.
 ensureKnownStage : HasTc m
@@ -396,6 +352,48 @@ tryAdjustStage : (HasTc m) => Context ns -> Expr ns -> (s : Stage) -> m (Maybe (
 adjustStageIfNeeded : (HasTc m) => Context ns -> Expr ns -> (s : Maybe Stage) -> m (ExprAtMaybe s ns)
 adjustStageIfNeeded ctx expr Nothing = pure expr
 adjustStageIfNeeded ctx expr (Just s) = adjustStage ctx expr s
+
+-- Insert all implicit applications in a type-directed manner, without regard
+-- for what the expression is.
+insertAll : HasTc m => Context ns -> {s : Stage} -> m (ExprAt s ns) -> m (ExprAt s ns)
+insertAll ctx mExpr = mExpr >>= insertAll' ctx
+  where
+    insertAll' : forall ns, m . HasTc m => Context ns -> {s : Stage} -> ExprAt s ns -> m (ExprAt s ns)
+    insertAll' ctx expr = do
+      let (MkExprAt tm (MkAnnotAt ty sort)) = expr
+      tyr <- resolve ty
+      case forcePi tyr of
+        MatchingPi stage (MkPiData resolvedPi (Implicit, piName) a b) => do
+          subject <- freshMeta ctx Nothing a.asAnnot
+          let res = apps expr.p
+                [(Val (Implicit, piName), subject.p)]
+                (apply b subject.tm).asAnnot
+          adjustStage ctx res.p _ >>= insertAll' ctx
+        _ => pure $ MkExprAt tm (MkAnnotAt tyr sort)
+
+-- Insert all implicit applications in a type-directed manner, unless the given expression is a
+-- matching implicit lambda.
+insert : (HasTc m) => Context ns -> {s : Stage} -> m (ExprAt s ns) -> m (ExprAt s ns)
+insert ctx mExpr = do
+  expr@(MkExprAt tm (MkAnnotAt ty sort)) <- mExpr
+  tmr <- resolve tm
+  case forceLam tmr of
+    MatchingLam Mta (BindMtaLam (Implicit, name)) body => pure expr
+    MatchingLam Obj (BindObjLam (Implicit, name) domBytes codBytes) body => pure expr
+    _ => insertAll ctx (pure expr)
+
+-- Insert until a given name is reached.
+insertUntil : (HasTc m) => Context ns -> Name -> m (Expr ns) -> m (Expr ns)
+
+-- Force a typechecking operation to be in checking mode. This might involve unifying with an
+-- inferred type.
+public export
+switch : HasTc m => Tc Infer m -> TcAll m
+switch f Infer = f
+switch f Check = \ctx, (CheckInput stage annot) => do
+  result <- insert ctx $ f ctx (InferInput (Just stage))
+  unify ctx annot.ty result.annot.ty
+  pure result
 
 -- Insert (some kind of an implicit) lambda from the given information.
 --
@@ -547,10 +545,10 @@ tcApps subject args = switch $ \ctx, (InferInput reqStage) => do
       args' <- tcSpine ctx args params
       let result = apps subject' args'
             -- @@Refactor: why does it have to be like this :((
-            (sub {tm = Annot} @{%search} @{ctx.size}
+            (sub {tm = AnnotAt _} @{%search} @{ctx.size}
               @{ctx.size + args'.count}
-              (ctx.defs ::< (map (.tm) args')) ret)
-      adjustStageIfNeeded ctx result reqStage
+              (ctx.defs ::< (map (.tm) args')) ret.f)
+      adjustStageIfNeeded ctx result.p reqStage
     TooMany extra under p => tcError ctx $ NotAPi fnAnnot.ty extra
 
 -- Check a primitive

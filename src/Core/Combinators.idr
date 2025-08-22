@@ -279,8 +279,8 @@ var : Size ns => Idx ns -> AnnotAt s ns -> ExprAt s ns
 var idx annot = MkExprAt (promote (varIdx idx)) annot
 
 public export covering
-apps : Size ns => Expr ns -> Spine ar Expr ns -> Annot ns -> Expr ns
-apps f xs a = MkExpr (promote $ sApps f.tm.syn (map (.tm.syn) xs)) a
+apps : Size ns => Expr ns -> Spine ar Expr ns -> AnnotAt s ns -> ExprAt s ns
+apps f xs a = MkExprAt (promote $ sApps f.tm.syn (map (.tm.syn) xs)) a
 
 -- Find a variable by its name in the context.
 public export covering
