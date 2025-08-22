@@ -203,18 +203,18 @@ record PiData (stage : Stage) (ns : Ctx) where
 public export
 data ForcePi : Ctx -> Type where
   -- Matching pi
-  Matching : (stage : Stage) -> PiData stage ns -> ForcePi ns
+  MatchingPi : (stage : Stage) -> PiData stage ns -> ForcePi ns
   -- Not a pi
-  Otherwise : AtomTy ns -> ForcePi ns
+  OtherwiseNotPi : AtomTy ns -> ForcePi ns
 
 public export
 data ForcePiAt : Stage -> Ctx -> Type where
   -- Matching pi
-  MatchingAt : PiData s ns -> ForcePiAt s ns
+  MatchingPiAt : PiData s ns -> ForcePiAt s ns
   -- Mismatching pi with the given stage
-  MismatchingAt : (stage' : Stage) -> PiData stage' ns -> ForcePiAt s ns
+  MismatchingPiAt : (stage' : Stage) -> PiData stage' ns -> ForcePiAt s ns
   -- Not a pi
-  OtherwiseAt : AtomTy ns -> ForcePiAt s ns
+  OtherwiseNotPiAt : AtomTy ns -> ForcePiAt s ns
 
 -- Given a `potentialPi`, try to force it to be a pi type
 public export covering
@@ -229,15 +229,15 @@ forcePi potentialPi
         piData = MkPiData (promote resolvedPi) (piMode, piName)
           (MkAnnotFor (ObjSort Sized ba') (promote a))
           (MkAnnotFor (ObjSort Sized bb') (promoteBody b))
-      in Matching Obj piData
+      in MatchingPi Obj piData
     resolvedPi@(RigidBinding piStage@Mta (Bound _ (BindMtaPi (piMode, piName) a) b)) =>
       let
         piData = MkPiData (promote resolvedPi) (piMode, piName)
           (MkAnnotFor MtaSort (promote a))
           (MkAnnotFor MtaSort (promoteBody b))
-      in Matching Mta piData
+      in MatchingPi Mta piData
     -- fail
-    resolvedPi => Otherwise (promote resolvedPi)
+    resolvedPi => OtherwiseNotPi (promote resolvedPi)
 
 -- Given a `potentialPi`, try to match it given that we expect something in
 -- `mode` and `stage`.
@@ -248,37 +248,25 @@ forcePiAt : Size ns
   -> (potentialPi : AtomTy ns)
   -> ForcePiAt stage ns
 forcePiAt stage (mode, name) potentialPi = case forcePi potentialPi of
-  Matching piStage piData@(MkPiData resolvedPi (piMode, piName) a b) =>
+  MatchingPi piStage piData@(MkPiData resolvedPi (piMode, piName) a b) =>
     case decEq (piMode, piStage) (mode, stage) of
-      Yes Refl => MatchingAt piData
-      _ => MismatchingAt piStage piData
-  Otherwise tm => OtherwiseAt tm
+      Yes Refl => MatchingPiAt piData
+      _ => MismatchingPiAt piStage piData
+  OtherwiseNotPi tm => OtherwiseNotPiAt tm
   
--- data ForceLam : Ctx -> Type where
---   MatchingLam : (stage : Stage) -> Binder stage Callable 
+public export
+data ForceLam : Ctx -> Type where
+  MatchingLam : (stage : Stage) -> AtomBinder stage Callable n ns -> AtomBody n ns -> ForceLam ns
+  OtherwiseNotLam : Atom ns -> ForceLam ns
 
 -- Given a `potentialLam`, try to force it to be a lambda
 public export covering
-forceLam : Size ns => (potentialLam : AtomTy ns) -> ForcePi ns
-forceLam potentialPi
-  = case potentialPi.val of
-    -- object-level pi
-    resolvedPi@(RigidBinding piStage@Obj (Bound _ (BindObjPi (piMode, piName) ba bb a) b)) => 
-      let
-        ba' = promote ba
-        bb' = promote bb
-        piData = MkPiData (promote resolvedPi) (piMode, piName)
-          (MkAnnotFor (ObjSort Sized ba') (promote a))
-          (MkAnnotFor (ObjSort Sized bb') (promoteBody b))
-      in Matching Obj piData
-    resolvedPi@(RigidBinding piStage@Mta (Bound _ (BindMtaPi (piMode, piName) a) b)) =>
-      let
-        piData = MkPiData (promote resolvedPi) (piMode, piName)
-          (MkAnnotFor MtaSort (promote a))
-          (MkAnnotFor MtaSort (promoteBody b))
-      in Matching Mta piData
-    -- fail
-    resolvedPi => Otherwise (promote resolvedPi)
+forceLam : Size ns => (potentialLam : Atom ns) -> ForceLam ns
+forceLam potentialLam = case potentialLam.val of
+  MtaCallable (Bound Mta binder body) => MatchingLam Mta (promoteBinder binder) (promoteBody body)
+  SimpObjCallable (Bound Obj binder body) => MatchingLam Obj (promoteBinder binder) (promoteBody body)
+  -- @@Consider: Do we need to handle the glued stuff?
+  _ => OtherwiseNotLam potentialLam
 
 -- Shorthand for meta-level pis.
 public export covering
@@ -308,7 +296,7 @@ public export covering
 gatherPis : Size ns => Annot ns -> (ar : Arity) -> GatherPis ar ns
 gatherPis x [] = Gathered [] x
 gatherPis x ar@(n :: ns) = case forcePi x.ty of
-  Matching _ (MkPiData resolvedPi piIdent a b) => case gatherPis b.open.asAnnot.p ns of
+  MatchingPi _ (MkPiData resolvedPi piIdent a b) => case gatherPis b.open.asAnnot.p ns of
     Gathered params ret => Gathered ((Val _, a.asAnnot.p) :: params) ret
     TooMany c u t => TooMany (CS ns.count) (CS u) t
-  Otherwise t => TooMany (CS ns.count) CZ t
+  OtherwiseNotPi t => TooMany (CS ns.count) CZ t

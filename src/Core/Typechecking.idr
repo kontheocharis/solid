@@ -340,7 +340,7 @@ insertAll ctx mExpr = mExpr >>= insertAll' ctx
       let (MkExpr tm (MkAnnot ty sort st)) = expr
       tyr <- resolve ty
       case forcePi tyr of
-        Matching stage (MkPiData resolvedPi (Implicit, piName) a b) => do
+        MatchingPi stage (MkPiData resolvedPi (Implicit, piName) a b) => do
           subject <- freshMeta ctx Nothing a.asAnnot
           insertAll' ctx $ apps expr
             [(Val (Implicit, piName), subject.p)]
@@ -352,10 +352,11 @@ insertAll ctx mExpr = mExpr >>= insertAll' ctx
 insert : (HasTc m) => Context ns -> m (Expr ns) -> m (Expr ns)
 insert ctx mExpr = do
   expr@(MkExpr tm (MkAnnot ty sort st)) <- mExpr
-  tyr <- resolve ty
-  case forcePi tyr of
-    Matching stage x => ?ajka_0
-    Otherwise x => ?ajka_1
+  tmr <- resolve tm
+  case forceLam tmr of
+    MatchingLam Mta (BindMtaLam (Implicit, name)) body => pure expr
+    MatchingLam Obj (BindObjLam (Implicit, name) domBytes codBytes) body => pure expr
+    _ => insertAll ctx (pure expr)
 
 -- Stage-aware `insert`.
 insertAt : (HasTc m) => Context ns -> {s : Stage} -> m (ExprAt s ns) -> m (ExprAt s ns)
@@ -487,7 +488,7 @@ tcLam : HasTc m
   -> TcAll m
 tcLam lamIdent bindTy body Check = \ctx, (CheckInput stage annot@(MkAnnotAt ty sort)) => do
   resolve ty >>= \ty' => case forcePiAt stage lamIdent ty' of
-    MatchingAt (MkPiData resolvedPi piIdent a b) => do
+    MatchingPiAt (MkPiData resolvedPi piIdent a b) => do
       -- Pi matches
       whenJust bindTy $ \bindTy' => do
         MkExprAt bindPi _ <- tcPi lamIdent bindTy' tcMeta Infer ctx (InferInput (Just stage))
@@ -496,14 +497,14 @@ tcLam lamIdent bindTy body Check = \ctx, (CheckInput stage annot@(MkAnnotAt ty s
         (bind lamIdent (a.asAnnot) ctx)
         (CheckInput _ (b.open.asAnnot))
       pure $ lam stage piIdent lamIdent a b (close ctx.defs body'.tm)
-    MismatchingAt piStage (MkPiData resolvedPi piIdent a b) => case fst piIdent of
+    MismatchingPiAt piStage (MkPiData resolvedPi piIdent a b) => case fst piIdent of
       -- Wasn't the right kind of pi; if it was implicit, insert a lambda
       Implicit => do
         tm' <- insertLam ctx piStage piIdent a b (tcLam lamIdent bindTy body Check)
         adjustStage ctx tm'.p stage
       -- Otherwise, we have the wrong kind of pi.
       _ => tcError ctx (WrongPiMode (fst piIdent) resolvedPi)
-    OtherwiseAt other => do
+    OtherwiseNotPiAt other => do
       -- Otherwise try unify with a constructed pi
       createdPi <- tcPi lamIdent tcMeta tcMeta Infer ctx (InferInput (Just stage))
       unify ctx other createdPi.tm
