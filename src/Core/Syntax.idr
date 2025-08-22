@@ -55,30 +55,34 @@ export infixr 5 $$
 -- Each of these might carry some data, which we mostly care about
 -- during codegen
 public export
-data Binder : Stage -> Reducibility -> Domain -> Ident -> Ctx -> Type where
+data BinderShape : Stage -> Reducibility -> (tm : Ctx -> Type) -> Ident -> Ctx -> Type where
   -- Internal lambda, does not store a name
-  InternalLam : Binder s Callable d n ns
+  InternalLam : BinderShape s Callable tm n ns
 
   -- Meta-level lambda
-  BindMtaLam : (n : Ident) -> Binder Mta Callable d n ns
+  BindMtaLam : (n : Ident) -> BinderShape Mta Callable tm n ns
 
   -- Object-level lambda
-  BindObjLam : (n : Ident) -> (domBytes : Term d ns) -> (codBytes : Term d ns) -> Binder Obj Callable d n ns
+  BindObjLam : (n : Ident) -> (domBytes : tm ns) -> (codBytes : tm ns) -> BinderShape Obj Callable tm n ns
 
   -- Meta-level let
-  BindMtaLet : (n : Ident) -> (ty : Term d ns) -> (rhs : Term d ns) -> Binder Mta Thunk d n ns
+  BindMtaLet : (n : Ident) -> (ty : tm ns) -> (rhs : tm ns) -> BinderShape Mta Thunk tm n ns
 
   -- Object-level let
-  BindObjLet : (n : Ident) -> (tyBytes : Term d ns) -> (ty : Term d ns) -> (rhs : Term d ns) -> Binder Obj Thunk d n ns
+  BindObjLet : (n : Ident) -> (tyBytes : tm ns) -> (ty : tm ns) -> (rhs : tm ns) -> BinderShape Obj Thunk tm n ns
 
   -- Meta-level pi
-  BindMtaPi : (n : Ident) -> (dom : Term d ns) -> Binder Mta Rigid d n ns
+  BindMtaPi : (n : Ident) -> (dom : tm ns) -> BinderShape Mta Rigid tm n ns
 
   -- Object-level pi
-  BindObjPi : (n : Ident) -> (domBytes : Term d ns) -> (codBytes : Term d ns) -> (dom : Term d ns) -> Binder Obj Rigid d n ns
+  BindObjPi : (n : Ident) -> (domBytes : tm ns) -> (codBytes : tm ns) -> (dom : tm ns) -> BinderShape Obj Rigid tm n ns
 
 public export
-traverseBinder : Applicative f => (Term d ns -> f (Term d' ms)) -> Binder md r d n ns -> f (Binder md r d' n ms)
+0 Binder : Stage -> Reducibility -> Domain -> Ident -> Ctx -> Type
+Binder s r d = BinderShape s r (Term d)
+
+public export
+traverseBinder : Applicative f => (tm ns -> f (tm' ms)) -> BinderShape md r tm n ns -> f (BinderShape md r tm' n ms)
 traverseBinder _ InternalLam = pure InternalLam
 traverseBinder _ (BindMtaLam n) = pure (BindMtaLam n)
 traverseBinder f (BindObjLam n ba bb) = BindObjLam n <$> f ba <*> f bb
@@ -88,11 +92,11 @@ traverseBinder f (BindMtaPi n a) = BindMtaPi n <$> f a
 traverseBinder f (BindObjPi n ba bb a) = BindObjPi n <$> f ba <*> f bb <*> f a
 
 public export
-mapBinder : (Term d ns -> Term d' ms) -> Binder md r d n ns -> Binder md r d' n ms
+mapBinder : (tm ns -> tm' ms) -> BinderShape md r tm n ns -> BinderShape md r tm' n ms
 mapBinder f b = (traverseBinder (Id . f) b).runIdentity
 
 public export
-displayIdent : Binder md r d n ns -> Maybe (Singleton n)
+displayIdent : BinderShape md r tm n ns -> Maybe (Singleton n)
 displayIdent InternalLam = Nothing
 displayIdent (BindMtaLam n) = Just (Val n)
 displayIdent (BindObjLam n _ _) = Just (Val n)
