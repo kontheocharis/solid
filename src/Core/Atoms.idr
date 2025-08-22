@@ -95,6 +95,11 @@ namespace AtomBody
     -> Body d n ns
     -> AtomBody n ns
   promoteBody b = promote {tm = \d => Body d n} b
+  
+  -- Apply a body to an argument
+  public export covering
+  apply : Size ns => AtomBody n ns -> Atom ns -> Atom ns
+  apply (Choice syn (Closure env v)) arg = promote (eval {val = Val} (env :< arg.val) v)
 
 -- An annotation is a type and a stage
 public export

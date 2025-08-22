@@ -332,30 +332,20 @@ fitAnnot ctx s k (vty, univ) = do
 
 -- Insert all implicit applications in a type-directed manner, without regard
 -- for what the expression is.
-insertAll : HasTc m => Context ns -> m (Expr ns) -> m (Expr ns)
-insertAll ctx mExpr = mExpr >>= insertAll' ctx
-  where
-    insertAll' : forall ns, m . HasTc m => Context ns -> Expr ns -> m (Expr ns)
-    insertAll' ctx expr = do
-      let (MkExpr tm (MkAnnot ty sort st)) = expr
-      tyr <- resolve ty
-      case forcePi tyr of
-        Matching stage (MkPiData resolvedPi (Implicit, piName) a b) => do
-          subject <- freshMeta ctx Nothing a.asAnnot
-          insertAll' ctx $ apps expr
-            [(Val (Implicit, piName), subject.p)]
-            (apply b subject.tm).asAnnot.p
-        _ => pure $ MkExpr tm (MkAnnot tyr sort st)
+insertAll : (HasTc m) => Context ns -> m (Expr ns) -> m (Expr ns)
+insertAll ctx mExpr = do
+  expr@(MkExpr tm (MkAnnot ty sort st)) <- mExpr
+  tyr <- resolve ty
+  let tyf = forcePi tyr
+  case tyf of
+    Matching stage (MkPiData resolvedPi (Implicit, piName) a b) => do
+      subject <- freshMeta ctx Nothing a.asAnnot
+      pure $ apps expr [(Val _, subject.p)] (apply b subject.tm).asAnnot.p
+    _ => pure $ MkExpr tm (MkAnnot tyr sort st)
 
 -- Insert all implicit applications in a type-directed manner, unless the given expression is a
 -- matching implicit lambda.
 insert : (HasTc m) => Context ns -> m (Expr ns) -> m (Expr ns)
-insert ctx mExpr = do
-  expr@(MkExpr tm (MkAnnot ty sort st)) <- mExpr
-  tyr <- resolve ty
-  case forcePi tyr of
-    Matching stage x => ?ajka_0
-    Otherwise x => ?ajka_1
 
 -- Stage-aware `insert`.
 insertAt : (HasTc m) => Context ns -> {s : Stage} -> m (ExprAt s ns) -> m (ExprAt s ns)

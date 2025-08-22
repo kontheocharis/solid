@@ -131,6 +131,11 @@ namespace AnnotFor
   public export covering
   (.open) : Size ns => AnnotFor s k (AtomBody n) ns -> AnnotFor s k Atom (ns :< n')
   (.open) (MkAnnotFor d i) = MkAnnotFor (wkS d) i.open
+
+  -- Apply a body annotation to an argument
+  public export covering
+  apply : Size ns => AnnotFor s k (AtomBody n) ns -> Atom ns -> AnnotFor s k Atom ns
+  apply (MkAnnotFor d i) arg = MkAnnotFor d (apply i arg)
   
 -- Language items
 
@@ -248,6 +253,32 @@ forcePiAt stage (mode, name) potentialPi = case forcePi potentialPi of
       Yes Refl => MatchingAt piData
       _ => MismatchingAt piStage piData
   Otherwise tm => OtherwiseAt tm
+  
+-- data ForceLam : Ctx -> Type where
+--   MatchingLam : (stage : Stage) -> Binder stage Callable 
+
+-- Given a `potentialLam`, try to force it to be a lambda
+public export covering
+forceLam : Size ns => (potentialLam : AtomTy ns) -> ForcePi ns
+forceLam potentialPi
+  = case potentialPi.val of
+    -- object-level pi
+    resolvedPi@(RigidBinding piStage@Obj (Bound _ (BindObjPi (piMode, piName) ba bb a) b)) => 
+      let
+        ba' = promote ba
+        bb' = promote bb
+        piData = MkPiData (promote resolvedPi) (piMode, piName)
+          (MkAnnotFor (ObjSort Sized ba') (promote a))
+          (MkAnnotFor (ObjSort Sized bb') (promoteBody b))
+      in Matching Obj piData
+    resolvedPi@(RigidBinding piStage@Mta (Bound _ (BindMtaPi (piMode, piName) a) b)) =>
+      let
+        piData = MkPiData (promote resolvedPi) (piMode, piName)
+          (MkAnnotFor MtaSort (promote a))
+          (MkAnnotFor MtaSort (promoteBody b))
+      in Matching Mta piData
+    -- fail
+    resolvedPi => Otherwise (promote resolvedPi)
 
 -- Shorthand for meta-level pis.
 public export covering
