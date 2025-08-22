@@ -6,6 +6,7 @@ import Common
 import Decidable.Equality
 import Data.Singleton
 import Core.Base
+import Utils
 import Core.Primitives.Definitions
 import Core.Syntax
 import Core.Evaluation
@@ -141,6 +142,14 @@ record ExprShape (ann : Ctx -> Type) (ns : Ctx) where
   constructor MkExpr
   tm : Atom ns
   annot : ann ns
+  
+public export
+tmL : Lens (ExprShape ann ns) (Atom ns)
+tmL = MkLens (.tm) (\x, u => { tm := x } u)
+  
+public export
+annotL : Lens (ExprShape ann ns) (ann ns)
+annotL = MkLens (.annot) (\x, u => { annot := x } u)
 
 -- Version of ExprAt which also packages the stage
 public export

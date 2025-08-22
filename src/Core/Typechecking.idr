@@ -6,6 +6,7 @@ import Common
 import Decidable.Equality
 import Data.Singleton
 import Data.DPair
+import Data.Maybe
 import Core.Base
 import Core.Primitives.Definitions
 import Core.Syntax
@@ -317,7 +318,7 @@ freshMetaAnnot ctx s k = do
   tySort <- freshSortData ctx s k <&> .a
   ty <- freshMeta ctx Nothing tySort
   pure $ MkAnnotAt ty.tm tySort.ty
-  
+
 -- Fit the given annotation to the given kind.
 fitAnnot : HasTc m
   => Context ns
@@ -350,7 +351,8 @@ adjustStage : (HasTc m) => Context ns -> Expr ns -> (s : Stage) -> m (ExprAt s n
 adjustStage' : (HasTc m) => Context ns -> Expr ns -> (s : Stage) -> m (Maybe (ExprAt s ns))
 adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Obj)) Obj = pure Nothing
 adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Mta)) Mta = pure Nothing
-adjustStage' ctx (MkExpr tm (MkAnnot ty sort Obj)) Mta = ?aj_5
+adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Obj)) Mta = pure $ Just (?ajk (quot @{ctx.size} (?aj)))
+  -- pure $ Just (quote )
 adjustStage' ctx (MkExpr tm (MkAnnot ty sort Mta)) Obj = ?aj_6
 
 adjustStageIfNeeded : (HasTc m) => Context ns -> Expr ns -> (s : Maybe Stage) -> m (ExprAtMaybe s ns)

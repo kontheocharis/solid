@@ -91,8 +91,11 @@ code (MkAnnotFor (ObjSort Sized by) ty) =
   MkAnnotFor MtaSort (PrimCode $> [(Val _, PrimSta $> [(Val _, by)]), (Val _, ty)])
 
 public export covering
-quote : ExprAt Obj ns -> ExprAt Mta ns
-quote x = ?quote_rhs
+quot : Size ns => ExprFor Obj k ns -> ExprFor Mta Static ns
+quot (MkExpr tm ann@(MkAnnotFor (ObjSort Dyn by) ty)) =
+  MkExpr (PrimQuote $> [(Val _, by), (Val _, ty), (Val _, tm)]) (code ann)
+quot (MkExpr tm ann@(MkAnnotFor (ObjSort Sized by) ty)) =
+  MkExpr (PrimQuote $> [(Val _, PrimSta $> [(Val _, by)]), (Val _, ty), (Val _, tm)]) (code ann)
 
 public export covering
 splice : ExprAt Obj ns -> ExprAt Mta ns

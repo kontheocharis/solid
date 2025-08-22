@@ -86,6 +86,11 @@ data SortKind : Stage -> Type where
   Dyn : SortKind s
   Sized : SortKind s
   
+public export
+loosestSortKind : (s : Stage) -> SortKind s
+loosestSortKind Mta = Static
+loosestSortKind Obj = Dyn
+  
 -- The accompanying data for a sort at a given stage.
 public export
 data SortData : (s : Stage) -> SortKind s -> Ctx -> Type where
@@ -111,6 +116,10 @@ namespace AnnotFor
   public export
   data AnnotFor : (s : Stage) -> SortKind s -> (annotTy : Ctx -> Type) -> (ns : Ctx) -> Type where
     MkAnnotFor : SortData s k ns -> (inner : annotTy ns) -> AnnotFor s k annotTy ns
+    
+  public export
+  ExprFor : (s : Stage) -> SortKind s -> (ns : Ctx) -> Type
+  ExprFor s k = ExprShape (AnnotFor s k Atom)
     
   -- The actual type of the annotation.
   public export

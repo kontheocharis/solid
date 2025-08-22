@@ -112,6 +112,10 @@ access (MkLens gt _) = gets gt
 export
 set : MonadState s m => Lens s s' -> s' -> m ()
 set (MkLens gt st) v = modify (st v)
+
+export
+map : Lens s s' -> (s' -> s') -> s -> s
+map (MkLens gt st) f x = st (f (gt x)) x
   
 export
 reset : MonadState s m => Lens s (Maybe s') -> m (Maybe s')
