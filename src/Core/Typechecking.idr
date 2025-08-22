@@ -346,8 +346,12 @@ coerce : (HasTc m) => Expr ns -> Annot ns -> m (Tm ns)
 -- Adjust the stage of an expression.
 adjustStage : (HasTc m) => Context ns -> Expr ns -> (s : Stage) -> m (ExprAt s ns)
 
--- Try to adjust the stage of an expression.
-tryAdjustStage : (HasTc m) => Context ns -> Expr ns -> (s : Stage) -> m (Maybe (ExprAt s ns))
+-- Adjust the stage of an expression if needed.
+adjustStage' : (HasTc m) => Context ns -> Expr ns -> (s : Stage) -> m (Maybe (ExprAt s ns))
+adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Obj)) Obj = pure Nothing
+adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Mta)) Mta = pure Nothing
+adjustStage' ctx (MkExpr tm (MkAnnot ty sort Obj)) Mta = ?aj_5
+adjustStage' ctx (MkExpr tm (MkAnnot ty sort Mta)) Obj = ?aj_6
 
 adjustStageIfNeeded : (HasTc m) => Context ns -> Expr ns -> (s : Maybe Stage) -> m (ExprAtMaybe s ns)
 adjustStageIfNeeded ctx expr Nothing = pure expr
@@ -381,9 +385,6 @@ insert ctx mExpr = do
     MatchingLam Mta (BindMtaLam (Implicit, name)) body => pure expr
     MatchingLam Obj (BindObjLam (Implicit, name) domBytes codBytes) body => pure expr
     _ => insertAll ctx (pure expr)
-
--- Insert until a given name is reached.
-insertUntil : (HasTc m) => Context ns -> Name -> m (Expr ns) -> m (Expr ns)
 
 -- Force a typechecking operation to be in checking mode. This might involve unifying with an
 -- inferred type.

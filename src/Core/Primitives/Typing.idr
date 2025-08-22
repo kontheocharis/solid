@@ -83,10 +83,16 @@ prim @{s} p sp pRet =
   let retSort = sub {sms = s + sp.count} (idS ::< sp) pRet.sort in
   MkExpr (Choice (sPrim p sp.syn) (vPrim p sp.val)) (MkAnnot ret retSort pRet.stage)
 
--- Create a primitive atom with the given data.
 public export covering
-aPrim : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility}
-  -> Primitive k r l ar
-  -> Spine ar Atom ns
-  -> Atom ns
-aPrim @{s} p sp = Choice (sPrim p sp.syn) (vPrim p sp.val)
+code : Size ns => AnnotFor Obj k Atom ns -> AnnotFor Mta Static Atom ns
+code (MkAnnotFor (ObjSort Dyn by) ty) =
+  MkAnnotFor MtaSort (PrimCode $> [(Val _, by), (Val _, ty)])
+code (MkAnnotFor (ObjSort Sized by) ty) =
+  MkAnnotFor MtaSort (PrimCode $> [(Val _, PrimSta $> [(Val _, by)]), (Val _, ty)])
+
+public export covering
+quote : ExprAt Obj ns -> ExprAt Mta ns
+quote x = ?quote_rhs
+
+public export covering
+splice : ExprAt Obj ns -> ExprAt Mta ns

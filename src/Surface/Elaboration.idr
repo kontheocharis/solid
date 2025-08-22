@@ -83,9 +83,9 @@ elab : (HasTc m) => PTm -> Elab (TcAll m)
 -- The annotation of the entry point of the program
 export covering
 mainAnnot : AnnotAt Obj [<]
-mainAnnot = (objZ (aPrim PrimIO [
-    (Val _, aPrim PrimZeroLayout []),
-    (Val _, aPrim PrimUnit [])])
+mainAnnot = (objZ (PrimIO $> [
+    (Val _, PrimZeroLayout $> []),
+    (Val _, PrimUnit $> [])])
   ).f.a
  
 export
