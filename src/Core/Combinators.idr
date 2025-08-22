@@ -105,6 +105,12 @@ WeakSized (SortData s k) where
   
 -- Convert a `SortData` to its corresponding annotation.
 public export covering
+sortBytes : Size ns => SortData Obj s ns -> Atom ns
+sortBytes (ObjSort Dyn by) = by
+sortBytes (ObjSort Sized by) = PrimSta $> [(Val _, by)]
+  
+-- Convert a `SortData` to its corresponding annotation.
+public export covering
 (.a) : Size ns => SortData s k ns -> AnnotAt s ns
 (.a) MtaSort = mtaA.f
 (.a) (ObjSort Dyn by) = (objDynA by).f

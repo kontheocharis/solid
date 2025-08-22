@@ -127,6 +127,12 @@ record AnnotAt (s : Stage) (ns : Ctx) where
   ty : AtomTy ns
   sort : AtomTy ns
 
+public export
+record AnnotShape (typ : Ctx -> Type) (srt : Ctx -> Type) (ns : Ctx) where
+  constructor MkAnnotShape
+  ty : typ ns
+  sort : srt ns
+
 namespace Annot
   -- Turn `AnnotAt` into `Annot`
   public export

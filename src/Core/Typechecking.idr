@@ -324,9 +324,9 @@ fitAnnot : HasTc m
   => Context ns
   -> (s : Stage)
   -> (k : SortKind s)
-  -> (annotTy ns, AtomTy ns)
+  -> AnnotShape annotTy AtomTy ns
   -> m (AnnotFor s k annotTy ns)
-fitAnnot ctx s k (vty, univ) = do
+fitAnnot ctx s k (MkAnnotShape vty univ) = do
   d <- freshSortData ctx s k
   unify ctx univ d.a.ty
   pure $ MkAnnotFor d vty
@@ -423,7 +423,7 @@ inferAnnot : HasTc m
   -> m (s ** AnnotFor s k Atom ns)
 inferAnnot ctx kind ty = do
   MkExpr t (MkAnnot univ _ stage) <- ty ctx (InferInput Nothing)
-  res <- fitAnnot ctx stage kind {annotTy = AtomTy} (t, univ)
+  res <- fitAnnot ctx stage kind (MkAnnotShape t univ)
   pure (stage ** res)
 
 -- Check a spine against a telescope.

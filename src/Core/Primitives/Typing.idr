@@ -85,17 +85,15 @@ prim @{s} p sp pRet =
 
 public export covering
 code : Size ns => AnnotFor Obj k Atom ns -> AnnotFor Mta Static Atom ns
-code (MkAnnotFor (ObjSort Dyn by) ty) =
-  MkAnnotFor MtaSort (PrimCode $> [(Val _, by), (Val _, ty)])
-code (MkAnnotFor (ObjSort Sized by) ty) =
-  MkAnnotFor MtaSort (PrimCode $> [(Val _, PrimSta $> [(Val _, by)]), (Val _, ty)])
+code (MkAnnotFor so ty) =
+  MkAnnotFor MtaSort (PrimCode $> [(Val _, (sortBytes so)), (Val _, ty)])
 
 public export covering
 quot : Size ns => ExprFor Obj k ns -> ExprFor Mta Static ns
-quot (MkExpr tm ann@(MkAnnotFor (ObjSort Dyn by) ty)) =
-  MkExpr (PrimQuote $> [(Val _, by), (Val _, ty), (Val _, tm)]) (code ann)
-quot (MkExpr tm ann@(MkAnnotFor (ObjSort Sized by) ty)) =
-  MkExpr (PrimQuote $> [(Val _, PrimSta $> [(Val _, by)]), (Val _, ty), (Val _, tm)]) (code ann)
+quot (MkExpr tm ann@(MkAnnotFor so ty)) =
+  MkExpr (PrimQuote $> [(Val _, sortBytes so), (Val _, ty), (Val _, tm)]) (code ann)
 
 public export covering
-splice : ExprAt Obj ns -> ExprAt Mta ns
+splice : Size ns => AnnotFor Obj k Atom ns -> Atom ns -> ExprFor Obj k ns
+splice uncoded@(MkAnnotFor so ty) tm =
+  MkExpr (PrimSplice $> [(Val _, (sortBytes so)), (Val _, ty), (Val _, tm)]) uncoded
