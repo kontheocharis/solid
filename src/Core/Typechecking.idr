@@ -364,7 +364,7 @@ insertAll ctx mExpr = mExpr >>= insertAll' ctx
   where
     insertAll' : forall ns, m . HasTc m => Context ns -> {s : Stage} -> ExprAt s ns -> m (ExprAt s ns)
     insertAll' ctx expr = do
-      let (MkExprAt tm (MkAnnotAt ty sort)) = expr
+      let (MkExpr tm (MkAnnotAt ty sort)) = expr
       tyr <- resolve ty
       case forcePi tyr of
         MatchingPi stage (MkPiData resolvedPi (Implicit, piName) a b) => do
@@ -373,13 +373,13 @@ insertAll ctx mExpr = mExpr >>= insertAll' ctx
                 [(Val (Implicit, piName), subject.p)]
                 (apply b subject.tm).asAnnot
           adjustStage ctx res.p _ >>= insertAll' ctx
-        _ => pure $ MkExprAt tm (MkAnnotAt tyr sort)
+        _ => pure $ MkExpr tm (MkAnnotAt tyr sort)
 
 -- Insert all implicit applications in a type-directed manner, unless the given expression is a
 -- matching implicit lambda.
 insert : (HasTc m) => Context ns -> {s : Stage} -> m (ExprAt s ns) -> m (ExprAt s ns)
 insert ctx mExpr = do
-  expr@(MkExprAt tm (MkAnnotAt ty sort)) <- mExpr
+  expr@(MkExpr tm (MkAnnotAt ty sort)) <- mExpr
   tmr <- resolve tm
   case forceLam tmr of
     MatchingLam Mta (BindMtaLam (Implicit, name)) body => pure expr
@@ -490,7 +490,7 @@ tcLam lamIdent bindTy body Check = \ctx, (CheckInput stage annot@(MkAnnotAt ty s
     MatchingPiAt (MkPiData resolvedPi piIdent a b) => do
       -- Pi matches
       whenJust bindTy $ \bindTy' => do
-        MkExprAt bindPi _ <- tcPi lamIdent bindTy' tcMeta Infer ctx (InferInput (Just stage))
+        MkExpr bindPi _ <- tcPi lamIdent bindTy' tcMeta Infer ctx (InferInput (Just stage))
         unify ctx resolvedPi bindPi
       body' <- body Check
         (bind lamIdent (a.asAnnot) ctx)

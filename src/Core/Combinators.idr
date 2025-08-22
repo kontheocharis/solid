@@ -147,7 +147,7 @@ glued v t = Choice (here) (Glued (LazyApps (ValDef (Level here) $$ []) t.val))
 -- Create a metavariable expression.
 public export covering
 meta : Size ns => MetaVar -> Spine ar Atom ns -> AnnotAt s ns -> ExprAt s ns
-meta m sp annot = MkExprAt (promote $ SimpApps (ValMeta m $$ map (force . (.val)) sp)) annot
+meta m sp annot = MkExpr (promote $ SimpApps (ValMeta m $$ map (force . (.val)) sp)) annot
       
 -- Create a lambda expression
 public export covering
@@ -164,13 +164,13 @@ lam piStage piIdent lamIdent bindAnnot bodyAnnot body =
     Mta => do
       let MkAnnotFor MtaSort bindTy = bindAnnot
       let MkAnnotFor MtaSort bodyClosure = bodyAnnot
-      MkExprAt
+      MkExpr
         (promote $ sMtaLam lamIdent body.open.syn)
         (mta (promote $ vMtaPi piIdent bindTy.val bodyClosure.val)).a.f
     Obj => do
       let MkAnnotFor (ObjSort Sized ba) bindTy = bindAnnot
       let MkAnnotFor (ObjSort Sized bb) bodyClosure = bodyAnnot
-      MkExprAt
+      MkExpr
         (promote $ sObjLam lamIdent ba.syn bb.syn body.open.syn)
         (obj (promote ptrLayout) (promote $ vObjPi piIdent ba.val bb.val bindTy.val bodyClosure.val)).a.f
           
@@ -276,11 +276,11 @@ mtaPi piIdent bindTy bodyTy = (pi Mta piIdent (MkAnnotFor MtaSort bindTy) (MkAnn
 -- Create a variable expression with the given index and annotation.
 public export covering
 var : Size ns => Idx ns -> AnnotAt s ns -> ExprAt s ns
-var idx annot = MkExprAt (promote (varIdx idx)) annot
+var idx annot = MkExpr (promote (varIdx idx)) annot
 
 public export covering
 apps : Size ns => Expr ns -> Spine ar Expr ns -> AnnotAt s ns -> ExprAt s ns
-apps f xs a = MkExprAt (promote $ sApps f.tm.syn (map (.tm.syn) xs)) a
+apps f xs a = MkExpr (promote $ sApps f.tm.syn (map (.tm.syn) xs)) a
 
 -- Find a variable by its name in the context.
 public export covering

@@ -136,29 +136,31 @@ namespace Annot
   (.f) : (e : Annot ns) -> AnnotAt e.stage ns
   (.f) (MkAnnot ty sort s) = MkAnnotAt ty sort
 
--- Version of ExprAt which also packages the stage
 public export
-record Expr (ns : Ctx) where
+record ExprShape (ann : Ctx -> Type) (ns : Ctx) where
   constructor MkExpr
   tm : Atom ns
-  annot : Annot ns
+  annot : ann ns
+
+-- Version of ExprAt which also packages the stage
+public export
+0 Expr : Ctx -> Type
+Expr = ExprShape Annot
 
 -- A typed expression at a given stage
 public export
-record ExprAt (s : Stage) (ns : Ctx) where
-  constructor MkExprAt
-  tm : Atom ns
-  annot : AnnotAt s ns
+0 ExprAt : Stage -> Ctx -> Type
+ExprAt s = ExprShape (AnnotAt s)
 
 namespace Expr
   -- Turn `ExprAt` into `Expr`
   public export
   (.p) : {s : Stage} -> ExprAt s ns -> Expr ns
-  (.p) (MkExprAt tm a) = MkExpr tm a.p
+  (.p) (MkExpr tm a) = MkExpr tm a.p
 
   public export
   (.f) : (e : Expr ns) -> ExprAt e.annot.stage ns
-  (.f) (MkExpr tm a) = MkExprAt tm a.f
+  (.f) (MkExpr tm a) = MkExpr tm a.f
   
   public export
   asTypeIn : Atom ns -> Annot ns -> Annot ns
@@ -179,7 +181,7 @@ namespace ExprAt
   
   public export
   (.a) : ExprAt s ns -> AnnotAt s ns
-  (.a) (MkExprAt ty (MkAnnotAt sort s)) = MkAnnotAt ty sort
+  (.a) (MkExpr ty (MkAnnotAt sort s)) = MkAnnotAt ty sort
 
 
 -- Helper to decide which `Expr` to pick based on an optional stage
@@ -191,7 +193,7 @@ ExprAtMaybe (Just s) = ExprAt s
 -- Turn `ExprAtMaybe` into `Expr`
 public export
 (.mp) : {s : Maybe Stage} -> ExprAtMaybe s ns -> Expr ns
-(.mp) {s = Just s} (MkExprAt tm (MkAnnotAt ty sort)) = MkExpr tm (MkAnnot ty sort s)
+(.mp) {s = Just s} (MkExpr tm (MkAnnotAt ty sort)) = MkExpr tm (MkAnnot ty sort s)
 (.mp) {s = Nothing} x = x
 
 -- Operations
@@ -237,15 +239,15 @@ EvalSized Atom Expr Expr where
 
 public export covering
 Relabel (ExprAt s) where
-  relabel r (MkExprAt t a) = MkExprAt (relabel r t) (relabel r a)
+  relabel r (MkExpr t a) = MkExpr (relabel r t) (relabel r a)
 
 public export covering
 WeakSized (ExprAt s) where
-  weakS e (MkExprAt t a) = MkExprAt (weakS e t) (weakS e a)
+  weakS e (MkExpr t a) = MkExpr (weakS e t) (weakS e a)
 
 public export covering
 EvalSized Atom (ExprAt s) (ExprAt s) where
-  evalS env (MkExprAt tm a) = MkExprAt (evalS env tm) (evalS env a)
+  evalS env (MkExpr tm a) = MkExpr (evalS env tm) (evalS env a)
 
 public export covering
 [relabelExprAtMaybe] {s : Maybe Stage} -> Relabel (ExprAtMaybe s) where
