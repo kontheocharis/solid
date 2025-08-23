@@ -20,6 +20,14 @@ record AnyDomain (tm : Domain -> Ctx -> Type) (ns : Ctx) where
   syn : Lazy (tm Syntax ns)
   val : Lazy (tm Value ns)
   
+public export
+newSyn : tm Syntax ns -> AnyDomain tm ns -> AnyDomain tm ns
+newSyn syn' (Choice syn val) = Choice syn' val
+
+public export
+newVal : tm Value ns -> AnyDomain tm ns -> AnyDomain tm ns
+newVal val' (Choice syn val) = Choice syn val'
+  
 -- An atom is a term and a value at the same time.
 public export
 Atom : Ctx -> Type
@@ -119,6 +127,12 @@ record Annot (ns : Ctx) where
   ty : AtomTy ns
   sort : AtomTy ns
   stage : Stage
+
+public export
+record AnnotShape (typ : Ctx -> Type) (srt : Ctx -> Type) (ns : Ctx) where
+  constructor MkAnnotShape
+  ty : typ ns
+  sort : srt ns
   
 -- An annotation at a given stage, which is a type and a sort.
 public export
@@ -126,12 +140,10 @@ record AnnotAt (s : Stage) (ns : Ctx) where
   constructor MkAnnotAt
   ty : AtomTy ns
   sort : AtomTy ns
-
+  
 public export
-record AnnotShape (typ : Ctx -> Type) (srt : Ctx -> Type) (ns : Ctx) where
-  constructor MkAnnotShape
-  ty : typ ns
-  sort : srt ns
+(.shape) : AnnotAt s ns -> AnnotShape AtomTy AtomTy ns
+(MkAnnotAt ty sort) .shape = MkAnnotShape ty sort 
 
 namespace Annot
   -- Turn `AnnotAt` into `Annot`
@@ -156,6 +168,10 @@ tmL = MkLens (.tm) (\x, u => { tm := x } u)
 public export
 annotL : Lens (ExprShape ann ns) (ann ns)
 annotL = MkLens (.annot) (\x, u => { annot := x } u)
+
+public export
+mapAnnot : (ann ns -> ann' ns) -> ExprShape ann ns -> ExprShape ann' ns
+mapAnnot f (MkExpr tm annot) = MkExpr tm (f annot)
 
 -- Version of ExprAt which also packages the stage
 public export

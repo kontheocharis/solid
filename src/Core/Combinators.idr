@@ -17,6 +17,12 @@ import Core.Atoms
 -- All these should only be called on *well-typed terms!*
 
 public export covering
+resolve : HasMetas m => Size ns => Atom ns -> m sm (Atom ns)
+resolve x = do
+  t <- resolveGlueAndMetas {sm = sm} x.val
+  pure $ promote t
+
+public export covering
 ($>) : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility}
     -> Primitive k r na ar
     -> Spine ar Atom ns
@@ -233,9 +239,9 @@ data ForcePiAt : Stage -> Ctx -> Type where
 
 -- Given a `potentialPi`, try to force it to be a pi type
 public export covering
-forcePi : Size ns => (potentialPi : AtomTy ns) -> ForcePi ns
+forcePi : HasMetas m => Size ns => (potentialPi : AtomTy ns) -> m sm (ForcePi ns)
 forcePi potentialPi
-  = case potentialPi.val of
+  = resolve potentialPi >>= \a => case a.val of
     -- object-level pi
     resolvedPi@(RigidBinding piStage@Obj (Bound _ (BindObjPi (piMode, piName) ba bb a) b)) => 
       let
@@ -244,30 +250,30 @@ forcePi potentialPi
         piData = MkPiData (promote resolvedPi) (piMode, piName)
           (MkAnnotFor (ObjSort Sized ba') (promote a))
           (MkAnnotFor (ObjSort Sized bb') (promoteBody b))
-      in MatchingPi Obj piData
+      in pure $ MatchingPi Obj piData
     resolvedPi@(RigidBinding piStage@Mta (Bound _ (BindMtaPi (piMode, piName) a) b)) =>
       let
         piData = MkPiData (promote resolvedPi) (piMode, piName)
           (MkAnnotFor MtaSort (promote a))
           (MkAnnotFor MtaSort (promoteBody b))
-      in MatchingPi Mta piData
+      in pure $ MatchingPi Mta piData
     -- fail
-    resolvedPi => OtherwiseNotPi (promote resolvedPi)
+    v => pure $ OtherwiseNotPi (newVal v potentialPi)
 
 -- Given a `potentialPi`, try to match it given that we expect something in
 -- `mode` and `stage`.
 public export covering
-forcePiAt : Size ns
+forcePiAt : HasMetas m => Size ns
   => (stage : Stage)
   -> (ident : Ident)
   -> (potentialPi : AtomTy ns)
-  -> ForcePiAt stage ns
-forcePiAt stage (mode, name) potentialPi = case forcePi potentialPi of
+  -> m sm (ForcePiAt stage ns)
+forcePiAt stage (mode, name) potentialPi = forcePi potentialPi >>= \case
   MatchingPi piStage piData@(MkPiData resolvedPi (piMode, piName) a b) =>
-    case decEq (piMode, piStage) (mode, stage) of
+    pure $ case decEq (piMode, piStage) (mode, stage) of
       Yes Refl => MatchingPiAt piData
       _ => MismatchingPiAt piStage piData
-  OtherwiseNotPi tm => OtherwiseNotPiAt tm
+  OtherwiseNotPi tm => pure $ OtherwiseNotPiAt tm
   
 public export
 data ForceLam : Ctx -> Type where
@@ -276,12 +282,12 @@ data ForceLam : Ctx -> Type where
 
 -- Given a `potentialLam`, try to force it to be a lambda
 public export covering
-forceLam : Size ns => (potentialLam : Atom ns) -> ForceLam ns
-forceLam potentialLam = case potentialLam.val of
-  MtaCallable (Bound Mta binder body) => MatchingLam Mta (promoteBinder binder) (promoteBody body)
-  SimpObjCallable (Bound Obj binder body) => MatchingLam Obj (promoteBinder binder) (promoteBody body)
+forceLam : HasMetas m => Size ns => (potentialLam : Atom ns) -> m sm (ForceLam ns)
+forceLam potentialLam = resolve potentialLam >>= \a => case a.val of
+  MtaCallable (Bound Mta binder body) => pure $ MatchingLam Mta (promoteBinder binder) (promoteBody body)
+  SimpObjCallable (Bound Obj binder body) => pure $ MatchingLam Obj (promoteBinder binder) (promoteBody body)
   -- @@Consider: Do we need to handle the glued stuff?
-  _ => OtherwiseNotLam potentialLam
+  v => pure $ OtherwiseNotLam (newVal v potentialLam)
 
 -- Shorthand for meta-level pis.
 public export covering
@@ -308,10 +314,10 @@ data GatherPis : Arity -> Ctx -> Type where
   TooMany : (extra : Count ar) -> (under : Count ar') -> AtomTy (ns ::< ar') -> GatherPis ar ns
 
 public export covering
-gatherPis : Size ns => Annot ns -> (ar : Arity) -> GatherPis ar ns
-gatherPis x [] = Gathered [] x
-gatherPis x ar@(n :: ns) = case forcePi x.ty of
-  MatchingPi _ (MkPiData resolvedPi piIdent a b) => case gatherPis b.open.asAnnot.p ns of
-    Gathered params ret => Gathered ((Val _, a.asAnnot.p) :: params) ret
-    TooMany c u t => TooMany (CS ns.count) (CS u) t
-  OtherwiseNotPi t => TooMany (CS ns.count) CZ t
+gatherPis : HasMetas m => Size ns => Annot ns -> (ar : Arity) -> m sm (GatherPis ar ns)
+gatherPis x [] = pure $ Gathered [] x
+gatherPis x ar@(n :: ns) = forcePi x.ty >>= \case
+  MatchingPi _ (MkPiData resolvedPi piIdent a b) => gatherPis b.open.asAnnot.p ns >>= \case
+    Gathered params ret => pure $ Gathered ((Val _, a.asAnnot.p) :: params) ret
+    TooMany c u t => pure $ TooMany (CS ns.count) (CS u) t
+  OtherwiseNotPi t => pure $ TooMany (CS ns.count) CZ t

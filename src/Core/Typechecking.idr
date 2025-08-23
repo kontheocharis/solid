@@ -266,20 +266,21 @@ interceptAll f x Infer = \ctx, s => f (x Infer ctx s)
 
 -- Some useful shorthands
 
-resolve : HasTc m => Size ns => Atom ns -> m (Atom ns)
-resolve x = do
-  t <- enterMetas $ resolveGlueAndMetas {sm = SolvingAllowed} @{metas} x.val
-  pure $ promote t
-
 -- This should probably never be used.
 -- promoteWithoutDefs : Size ns -> {d : Domain} -> Term d ns -> Atom ns
 -- promoteWithoutDefs s {d = Syntax} tm = Choice tm (eval id tm)
 -- promoteWithoutDefs s {d = Value} val = Choice (quote val) val
 
+solving : HasTc m => (forall m' . HasMetas m' => m' SolvingAllowed t) -> m t
+solving @{tc} f = enterMetas (f {m' = metasM @{tc}} @{metas @{tc}})
+
+reading : HasTc m => (forall m' . HasMetas m' => m' SolvingNotAllowed t) -> m t
+reading @{tc} f = enterMetas (f {m' = metasM @{tc}} @{metas @{tc}})
+
 -- Create a fresh metavariable
 freshMeta : HasTc m => Context ns -> Maybe Name -> AnnotAt s ns -> m (ExprAt s ns)
 freshMeta ctx n annot = do -- @@Todo: use type
-  m <- enterMetas $ newMeta {sm = SolvingAllowed} @{metas} n
+  m <- solving $ newMeta n
   -- Get all the bound variables in the context, and apply them to the
   -- metavariable. This will later result in the metavariable being solved as a
   -- lambda of all these variables.
@@ -351,9 +352,11 @@ adjustStage : (HasTc m) => Context ns -> Expr ns -> (s : Stage) -> m (ExprAt s n
 adjustStage' : (HasTc m) => Context ns -> Expr ns -> (s : Stage) -> m (Maybe (ExprAt s ns))
 adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Obj)) Obj = pure Nothing
 adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Mta)) Mta = pure Nothing
-adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Obj)) Mta = pure $ Just (?ajk (quot @{ctx.size} (?aj)))
-  -- pure $ Just (quote )
-adjustStage' ctx (MkExpr tm (MkAnnot ty sort Mta)) Obj = ?aj_6
+adjustStage' ctx e@(MkExpr tm ann@(MkAnnot ty sort s@Obj)) s'@Mta = do
+  ann' <- fitAnnot ctx s (loosestSortKind s) ann.f.shape
+  let e' = quot @{ctx.size} (mapAnnot (\_ => ann') e)
+  pure $ Just (mapAnnot (\a => a.asAnnot) e')
+adjustStage' ctx (MkExpr tm ann@(MkAnnot ty sort Mta)) s@Obj = ?kdo
 
 adjustStageIfNeeded : (HasTc m) => Context ns -> Expr ns -> (s : Maybe Stage) -> m (ExprAtMaybe s ns)
 adjustStageIfNeeded ctx expr Nothing = pure expr
@@ -367,23 +370,21 @@ insertAll ctx mExpr = mExpr >>= insertAll' ctx
     insertAll' : forall ns, m . HasTc m => Context ns -> {s : Stage} -> ExprAt s ns -> m (ExprAt s ns)
     insertAll' ctx expr = do
       let (MkExpr tm (MkAnnotAt ty sort)) = expr
-      tyr <- resolve ty
-      case forcePi tyr of
+      reading (forcePi ty) >>= \case
         MatchingPi stage (MkPiData resolvedPi (Implicit, piName) a b) => do
           subject <- freshMeta ctx Nothing a.asAnnot
           let res = apps expr.p
                 [(Val (Implicit, piName), subject.p)]
                 (apply b subject.tm).asAnnot
           adjustStage ctx res.p _ >>= insertAll' ctx
-        _ => pure $ MkExpr tm (MkAnnotAt tyr sort)
+        _ => pure $ MkExpr tm (MkAnnotAt ty sort)
 
 -- Insert all implicit applications in a type-directed manner, unless the given expression is a
 -- matching implicit lambda.
 insert : (HasTc m) => Context ns -> {s : Stage} -> m (ExprAt s ns) -> m (ExprAt s ns)
 insert ctx mExpr = do
   expr@(MkExpr tm (MkAnnotAt ty sort)) <- mExpr
-  tmr <- resolve tm
-  case forceLam tmr of
+  reading (forceLam tm) >>= \case
     MatchingLam Mta (BindMtaLam (Implicit, name)) body => pure expr
     MatchingLam Obj (BindObjLam (Implicit, name) domBytes codBytes) body => pure expr
     _ => insertAll ctx (pure expr)
@@ -488,7 +489,7 @@ tcLam : HasTc m
   -> (body : TcAll m)
   -> TcAll m
 tcLam lamIdent bindTy body Check = \ctx, (CheckInput stage annot@(MkAnnotAt ty sort)) => do
-  resolve ty >>= \ty' => case forcePiAt stage lamIdent ty' of
+  reading (forcePiAt stage lamIdent ty) >>= \case
     MatchingPiAt (MkPiData resolvedPi piIdent a b) => do
       -- Pi matches
       whenJust bindTy $ \bindTy' => do
@@ -543,7 +544,7 @@ tcApps : HasTc m
   -> TcAll m
 tcApps subject args = switch $ \ctx, (InferInput reqStage) => do
   subject'@(MkExpr _ fnAnnot) <- (.mp) <$> subject Infer ctx (InferInput reqStage)
-  case gatherPis fnAnnot (map fst args) of
+  reading (gatherPis fnAnnot (map fst args)) >>= \case
     Gathered params ret => do
       args' <- tcSpine ctx args params
       let result = apps subject' args'

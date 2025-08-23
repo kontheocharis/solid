@@ -97,3 +97,16 @@ public export covering
 splice : Size ns => AnnotFor Obj k Atom ns -> Atom ns -> ExprFor Obj k ns
 splice uncoded@(MkAnnotFor so ty) tm =
   MkExpr (PrimSplice $> [(Val _, (sortBytes so)), (Val _, ty), (Val _, tm)]) uncoded
+  
+data ForceTo : (tm : Ctx -> Type) -> (info : Ctx -> Type) -> Ctx -> Type where
+  Matching : forall tm . info ns -> ForceTo tm info ns
+  NonMatching : forall tm . tm ns -> ForceTo tm info ns
+  
+public export covering
+forceCode : HasMetas m => Size ns
+  => (potentialCode : Atom ns)
+  -> m SolvingNotAllowed (ForceTo Atom (AnnotFor Obj k AtomTy) ns)
+forceCode potentialCode = resolve potentialCode >>= \a => case a.val of
+  SimpPrimNormal (SimpApplied PrimCode [(Val _, by), (Val _, ty)]) => ?jajjjj
+  v => ?ajja
+
