@@ -233,21 +233,24 @@ ensureKnownStage f ctx (InferInput Nothing) = tcError ctx CannotInferStage
 -- Coerce an expression to a given type.
 coerce : (HasTc m) => Expr ns -> Annot ns -> m (Tm ns)
 
--- Adjust the stage of an expression.
-adjustStage : (HasTc m) => Context ns -> Expr ns -> (s : Stage) -> m (ExprAt s ns)
-
 -- Adjust the stage of an expression if needed.
-adjustStage' : (HasTc m) => Context ns -> Expr ns -> (s : Stage) -> m (Maybe (ExprAt s ns))
-adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Obj)) Obj = pure Nothing
-adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Mta)) Mta = pure Nothing
+adjustStage' : (HasTc m) => Context ns -> (e : Expr ns) -> (s : Stage) -> m (Either (e.annot.stage = s) (ExprAt s ns))
+adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Obj)) Obj = pure $ Left Refl
+adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Mta)) Mta = pure $ Left Refl
 adjustStage' ctx e@(MkExpr tm ann@(MkAnnot ty sort s@Obj)) s'@Mta = do
   ann' <- fitAnnot ctx Obj loosestSortKind ann.f.shape
-  pure $ Just (quot @{ctx.size} (MkExpr tm ann'))
+  pure $ Right (quot @{ctx.size} (MkExpr tm ann'))
 adjustStage' ctx (MkExpr tm ann@(MkAnnot ty sort s@Mta)) s'@Obj = solving (forceCode ctx ty) >>= \case
   Matching [(_, by), (_, ty)] => do
     ann' <- fitAnnot ctx Obj loosestSortKind (MkAnnotShape ty (objA by).ty)
-    pure $ Just (splice @{ctx.size} ann' tm)
+    pure $ Right (splice @{ctx.size} ann' tm)
   NonMatching other => tcError ctx $ CannotCoerceToObj other 
+
+-- Adjust the stage of an expression.
+adjustStage : (HasTc m) => Context ns -> Expr ns -> (s : Stage) -> m (ExprAt s ns)
+adjustStage ctx e@(MkExpr tm ann) s = adjustStage' ctx e s >>= \case
+  Left Refl => pure $ MkExpr tm ann.f
+  Right e' => pure e'
 
 adjustStageIfNeeded : (HasTc m) => Context ns -> Expr ns -> (s : Maybe Stage) -> m (ExprAtMaybe s ns)
 adjustStageIfNeeded ctx expr Nothing = pure expr
@@ -504,7 +507,7 @@ tcDecl : HasTc m
   -> (isPrimitive : Bool)
   -> (rest : TcAll m)
   -> TcAll m
-tcDecl name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => ?ajko
+tcDecl name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => ?tcDeclImpl
   -- let Val ns = ctx.idents
   -- tm' : ExprAt stage ns <- case ty of
   --   Just ty => do
@@ -528,7 +531,7 @@ tcLetRec name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp =
   let Val ns = ctx.idents
   ty' <- ty Check ctx (CheckInput stage (objZOrMtaA stage))
   tm' <- tm Check (bind (Explicit, name) ty'.a ctx) (CheckInput stage (wkS ty'.a))
-  ?ajaja
+  ?tcLetRecImpl
   -- rest' <- rest md (define (Explicit, name) tm' ?ctx) (wkS inp)
   -- let result = sub @{evalExprAtMaybe} {sns = ctx.size} {sms = SS ctx.size} (ctx.defs :< tm'.tm) rest'
   -- pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result
