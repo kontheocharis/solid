@@ -12,6 +12,7 @@ import Core.Metavariables
 import Core.Unification
 import Core.Primitives.Rules
 import Core.Atoms
+import Core.Context
 
 -- Annotation versions of syntax
 -- All these should only be called on *well-typed terms!*
@@ -177,13 +178,43 @@ meta m sp annot = MkExpr (aMeta m sp) annot
 
 -- Create a fresh metavariable
 public export covering
-newMeta : HasMetas m => Size ns => Maybe Name -> m sm (Atom ns)
-newMeta {ns = ns} n = do -- @@Todo: use type
+freshMetaAtom : HasMetas m => Context ns -> Maybe Name -> m sm (Atom ns)
+freshMetaAtom {ns = ns} ctx n = do
   m <- newMeta n
   -- Get all the bound variables in the context, and apply them to the
   -- metavariable. This will later result in the metavariable being solved as a
   -- lambda of all these variables.
-  pure $ aMeta m ?ins
+  pure $ aMeta m (snd ctx.binds)
+
+-- Create a fresh metavariable
+public export covering
+freshMeta : HasMetas m => Context ns -> Maybe Name -> AnnotAt s ns -> m sm (ExprAt s ns)
+freshMeta ctx n annot = do -- @@Todo: use type
+  m <- newMeta n
+  -- Get all the bound variables in the context, and apply them to the
+  -- metavariable. This will later result in the metavariable being solved as a
+  -- lambda of all these variables.
+  pure $ meta m (snd ctx.binds) annot
+  
+-- Create a `SortData` instance for the given stage and sort kind, by instantiating metas
+-- for the unknown information (byte sizes).
+public export covering
+freshSortData : HasMetas m => Context ns -> (s : Stage) -> (k : SortKind s) -> m sm (SortData s k ns)
+freshSortData ctx Mta k = pure $ MtaSort 
+freshSortData ctx Obj Dyn = do
+  b <- freshMeta ctx Nothing layoutA.f
+  pure $ ObjSort Dyn b.tm
+freshSortData ctx Obj Sized = do
+  b <- freshMeta ctx Nothing layoutDynA.f
+  pure $ ObjSort Sized b.tm
+  
+-- Create a fresh annotation for the given stage and sort kind.
+public export covering
+freshMetaAnnot : HasMetas m => Context ns -> (s : Stage) -> SortKind s -> m sm (AnnotAt s ns)
+freshMetaAnnot ctx s k = do
+  tySort <- freshSortData ctx s k <&> .a
+  ty <- freshMeta ctx Nothing tySort
+  pure $ MkAnnotAt ty.tm tySort.ty
       
 -- Create a lambda expression
 public export covering

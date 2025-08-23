@@ -15,6 +15,7 @@ import Core.Unification
 import Core.Primitives.Rules
 import Core.Atoms
 import Core.Combinators
+import Core.Context
 
 arg : {n : _} -> Expr ns -> (Singleton n, Annot ns)
 arg e = (Val _, e.a)

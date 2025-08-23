@@ -1,7 +1,6 @@
 -- A library for compiler pipelines, à la André Videla.
 module Pipeline.Core
 
-import Utils
 import Data.Morphisms
 import Data.Vect
 import Data.Vect.Elem

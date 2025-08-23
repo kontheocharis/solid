@@ -189,22 +189,13 @@ solving @{tc} f = enterMetas (f {m' = metasM @{tc}} @{metas @{tc}})
 reading : HasTc m => (forall m' . HasMetas m' => m' SolvingNotAllowed t) -> m t
 reading @{tc} f = enterMetas (f {m' = metasM @{tc}} @{metas @{tc}})
 
--- Create a fresh metavariable
-freshMeta : HasTc m => Context ns -> Maybe Name -> AnnotAt s ns -> m (ExprAt s ns)
-freshMeta ctx n annot = do -- @@Todo: use type
-  m <- solving $ newMeta n
-  -- Get all the bound variables in the context, and apply them to the
-  -- metavariable. This will later result in the metavariable being solved as a
-  -- lambda of all these variables.
-  pure $ meta m (snd ctx.binds) annot
-
 -- Unify two values in the given context.
 --
 -- Succeeds if the unification says `AreSame`.
 public export
 unify : HasTc m => Context ns -> Atom ns -> Atom ns -> m ()
 unify @{tc} ctx a b = do
-  val : Unification _ <- enterMetas (unify {sm = SolvingAllowed} @{metas} @{unifyValues} a.val b.val)
+  val : Unification _ <- solving (unify a.val b.val)
   case val of
     AreSame => pure ()
     failure => tcError ctx $ WhenUnifying a b failure
@@ -213,24 +204,6 @@ public export
 areEqual : HasTc m => Context ns -> Atom ns -> Atom ns -> m (Unification ns)
 areEqual @{tc} ctx a b = do
   enterMetas (unify {sm = SolvingNotAllowed} @{metas} @{unifyValues} a.val b.val)
-  
--- Create a `SortData` instance for the given stage and sort kind, by instantiating metas
--- for the unknown information (byte sizes).
-freshSortData : HasTc m => Context ns -> (s : Stage) -> (k : SortKind s) -> m (SortData s k ns)
-freshSortData ctx Mta k = pure $ MtaSort 
-freshSortData ctx Obj Dyn = do
-  b <- freshMeta ctx Nothing layoutA.f
-  pure $ ObjSort Dyn b.tm
-freshSortData ctx Obj Sized = do
-  b <- freshMeta ctx Nothing layoutDynA.f
-  pure $ ObjSort Sized b.tm
-  
--- Create a fresh annotation for the given stage and sort kind.
-freshMetaAnnot : HasTc m => Context ns -> (s : Stage) -> SortKind s -> m (AnnotAt s ns)
-freshMetaAnnot ctx s k = do
-  tySort <- freshSortData ctx s k <&> .a
-  ty <- freshMeta ctx Nothing tySort
-  pure $ MkAnnotAt ty.tm tySort.ty
 
 -- Fit the given annotation to the given kind.
 fitAnnot : HasTc m
@@ -240,7 +213,7 @@ fitAnnot : HasTc m
   -> AnnotShape annotTy AtomTy ns
   -> m (AnnotFor s k annotTy ns)
 fitAnnot ctx s k (MkAnnotShape vty univ) = do
-  d <- freshSortData ctx s k
+  d <- reading (freshSortData ctx s k)
   unify ctx univ d.a.ty
   pure $ MkAnnotFor d vty
 
@@ -284,7 +257,7 @@ insertAll ctx mExpr = mExpr >>= insertAll' ctx
       let (MkExpr tm (MkAnnotAt ty sort)) = expr
       reading (forcePi ty) >>= \case
         MatchingPi stage (MkPiData resolvedPi (Implicit, piName) a b) => do
-          subject <- freshMeta ctx Nothing a.asAnnot
+          subject <- reading (freshMeta ctx Nothing a.asAnnot)
           let res = apps expr.p
                 [(Val (Implicit, piName), subject.p)]
                 (apply b subject.tm).asAnnot
@@ -360,12 +333,12 @@ tcSpine ctx ((_, tm) :: tms) ((Val _, annot) :: annots) = do -- @@Todo: spine na
 public export
 tcMeta : HasTc m => {default Nothing name : Maybe Name} -> TcAll m
 tcMeta {name = name} Check = \ctx, (CheckInput _ annot) => do
-  mta <- freshMeta ctx name annot
+  mta <- reading (freshMeta ctx name annot)
   whenJust name $ \n => addGoal (MkGoal (Just n) mta.p ctx)
   pure mta
 tcMeta {name = name} Infer = ensureKnownStage $ \ctx, stage => do
-  annot <- freshMetaAnnot ctx stage Dyn -- remember, sized < dyn
-  mta <- freshMeta ctx name annot
+  annot <- reading (freshMetaAnnot ctx stage Dyn) -- remember, sized < dyn
+  mta <- reading (freshMeta ctx name annot)
   whenJust name $ \n => addGoal (MkGoal (Just n) mta.p ctx)
   pure mta
 
@@ -385,8 +358,8 @@ tcPi x a b = switch $ ensureKnownStage $ \ctx, stage => case stage of
     b' <- b Check (bind x (mta a'.tm).f.a ctx) (CheckInput _ mtaA.f)
     pure $ pi Mta x (MkAnnotFor MtaSort a'.tm) (MkAnnotFor MtaSort (close ctx.defs b'.tm))
   Obj => do
-    ba <- freshMeta ctx Nothing layoutA.f
-    bb <- freshMeta ctx Nothing layoutA.f
+    ba <- reading (freshMeta ctx Nothing layoutA.f)
+    bb <- reading (freshMeta ctx Nothing layoutA.f)
     a' <- a Check ctx (CheckInput _ (objA ba.tm).f)
     b' <- b Check (bind x (obj ba.tm a'.tm).a.f ctx) (CheckInput _ (wkS $ objA bb.tm).f)
     pure $ pi Obj x
@@ -426,7 +399,7 @@ tcLam lamIdent bindTy body Check = \ctx, (CheckInput stage annot@(MkAnnotAt ty s
 tcLam lamIdent bindTy body Infer = ensureKnownStage $ \ctx, stage => do
   -- @@Reconsider: Same remark as for pis.
   -- We have a stage, but no type, so just instantiate a meta..
-  annot <- freshMetaAnnot ctx stage Sized
+  annot <- reading (freshMetaAnnot ctx stage Sized)
   tcLam lamIdent bindTy body Check ctx (CheckInput _ annot)
 
 -- Check a variable, by looking up in the context
