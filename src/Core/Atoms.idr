@@ -20,6 +20,24 @@ record AnyDomain (tm : Domain -> Ctx -> Type) (ns : Ctx) where
   syn : Lazy (tm Syntax ns)
   val : Lazy (tm Value ns)
   
+-- All syntactic presheaf related bounds
+public export
+0 Psh : (Domain -> Ctx -> Type) -> Type
+Psh tm
+  = (Eval (Term Value) (tm Syntax) (tm Value),
+    Quote (tm Value) (tm Syntax),
+    Weak (tm Value))
+  
+-- Promote a term or value to an `AnyDomain` type.
+public export covering
+promote : Psh tm
+  => Size ns
+  => {d : Domain}
+  -> Lazy (tm d ns)
+  -> AnyDomain tm ns
+promote {d = Syntax} tm = Choice tm (eval id tm) 
+promote {d = Value} val = Choice (quote val) val
+  
 public export
 newSyn : tm Syntax ns -> AnyDomain tm ns -> AnyDomain tm ns
 newSyn syn' (Choice syn val) = Choice syn' val
@@ -46,23 +64,9 @@ namespace ValSpine
   (.syn) : Spine ar (AnyDomain tm) ns -> Spine ar (tm Syntax) ns
   (.syn) sp = map (force . (.syn)) sp
   
--- All syntactic presheaf related bounds
-public export
-0 Psh : (Domain -> Ctx -> Type) -> Type
-Psh tm
-  = (Eval (Term Value) (tm Syntax) (tm Value),
-    Quote (tm Value) (tm Syntax),
-    Weak (tm Value))
-  
--- Promote a term or value to an `AnyDomain` type.
-public export covering
-promote : Psh tm
-  => Size ns
-  => {d : Domain}
-  -> Lazy (tm d ns)
-  -> AnyDomain tm ns
-promote {d = Syntax} tm = Choice tm (eval id tm) 
-promote {d = Value} val = Choice (quote val) val
+  public export covering
+  promoteSpine : Size ns => {d : _} -> Spine ar (Term d) ns -> Spine ar Atom ns
+  promoteSpine sp = map (\x => promote x) sp
 
 public export
 (WeakSized (tm Syntax), Weak (tm Value)) => WeakSized (AnyDomain tm) where

@@ -46,6 +46,8 @@ data TcErrorAt : Ctx -> Type where
   TooFewApps : (more : Count ar) -> TcErrorAt ns
   -- Tried to apply something that isn't a pi type
   NotAPi : (subj : AtomTy ns) -> (extra : Count ar) -> TcErrorAt ns
+  -- Tried to use a meta thing in object position
+  CannotCoerceToObj : (givenTy : AtomTy ns) -> TcErrorAt ns
 
 -- Packaging an error with its context
 public export
@@ -61,17 +63,18 @@ record TcError where
 
 export
 (ns : Ctx) => ShowSyntax => Show (TcErrorAt ns) where
-  show (WhenUnifying x y z) = "When unifying \{show x} with \{show y}: \{show z}"
-  show (WrongPiMode mode ty) = "Wrong pi mode \{show mode} for type \{show ty}"
+  show (WhenUnifying x y z) = "When unifying `\{show x}` with `\{show y}`: \{show z}"
+  show (WrongPiMode mode ty) = "Wrong pi mode \{show mode} for type `\{show ty}`"
   show CannotInferStage = "Cannot infer stage"
-  show (UnknownName name) = "Unknown name: \{show name}"
+  show (UnknownName name) = "Unknown name: `\{show name}`"
   show (TooManyApps count) = "Too many applications (expected \{show count} fewer)"
   show (TooFewApps count) = "Too few applications (expected \{show count} more)"
-  show (NotAPi subj extra) = "The type of the subject is \{
+  show (NotAPi subj extra) = "The type of the subject is `\{
       show subj
-    } but tried to apply it to \{
+    }` but tried to apply it to \{
       show extra
     } argument(s), which is too many"
+  show (CannotCoerceToObj given) = "Cannot coerce type `\{show given}` to the object level"
   
 export
 ShowSyntax => Show TcError where
@@ -238,10 +241,13 @@ adjustStage' : (HasTc m) => Context ns -> Expr ns -> (s : Stage) -> m (Maybe (Ex
 adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Obj)) Obj = pure Nothing
 adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Mta)) Mta = pure Nothing
 adjustStage' ctx e@(MkExpr tm ann@(MkAnnot ty sort s@Obj)) s'@Mta = do
-  ann' <- fitAnnot ctx s (loosestSortKind s) ann.f.shape
-  let e' = quot @{ctx.size} (mapAnnot (\_ => ann') e)
-  pure $ Just (mapAnnot (\a => a.asAnnot) e')
-adjustStage' ctx (MkExpr tm ann@(MkAnnot ty sort Mta)) s@Obj = ?kdo
+  ann' <- fitAnnot ctx Obj loosestSortKind ann.f.shape
+  pure $ Just (quot @{ctx.size} (MkExpr tm ann'))
+adjustStage' ctx (MkExpr tm ann@(MkAnnot ty sort s@Mta)) s'@Obj = solving (forceCode ctx ty) >>= \case
+  Matching [(_, by), (_, ty)] => do
+    ann' <- fitAnnot ctx Obj loosestSortKind (MkAnnotShape ty (objA by).ty)
+    pure $ Just (splice @{ctx.size} ann' tm)
+  NonMatching other => tcError ctx $ CannotCoerceToObj other 
 
 adjustStageIfNeeded : (HasTc m) => Context ns -> Expr ns -> (s : Maybe Stage) -> m (ExprAtMaybe s ns)
 adjustStageIfNeeded ctx expr Nothing = pure expr
@@ -358,10 +364,10 @@ tcPi x a b = switch $ ensureKnownStage $ \ctx, stage => case stage of
     b' <- b Check (bind x (mta a'.tm).f.a ctx) (CheckInput _ mtaA.f)
     pure $ pi Mta x (MkAnnotFor MtaSort a'.tm) (MkAnnotFor MtaSort (close ctx.defs b'.tm))
   Obj => do
-    ba <- reading (freshMeta ctx Nothing layoutA.f)
-    bb <- reading (freshMeta ctx Nothing layoutA.f)
-    a' <- a Check ctx (CheckInput _ (objA ba.tm).f)
-    b' <- b Check (bind x (obj ba.tm a'.tm).a.f ctx) (CheckInput _ (wkS $ objA bb.tm).f)
+    ba <- reading (freshMeta ctx Nothing layoutStaA.f)
+    bb <- reading (freshMeta ctx Nothing layoutStaA.f)
+    a' <- a Check ctx (CheckInput _ (objStaA ba.tm).f)
+    b' <- b Check (bind x (obj ba.tm a'.tm).a.f ctx) (CheckInput _ (wkS $ objStaA bb.tm).f)
     pure $ pi Obj x
       (MkAnnotFor (ObjSort Sized ba.tm) a'.tm)
       (MkAnnotFor (ObjSort Sized bb.tm) (close ctx.defs b'.tm))

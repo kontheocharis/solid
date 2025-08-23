@@ -39,39 +39,39 @@ mta : Size ns => Atom ns -> Expr ns
 mta x = MkExpr x mtaA
 
 public export covering
-objDynA : Size ns => Atom ns -> Annot ns
-objDynA bx = MkAnnot
+objA : Size ns => Atom ns -> Annot ns
+objA bx = MkAnnot
   (PrimTypeDyn $> [(Val _, bx)])
   (PrimTypeDyn $> [(Val _, PrimSta $> [(Val _, PrimZeroLayout $> [])])])
   Obj
 
 public export covering
-objDyn : Size ns => Atom ns -> Atom ns -> Expr ns
-objDyn bx x = MkExpr x (objDynA bx)
-
-public export covering
-objA : Size ns => Atom ns -> Annot ns
-objA bx = objDynA (PrimSta $> [(Val _, bx)])
-
-public export covering
 obj : Size ns => Atom ns -> Atom ns -> Expr ns
-obj bx x = objDyn (PrimSta $> [(Val _, bx)]) x
+obj bx x = MkExpr x (objA bx)
+
+public export covering
+objStaA : Size ns => Atom ns -> Annot ns
+objStaA bx = objA (PrimSta $> [(Val _, bx)])
+
+public export covering
+objSta : Size ns => Atom ns -> Atom ns -> Expr ns
+objSta bx x = obj (PrimSta $> [(Val _, bx)]) x
 
 public export covering
 objZA : Size ns => Annot ns
-objZA = objA (PrimZeroLayout $> [])
+objZA = objStaA (PrimZeroLayout $> [])
 
 public export covering
 objZ : Size ns => Atom ns -> Expr ns
 objZ x = obj (PrimZeroLayout $> []) x
 
 public export covering
-layoutA : Size ns => Annot ns
-layoutA = (mta (PrimLayout $> [])).a
+layoutStaA : Size ns => Annot ns
+layoutStaA = (mta (PrimLayout $> [])).a
 
 public export covering
-layoutDynA : Size ns => Annot ns
-layoutDynA = (mta (PrimLayoutDyn $> [])).a
+layoutA : Size ns => Annot ns
+layoutA = (mta (PrimLayoutDyn $> [])).a
 
 public export covering
 objZOrMta : Size ns => Stage -> Atom ns -> Expr ns
@@ -94,9 +94,9 @@ data SortKind : Stage -> Type where
   Sized : SortKind s
   
 public export
-loosestSortKind : (s : Stage) -> SortKind s
-loosestSortKind Mta = Static
-loosestSortKind Obj = Dyn
+loosestSortKind : {s : Stage} -> SortKind s
+loosestSortKind {s = Mta} = Static
+loosestSortKind {s = Obj} = Dyn
   
 -- The accompanying data for a sort at a given stage.
 public export
@@ -120,8 +120,8 @@ sortBytes (ObjSort Sized by) = PrimSta $> [(Val _, by)]
 public export covering
 (.a) : Size ns => SortData s k ns -> AnnotAt s ns
 (.a) MtaSort = mtaA.f
-(.a) (ObjSort Dyn by) = (objDynA by).f
-(.a) (ObjSort Sized by) = (objA by).f
+(.a) (ObjSort Dyn by) = (objA by).f
+(.a) (ObjSort Sized by) = (objStaA by).f
 
 namespace AnnotFor
     
@@ -202,10 +202,10 @@ public export covering
 freshSortData : HasMetas m => Context ns -> (s : Stage) -> (k : SortKind s) -> m sm (SortData s k ns)
 freshSortData ctx Mta k = pure $ MtaSort 
 freshSortData ctx Obj Dyn = do
-  b <- freshMeta ctx Nothing layoutA.f
+  b <- freshMeta ctx Nothing layoutStaA.f
   pure $ ObjSort Dyn b.tm
 freshSortData ctx Obj Sized = do
-  b <- freshMeta ctx Nothing layoutDynA.f
+  b <- freshMeta ctx Nothing layoutA.f
   pure $ ObjSort Sized b.tm
   
 -- Create a fresh annotation for the given stage and sort kind.

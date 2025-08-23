@@ -76,6 +76,11 @@ primAnnot PrimIdxLayout = ([], ret $ mta (PrimLayout $> []))
 primAnnot PrimPtrLayout = ([], ret $ mta (PrimLayout $> []))
 primAnnot PrimLayoutDyn = ([], ret $ mta (PrimTYPE $> []))
 
+-- The argument types for the given primitive
+public export covering
+0 PrimArgs : Primitive k r n ar -> (Ctx -> Type) -> Ctx -> Type
+PrimArgs _ tm = Spine ar tm
+
 -- Create a primitive expression with the given data.
 public export covering
 prim : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility}
@@ -89,31 +94,34 @@ prim @{s} p sp pRet =
   MkExpr (Choice (sPrim p sp.syn) (vPrim p sp.val)) (MkAnnot ret retSort pRet.stage)
 
 public export covering
-code : Size ns => AnnotFor Obj k Atom ns -> AnnotFor Mta Static Atom ns
-code (MkAnnotFor so ty) =
-  MkAnnotFor MtaSort (PrimCode $> [(Val _, (sortBytes so)), (Val _, ty)])
+code : Size ns => AnnotFor Obj k Atom ns -> AnnotAt Mta ns
+code (MkAnnotFor so ty) = PrimCode $> [(Val _, (sortBytes so)), (Val _, ty)] `asTypeIn` mtaA.f
 
 public export covering
-quot : Size ns => ExprFor Obj k ns -> ExprFor Mta Static ns
+quot : Size ns => ExprFor Obj k ns -> ExprAt Mta ns
 quot (MkExpr tm ann@(MkAnnotFor so ty)) =
   MkExpr (PrimQuote $> [(Val _, sortBytes so), (Val _, ty), (Val _, tm)]) (code ann)
 
 public export covering
-splice : Size ns => AnnotFor Obj k Atom ns -> Atom ns -> ExprFor Obj k ns
-splice uncoded@(MkAnnotFor so ty) tm =
-  MkExpr (PrimSplice $> [(Val _, (sortBytes so)), (Val _, ty), (Val _, tm)]) uncoded
+splice : Size ns => AnnotFor Obj k Atom ns -> Atom ns -> ExprAt Obj ns
+splice uncoded@(MkAnnotFor so ty) tm = MkExpr (PrimSplice $> [(Val _, (sortBytes so)), (Val _, ty), (Val _, tm)]) uncoded.asAnnot
   
+public export
 data ForceTo : (tm : Ctx -> Type) -> (info : Ctx -> Type) -> Ctx -> Type where
   Matching : forall tm . info ns -> ForceTo tm info ns
   NonMatching : forall tm . tm ns -> ForceTo tm info ns
   
 public export covering
-forceCode : HasMetas m => Size ns
-  => (potentialCode : Atom ns)
-  -> {sm : SolvingMode}
-  -> m sm (ForceTo Atom (AnnotFor Obj k AtomTy) ns)
-forceCode potentialCode = resolve potentialCode >>= \a => case a.val of
-  SimpPrimNormal (SimpApplied PrimCode [(Val _, by), (Val _, ty)]) => ?jajjjj
-  got => ?fajjaj
+forceCode : HasMetas m => Context ns
+  -> (potentialCode : Atom ns)
+  -> m SolvingAllowed (ForceTo Atom (PrimArgs PrimCode Atom) ns)
+forceCode ctx potentialCode = resolve potentialCode >>= \s => case s.val of
+  SimpPrimNormal (SimpApplied PrimCode sp) => pure $ Matching (promoteSpine sp)
+  got => do
+    by <- freshMeta ctx Nothing layoutA.f
+    ty <- freshMeta ctx Nothing objZA.f
+    let exp = code @{ctx.size} (MkAnnotFor (ObjSort Dyn by.tm) ty.tm)
+    unify got exp.ty.val >>= \case
+      AreSame => pure $ Matching [(Val _, by.tm), (Val _, ty.tm)]
+      _ => pure $ NonMatching (promote got)
     
-

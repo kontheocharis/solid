@@ -71,8 +71,8 @@ typeOfTypesForStage Mta = mtaType
 typeOfTypesForStage Obj = sizedObjType zeroLayout
 
 public export
-layoutDynAdd : Tm ns -> Tm ns -> Tm ns
-layoutDynAdd a b = SynPrimNormal (PrimSeqLayoutDyn $$ [(Val _, a), (Val _, b)])
+layoutAdd : Tm ns -> Tm ns -> Tm ns
+layoutAdd a b = SynPrimNormal (PrimSeqLayoutDyn $$ [(Val _, a), (Val _, b)])
 
 -- Reduction rules:
 

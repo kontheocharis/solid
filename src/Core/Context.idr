@@ -61,8 +61,8 @@ record Goal where
   -- The context in which the goal exists
   ctx : Context conNs
   
-%hint
 public export
+%hint
 ctxSize : Context ns -> Size ns
 ctxSize = .size
 
