@@ -12,6 +12,7 @@ import Core.Base
 import Core.Atoms
 import Core.Combinators
 import Core.Metavariables
+import Core.Context
 import Core.Typechecking
 import Core.Primitives.Definitions
 import Core.Primitives.Rules

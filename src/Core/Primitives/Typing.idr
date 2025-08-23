@@ -52,7 +52,11 @@ primAnnot PrimSplice = ([
     ret $ obj (v "l") (v "ty")
   )
 primAnnot PrimSta = ([arg $ mta (PrimLayout $> [])], ret $ mta (PrimLayoutDyn $> []))
-primAnnot PrimTypeDyn = ([arg $ mta (PrimLayoutDyn $> [])], ret $ objZ (PrimTypeDyn $> [(Val _, PrimZeroLayout $> [])]))
+primAnnot PrimTypeDyn = ([
+      arg $ mta (PrimLayoutDyn $> [])
+    ],
+    ret $ objZ (PrimTypeDyn $> [(Val _, PrimZeroLayout $> [])])
+  )
 primAnnot PrimSeqLayout = ([
       arg $ mta (PrimLayout $> []),
       arg $ mta (PrimLayout $> [])
@@ -105,8 +109,10 @@ data ForceTo : (tm : Ctx -> Type) -> (info : Ctx -> Type) -> Ctx -> Type where
 public export covering
 forceCode : HasMetas m => Size ns
   => (potentialCode : Atom ns)
-  -> m SolvingNotAllowed (ForceTo Atom (AnnotFor Obj k AtomTy) ns)
+  -> {sm : SolvingMode}
+  -> m sm (ForceTo Atom (AnnotFor Obj k AtomTy) ns)
 forceCode potentialCode = resolve potentialCode >>= \a => case a.val of
   SimpPrimNormal (SimpApplied PrimCode [(Val _, by), (Val _, ty)]) => ?jajjjj
-  v => ?ajja
+  got => ?fajjaj
+    
 

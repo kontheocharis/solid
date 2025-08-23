@@ -31,6 +31,13 @@ data Unification : Ctx -> Type where
   -- An error occurred while solving a metavariable
   -- Also remembers all the extra binders we were solving under.
   Error : {under : Arity} -> SolveError (ns ::< under) -> Unification ns
+  
+export
+(ns : Ctx) => ShowSyntax => Show (Unification ns) where
+  show AreSame = "terms are the same"
+  show AreDifferent = "terms are different"
+  show DontKnow = "terms are not the same"
+  show (Error x) = "unification error: \{show x}"
 
 -- Escape a unification result under a binder, by storing the binder name
 -- in the result.

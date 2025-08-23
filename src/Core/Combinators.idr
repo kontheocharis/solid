@@ -165,10 +165,25 @@ public export covering
 glued : {d : Domain} -> Size ns => Variable d (ns :< n) -> Atom (ns :< n) -> Atom (ns :< n)
 glued v t = Choice (here) (Glued (LazyApps (ValDef (Level here) $$ []) t.val))
 
+-- Create a metavariable atom.
+public export covering
+aMeta : Size ns => MetaVar -> Spine ar Atom ns -> Atom ns
+aMeta m sp = promote $ SimpApps (ValMeta m $$ map (force . (.val)) sp)
+
 -- Create a metavariable expression.
 public export covering
 meta : Size ns => MetaVar -> Spine ar Atom ns -> AnnotAt s ns -> ExprAt s ns
-meta m sp annot = MkExpr (promote $ SimpApps (ValMeta m $$ map (force . (.val)) sp)) annot
+meta m sp annot = MkExpr (aMeta m sp) annot
+
+-- Create a fresh metavariable
+public export covering
+newMeta : HasMetas m => Size ns => Maybe Name -> m sm (Atom ns)
+newMeta {ns = ns} n = do -- @@Todo: use type
+  m <- newMeta n
+  -- Get all the bound variables in the context, and apply them to the
+  -- metavariable. This will later result in the metavariable being solved as a
+  -- lambda of all these variables.
+  pure $ aMeta m ?ins
       
 -- Create a lambda expression
 public export covering
@@ -242,7 +257,6 @@ public export covering
 forcePi : HasMetas m => Size ns => (potentialPi : AtomTy ns) -> m sm (ForcePi ns)
 forcePi potentialPi
   = resolve potentialPi >>= \a => case a.val of
-    -- object-level pi
     resolvedPi@(RigidBinding piStage@Obj (Bound _ (BindObjPi (piMode, piName) ba bb a) b)) => 
       let
         ba' = promote ba
@@ -257,7 +271,6 @@ forcePi potentialPi
           (MkAnnotFor MtaSort (promote a))
           (MkAnnotFor MtaSort (promoteBody b))
       in pure $ MatchingPi Mta piData
-    -- fail
     v => pure $ OtherwiseNotPi (newVal v potentialPi)
 
 -- Given a `potentialPi`, try to match it given that we expect something in
