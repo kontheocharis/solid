@@ -275,7 +275,33 @@ namespace Wk
   Terminal . Drop x = Terminal
   Drop x . Drop y = Drop (x . (Drop Id . y))
 
+-- Thinnings
+namespace Th
+  public export
+  data Th : Ctx -> Ctx -> Type where
+    Done : Th [<] [<]
+    Keep : Th ns ms -> Th (ns :< n) (ms :< m)
+    Drop : Th ns ms -> Th (ns :< n) ms
+
+  public export
+  (.) : Th ms ns -> Th as ms -> Th as ns
+  Done . Done = Done
+  y . (Drop x) = Drop (y . x)
+  (Keep y) . (Keep x) = Keep (y . x)
+  (Drop y) . (Keep x) = Drop (y . x)
+
 -- Some interfaces for syntax that involves variables
+
+-- Thinning
+public export
+interface Thin (0 tm : Ctx -> Type) where
+  thin : Th ns ms -> tm ms -> tm ns
+
+namespace Thin
+  public export
+  (.) : Thin tm => Sub ms tm qs -> Th ns ms -> Sub ns tm qs
+  [<] . e = [<]
+  (xs :< x) . e = xs . e :< thin e x
 
 -- Weakening
 public export
@@ -295,25 +321,26 @@ public export
 (x : Type) => Weak (const x) where
   weak l x = x
 
-public export
-(.) : Weak tm => Sub ms tm qs -> Wk ns ms -> Sub ns tm qs
-[<] . e = [<]
-(xs :< x) . e = xs . e :< weak e x
+namespace Weak
+  public export
+  (.) : Weak tm => Sub ms tm qs -> Wk ns ms -> Sub ns tm qs
+  [<] . e = [<]
+  (xs :< x) . e = xs . e :< weak e x
 
-export infixr 9 `o`
+  export infixr 9 `o`
 
-public export
-o : WeakSized tm => Size ns => Size ms => Sub ms tm qs -> Wk ns ms -> Sub ns tm qs
-o [<] e = [<]
-o (xs :< x) e = xs `o` e :< weakS e x
+  public export
+  o : WeakSized tm => Size ns => Size ms => Sub ms tm qs -> Wk ns ms -> Sub ns tm qs
+  o [<] e = [<]
+  o (xs :< x) e = xs `o` e :< weakS e x
 
-public export
-wk : Weak tm => tm ns -> tm (ns :< n)
-wk x = weak (Drop Id) x
+  public export
+  wk : Weak tm => tm ns -> tm (ns :< n)
+  wk x = weak (Drop Id) x
 
-public export
-wkS : WeakSized tm => Size ns => tm ns -> tm (ns :< n)
-wkS = weakS (Drop Id)
+  public export
+  wkS : WeakSized tm => Size ns => tm ns -> tm (ns :< n)
+  wkS = weakS (Drop Id)
 
 -- Syntax supports variables if it supports weakenings and the zero-th deBrujin
 -- index.
@@ -437,6 +464,13 @@ Weak Lvl where
   weak (Drop x) (LS l) = LS (weak x (wkLvl l))
   
 public export
+Thin Lvl where
+  thin Done l impossible
+  thin (Keep x) LZ = LZ
+  thin (Keep x) (LS l) = LS (thin x l)
+  thin (Drop x) l = LS (thin x l)
+  
+public export
 Weak Idx where
   weak Id x = x
   weak (Drop x) u = IS (weak x u)
@@ -460,6 +494,10 @@ Relabel tm => Relabel (Spine ar tm) where
 public export
 (Weak tm) => Weak (Spine ar tm) where
   weak e sp = map (weak e) sp
+
+public export
+(Thin tm) => Thin (Spine ar tm) where
+  thin e sp = map (thin e) sp
 
 public export
 (WeakSized tm) => WeakSized (Spine ar tm) where

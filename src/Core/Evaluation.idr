@@ -25,6 +25,9 @@ EvalPrims => Quote (Term Value) (Term Syntax)
 public export
 Weak (Term Value)
 
+public export
+Thin (Term Value)
+
 -- Evaluation and quoting for all the syntax:
 
 -- Every callable binding value can be applied to a term.
@@ -51,6 +54,11 @@ Weak (PrimitiveApplied k Value e) where
   weak e (LazyApplied h sp gl) = LazyApplied h (weak e sp) (weak e gl)
 
 public export
+Thin (PrimitiveApplied k Value e) where
+  thin e (SimpApplied h sp) = SimpApplied h (thin e sp)
+  thin e (LazyApplied h sp gl) = LazyApplied h (thin e sp) (thin e gl)
+
+public export
 Eval over (Term d) (Term d') => Eval over (Binder md r d n) (Binder md r d' n) where
   eval env b = mapBinder (eval env) b
 
@@ -61,6 +69,10 @@ Quote (Term d) (Term d') => Quote (Binder md r d n) (Binder md r d' n) where
 public export
 Weak (Binder md r Value n) where
   weak e b = mapBinder (weak e) b
+
+public export
+Thin (Binder md r Value n) where
+  thin e b = mapBinder (thin e) b
 
 public export
 Eval (Term Value) (Variable Syntax) (Term Value) where
@@ -75,6 +87,10 @@ Quote (Variable Value) (Variable Syntax) where
 public export
 Weak (Variable Value) where
   weak s (Level l) = Level (weak s l)
+
+public export
+Thin (Variable Value) where
+  thin s (Level l) = Level (thin s l)
 
 public export
 Vars (Term Value) where
@@ -93,6 +109,10 @@ Weak (Body Value n) where
   weak e (Closure env t) = Closure (env . e) t
 
 public export
+Thin (Body Value n) where
+  thin e (Closure env t) = Closure (env . e) t
+
+public export
 EvalPrims => Eval (Term Value) (Binding md r Syntax) (Binding md r Value) where
   eval env (Bound {n = n} md bind body) = Bound {n = n} md (eval env bind) (eval env body)
 
@@ -103,6 +123,10 @@ EvalPrims => Quote (Binding md r Value) (Binding md r Syntax) where
 public export
 Weak (Binding md r Value) where
   weak s (Bound {n = n} md bind body) = Bound {n = n} md (weak s bind) (weak s body)
+
+public export
+Thin (Binding md r Value) where
+  thin s (Bound {n = n} md bind body) = Bound {n = n} md (thin s bind) (thin s body)
 
 -- Helper to apply a value to a spine.
 --
@@ -150,6 +174,15 @@ Weak (Head Value hk) where
   weak s (PrimNeutral p) = PrimNeutral (weak s p)
 
 public export
+Thin (Head Value hk) where
+  thin s (ValVar v) = ValVar (thin s v)
+  thin s (ValMeta m) = ValMeta m
+  thin s (ValDef v) = ValDef (thin s v)
+  thin s (ObjCallable t) = ObjCallable (thin s t)
+  thin s (ObjLazy t) = ObjLazy (thin s t)
+  thin s (PrimNeutral p) = PrimNeutral (thin s p)
+
+public export
 EvalPrims => Eval (Term Value) (HeadApplied Syntax NA) (Term Value) where
   eval env (($$) {ar = ar} h sp) = apps {ar = ar} (eval env h) (eval env sp)
 
@@ -170,6 +203,20 @@ Weak (Term Value) where
   weak e (SimpObjCallable c) = SimpObjCallable (weak e c)
   weak e (RigidBinding md c) = RigidBinding md (weak e c)
   weak e (SimpPrimNormal p) = SimpPrimNormal (weak e p)
+
+public export
+Thin (HeadApplied Value hk) where
+  thin e (h $$ sp) = thin e h $$ thin e sp
+
+public export
+Thin (Term Value) where
+  thin e (Glued (LazyApps a f)) = Glued (LazyApps (thin e a) (thin e f))
+  thin e (Glued (LazyPrimNormal a)) = Glued (LazyPrimNormal (thin e a))
+  thin e (SimpApps a) = SimpApps (thin e a)
+  thin e (MtaCallable c) = MtaCallable (thin e c)
+  thin e (SimpObjCallable c) = SimpObjCallable (thin e c)
+  thin e (RigidBinding md c) = RigidBinding md (thin e c)
+  thin e (SimpPrimNormal p) = SimpPrimNormal (thin e p)
 
 public export
 EvalPrims => Eval (Term Value) (Term Syntax) (Term Value) where
