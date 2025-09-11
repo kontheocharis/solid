@@ -53,9 +53,10 @@ data TcErrorAt : Ctx -> Type where
 public export
 record TcError where
   constructor MkTcError
+  {0 bindNs : Ctx}
   {0 conNs : Ctx}
   -- The context in which the error occurred
-  con : Context conNs
+  con : Context bindNs conNs
   -- The location of the error in the source file
   loc : Loc
   -- The error itself
@@ -82,7 +83,7 @@ ShowSyntax => Show TcError where
       "Typechecking error at \{show loc}:\n\{show err}"
 
 -- Typechecking has access to metas
--- @@TODO: refactor to use lenses
+-- @@Enhancement: refactor to use lenses
 public export
 interface (Monad m) => HasTc m where
   
@@ -92,7 +93,7 @@ interface (Monad m) => HasTc m where
   metas : HasMetas metasM
 
   -- Throw a typechecking error
-  tcError : Context ns -> TcErrorAt ns -> m a
+  tcError : Context bs ns -> TcErrorAt ns -> m a
 
   -- Set the current typechecking location in the source file
   enterLoc : Loc -> m a -> m a
@@ -147,8 +148,8 @@ TcOp md m ms = (i : TcInput md ms) -> m (TcOutput md ms i)
 
 -- Typechecking in a specific context
 public export
-0 TcAt : (md : TcMode) -> (0 m : Type -> Type) -> Ctx -> Type
-TcAt md m ns = Context ns -> TcOp md m ns
+0 TcAt : (md : TcMode) -> (0 m : Type -> Type) -> Ctx -> Ctx -> Type
+TcAt md m bs ns = Context bs ns -> TcOp md m ns
 
 -- Typechecking in any context
 --
@@ -156,7 +157,7 @@ TcAt md m ns = Context ns -> TcOp md m ns
 -- context we will switch in ahead of time (due to things like inserted lambdas).
 public export
 0 Tc : (md : TcMode) -> (0 m : Type -> Type) -> Type
-Tc md m = forall ns . TcAt md m ns
+Tc md m = forall bs, ns . TcAt md m bs ns
 
 -- Typechecking at any mode and context.
 public export
@@ -196,7 +197,7 @@ reading @{tc} f = enterMetas (f {m' = metasM @{tc}} @{metas @{tc}})
 --
 -- Succeeds if the unification says `AreSame`.
 public export
-unify : HasTc m => Context ns -> Atom ns -> Atom ns -> m ()
+unify : HasTc m => Context bs ns -> Atom ns -> Atom ns -> m ()
 unify @{tc} ctx a b = do
   val : Unification _ <- solving (unify a.val b.val)
   case val of
@@ -204,13 +205,13 @@ unify @{tc} ctx a b = do
     failure => tcError ctx $ WhenUnifying a b failure
 
 public export
-areEqual : HasTc m => Context ns -> Atom ns -> Atom ns -> m (Unification ns)
+areEqual : HasTc m => Context bs ns -> Atom ns -> Atom ns -> m (Unification ns)
 areEqual @{tc} ctx a b = do
   enterMetas (unify {sm = SolvingNotAllowed} @{metas} @{unifyValues} a.val b.val)
 
 -- Fit the given annotation to the given kind.
 fitAnnot : HasTc m
-  => Context ns
+  => Context bs ns
   -> (s : Stage)
   -> (k : SortKind s)
   -> AnnotShape annotTy AtomTy ns
@@ -223,8 +224,8 @@ fitAnnot ctx s k (MkAnnotShape vty univ) = do
 -- Ensure that the given `Maybe Stage` is `Just _`, eliminating with the
 -- supplied method.
 ensureKnownStage : HasTc m
-  => (Context ns -> (s : Stage) -> m (ExprAt s ns))
-  -> Context ns
+  => (Context bs ns -> (s : Stage) -> m (ExprAt s ns))
+  -> Context bs ns
   -> (i : TcInput Infer ns)
   -> m (ExprAtMaybe i.stage ns)
 ensureKnownStage f ctx (InferInput (Just s)) = f ctx s
@@ -232,9 +233,10 @@ ensureKnownStage f ctx (InferInput Nothing) = tcError ctx CannotInferStage
 
 -- Coerce an expression to a given type.
 coerce : (HasTc m) => Expr ns -> Annot ns -> m (Tm ns)
+coerce expr ann = ?coerceImpl -- for now unimplemented
 
 -- Adjust the stage of an expression if needed.
-adjustStage' : (HasTc m) => Context ns -> (e : Expr ns) -> (s : Stage) -> m (Either (e.annot.stage = s) (ExprAt s ns))
+adjustStage' : (HasTc m) => Context bs ns -> (e : Expr ns) -> (s : Stage) -> m (Either (e.annot.stage = s) (ExprAt s ns))
 adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Obj)) Obj = pure $ Left Refl
 adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Mta)) Mta = pure $ Left Refl
 adjustStage' ctx e@(MkExpr tm ann@(MkAnnot ty sort s@Obj)) s'@Mta = do
@@ -247,21 +249,21 @@ adjustStage' ctx (MkExpr tm ann@(MkAnnot ty sort s@Mta)) s'@Obj = solving (force
   NonMatching other => tcError ctx $ CannotCoerceToObj other 
 
 -- Adjust the stage of an expression.
-adjustStage : (HasTc m) => Context ns -> Expr ns -> (s : Stage) -> m (ExprAt s ns)
+adjustStage : (HasTc m) => Context bs ns -> Expr ns -> (s : Stage) -> m (ExprAt s ns)
 adjustStage ctx e@(MkExpr tm ann) s = adjustStage' ctx e s >>= \case
   Left Refl => pure $ MkExpr tm ann.f
   Right e' => pure e'
 
-adjustStageIfNeeded : (HasTc m) => Context ns -> Expr ns -> (s : Maybe Stage) -> m (ExprAtMaybe s ns)
+adjustStageIfNeeded : (HasTc m) => Context bs ns -> Expr ns -> (s : Maybe Stage) -> m (ExprAtMaybe s ns)
 adjustStageIfNeeded ctx expr Nothing = pure expr
 adjustStageIfNeeded ctx expr (Just s) = adjustStage ctx expr s
 
 -- Insert all implicit applications in a type-directed manner, without regard
 -- for what the expression is.
-insertAll : HasTc m => Context ns -> {s : Stage} -> m (ExprAt s ns) -> m (ExprAt s ns)
+insertAll : HasTc m => Context bs ns -> {s : Stage} -> m (ExprAt s ns) -> m (ExprAt s ns)
 insertAll ctx mExpr = mExpr >>= insertAll' ctx
   where
-    insertAll' : forall ns, m . HasTc m => Context ns -> {s : Stage} -> ExprAt s ns -> m (ExprAt s ns)
+    insertAll' : forall ns, m . HasTc m => Context bs ns -> {s : Stage} -> ExprAt s ns -> m (ExprAt s ns)
     insertAll' ctx expr = do
       let (MkExpr tm (MkAnnotAt ty sort)) = expr
       reading (forcePi ty) >>= \case
@@ -275,7 +277,7 @@ insertAll ctx mExpr = mExpr >>= insertAll' ctx
 
 -- Insert all implicit applications in a type-directed manner, unless the given expression is a
 -- matching implicit lambda.
-insert : (HasTc m) => Context ns -> {s : Stage} -> m (ExprAt s ns) -> m (ExprAt s ns)
+insert : (HasTc m) => Context bs ns -> {s : Stage} -> m (ExprAt s ns) -> m (ExprAt s ns)
 insert ctx mExpr = do
   expr@(MkExpr tm (MkAnnotAt ty sort)) <- mExpr
   reading (forceLam tm) >>= \case
@@ -297,7 +299,7 @@ switch f Check = \ctx, (CheckInput stage annot) => do
 --
 -- This adds the binder to the subject and 'recurses', yielding a lambda with the
 -- given Pi type.
-insertLam : HasTc m => Context ns
+insertLam : HasTc m => Context bs ns
   -> (piStage : Stage)
   -> (piIdent : Ident)
   -> (bindAnnot : AnnotFor piStage Sized AtomTy ns)
@@ -312,7 +314,7 @@ insertLam ctx piStage piIdent bindAnnot bodyAnnot subject = do
   
 -- Infer the given object as a type, also inferring its stage in the process.
 inferAnnot : HasTc m
-  => Context ns
+  => Context bs ns
   -> (k : forall s . SortKind s)
   -> Tc Infer m
   -> m (s ** AnnotFor s k Atom ns)
@@ -325,7 +327,7 @@ inferAnnot ctx kind ty = do
 --
 -- Returns the checked spine and the remaining terms in the input.
 tcSpine : HasTc m
-  => Context ns
+  => Context bs ns
   -> List (Ident, TcAll m)
   -> Tel ar Annot ns
   -> m (Spine ar Expr ns)

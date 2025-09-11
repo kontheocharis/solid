@@ -112,7 +112,7 @@ data ForceTo : (tm : Ctx -> Type) -> (info : Ctx -> Type) -> Ctx -> Type where
   NonMatching : forall tm . tm ns -> ForceTo tm info ns
   
 public export covering
-forceCode : HasMetas m => Context ns
+forceCode : HasMetas m => Context bs ns
   -> (potentialCode : Atom ns)
   -> m SolvingAllowed (ForceTo Atom (PrimArgs PrimCode Atom) ns)
 forceCode ctx potentialCode = resolve potentialCode >>= \s => case s.val of

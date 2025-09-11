@@ -20,7 +20,8 @@ import Core.Atoms
 
 -- Context for typechecking
 public export
-record Context (ns : Ctx) where
+record Context (bs : Ctx) (ns : Ctx) where
+  --            ^ bindings  ^ bindings + lets
   constructor MkContext
   -- All the identifiers in scope
   idents : Singleton ns
@@ -42,7 +43,7 @@ record Context (ns : Ctx) where
   binds : Exists (\ar => Spine ar AtomTy ns)
   
 public export
-emptyContext : Context [<]
+emptyContext : Context [<] [<]
 emptyContext =
   MkContext (Val [<]) [<] [<] [<] [<] SZ (Evidence [] [])
  
@@ -50,6 +51,7 @@ emptyContext =
 public export
 record Goal where
   constructor MkGoal
+  {0 bindNs : Ctx}
   {0 conNs : Ctx}
 
   -- The name of the goal hole, if given
@@ -59,16 +61,16 @@ record Goal where
   hole : Expr conNs
 
   -- The context in which the goal exists
-  ctx : Context conNs
+  ctx : Context bindNs conNs
   
 public export
 %hint
-ctxSize : Context ns -> Size ns
+ctxSize : Context bs ns -> Size ns
 ctxSize = .size
 
 -- Find a name in the context
 public export
-lookup : Context ns -> Name -> Maybe (Idx ns)
+lookup : Context bs ns -> Name -> Maybe (Idx ns)
 lookup ctx n = findIdx ctx.idents n
   where
     findIdx : forall ns . Singleton ns -> Name -> Maybe (Idx ns)
@@ -81,7 +83,7 @@ lookup ctx n = findIdx ctx.idents n
 
 -- Add a potentially self-referencing definition to the context.
 public export
-addToContext : {s : Stage} -> (isBound : Bool) -> (n : Ident) -> AnnotAt s ns -> Atom (ns :< n) -> Context ns -> Context (ns :< n)
+addToContext : {s : Stage} -> (isBound : Bool) -> (n : Ident) -> AnnotAt s ns -> Atom (ns :< n) -> Context bs ns -> Context bs (ns :< n)
 addToContext {s = stage}
   isBound n
   (MkAnnotAt ty sort)
@@ -95,11 +97,11 @@ addToContext {s = stage}
 
 -- Add a definition to the context that lazily evaluates to its value.
 public export
-define : {s : Stage} -> (n : Ident) -> ExprAt s ns -> Context ns -> Context (ns :< n)
+define : {s : Stage} -> (n : Ident) -> ExprAt s ns -> Context bs ns -> Context bs (ns :< n)
 define n rhs ctx =
   addToContext False n rhs.annot (promote $ Glued (LazyApps (ValDef (Level here) $$ []) (wk rhs.tm.val))) ctx
 
 -- Add a binding with no value to the context.
 public export
-bind : {s : Stage} -> (n : Ident) -> AnnotAt s ns -> Context ns -> Context (ns :< n)
+bind : {s : Stage} -> (n : Ident) -> AnnotAt s ns -> Context bs ns -> Context bs (ns :< n)
 bind n annot ctx = addToContext True n annot here ctx
