@@ -34,6 +34,11 @@ arityToCtx : Arity -> Ctx
 arityToCtx [] = [<]
 arityToCtx (a :: as) = [< a] ++ arityToCtx as
 
+public export
+ctxToArity : Ctx -> Arity
+ctxToArity [<] =[]
+ctxToArity (as :< a) = ctxToArity as ++ [a]
+
 -- Extend a context skeleton with some arity.
 public export
 (::<) : Ctx -> Arity -> Ctx

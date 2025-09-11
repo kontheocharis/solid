@@ -309,6 +309,10 @@ sApps (SynApps (h $$ sp')) sp = SynApps (h $$ sp' ++ sp)
 sApps (RigidBinding md x) sp = error "ill-typed"
 sApps (SynPrimNormal x) sp = error "ill-typed"
 
+public export
+vVar : Lvl ns -> Val ns
+vVar l = SimpApps (ValVar (Level l) $$ [])
+
 -- We can extend the variable search machinery to the syntax:
 
 public export
@@ -318,6 +322,15 @@ var n {prf = prf} = SynApps (SynVar (Index (idx @{prf})) $$ [])
 public export
 varApp : (n : String) -> {auto prf : In n ns} -> Ident -> Term Syntax ns -> Tm ns
 varApp n {prf = prf} a v = SynApps (SynVar (Index (idx @{prf})) $$ ((::) (Val a, v) []))
+
+-- Showing (just traits for now)
+
+public export
+0 ShowSyntax : Type
+ShowSyntax = (
+    {d : _} -> (ns : Ctx) => Show (Term d ns),
+    {d : _} -> forall ar . (ns : Ctx) => Show (Spine ar (Term d) ns)
+  )
 
 -- Relabeling
 export covering
@@ -383,12 +396,3 @@ export covering
 relabelBody : (0 n' : Ident) -> Body d n ns -> Body d n' ns
 relabelBody n' (Delayed t) = Delayed (relabel (Change n' Id) t)
 relabelBody n' (Closure sub t) = Closure sub (relabel (Change n' Id) t)
-
--- Showing (just traits for now)
-
-public export
-0 ShowSyntax : Type
-ShowSyntax = (
-    {d : _} -> (ns : Ctx) => Show (Term d ns),
-    {d : _} -> forall ar . (ns : Ctx) => Show (Spine ar (Term d) ns)
-  )

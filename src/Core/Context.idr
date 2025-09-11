@@ -25,27 +25,28 @@ record Context (bs : Ctx) (ns : Ctx) where
   constructor MkContext
   -- All the identifiers in scope
   idents : Singleton ns
-  -- The current context of types
+  -- The current context (types)
   con : Con AtomTy ns
-  -- The current context of sorts
+  -- The current context (sorts)
   sorts : Con AtomTy ns
   -- The definitions in the context
-  --
-  -- This is an endomorphism of `con`; bindings are mapped to their level, and
-  -- definitions are mapped to their value.
-  defs : Sub ns Atom ns
+  defs : Sub bs Atom ns
+  -- Bindings are OPEd into definitions
+  undefs : Th ns bs
   -- The stages of the definitions in the context
   stages : Con (const Stage) ns
+  -- The size of the bindings, for quick access
+  sizeBinds : Size bs
   -- The size of the context, for quick access
-  size : Size ns
+  sizeNames : Size ns
   -- The bound variables in the context, in the form of a spine ready to be applied
   -- to a metavariable.
-  binds : Exists (\ar => Spine ar AtomTy ns)
+  binds : Spine (ctxToArity bs) AtomTy bs
   
 public export
 emptyContext : Context [<] [<]
 emptyContext =
-  MkContext (Val [<]) [<] [<] [<] [<] SZ (Evidence [] [])
+  MkContext (Val [<]) [<] [<] [<] Done [<] SZ SZ []
  
 -- A goal is a hole in a context.
 public export
@@ -66,7 +67,12 @@ record Goal where
 public export
 %hint
 ctxSize : Context bs ns -> Size ns
-ctxSize = .size
+ctxSize = .sizeNames
+  
+public export
+%hint
+bindsSize : Context bs ns -> Size bs
+bindsSize = .sizeBinds
 
 -- Find a name in the context
 public export
@@ -81,27 +87,29 @@ lookup ctx n = findIdx ctx.idents n
         idx <- findIdx (Val ns) n
         pure $ IS idx
 
--- Add a potentially self-referencing definition to the context.
-public export
-addToContext : {s : Stage} -> (isBound : Bool) -> (n : Ident) -> AnnotAt s ns -> Atom (ns :< n) -> Context bs ns -> Context bs (ns :< n)
-addToContext {s = stage}
-  isBound n
-  (MkAnnotAt ty sort)
-  tm
-  (MkContext (Val idents)
-  con sorts defs stages size
-  (Evidence ar bounds)) =
-  MkContext
-    (Val (idents :< n)) (con :< ty) (sorts :< sort) (defs `o` Drop Id :< tm) (stages :< stage) (SS size)
-    (if isBound then (Evidence (ar ++ [n]) $ wkS bounds ++ [(Val _, tm)]) else (Evidence ar $ wkS bounds))
-
--- Add a definition to the context that lazily evaluates to its value.
-public export
-define : {s : Stage} -> (n : Ident) -> ExprAt s ns -> Context bs ns -> Context bs (ns :< n)
-define n rhs ctx =
-  addToContext False n rhs.annot (promote $ Glued (LazyApps (ValDef (Level here) $$ []) (wk rhs.tm.val))) ctx
-
 -- Add a binding with no value to the context.
 public export
-bind : {s : Stage} -> (n : Ident) -> AnnotAt s ns -> Context bs ns -> Context bs (ns :< n)
-bind n annot ctx = addToContext True n annot here ctx
+bind : {s : Stage} -> (n : Ident) -> AnnotAt s ns -> Context bs ns -> Context (bs :< n) (ns :< n)
+bind {s = stage}
+  n
+  (MkAnnotAt ty sort)
+  (MkContext (Val idents) con sorts defs undefs stages sizeBinds sizeNames bounds) =
+  MkContext
+    (Val (idents :< n)) (con :< ty) (sorts :< sort)
+      (defs `o` Drop Id :< here)
+    (Keep undefs) (stages :< stage) (SS sizeBinds) (SS sizeNames) 
+    (wkS bounds ++ [(Val _, here)])
+
+-- Add a definition to the context.
+public export
+define : {s : Stage} -> (n : Ident) -> AnnotAt s ns -> Atom ns -> Context bs ns -> Context bs (ns :< n)
+define {s = stage}
+  n
+  (MkAnnotAt ty sort)
+  tm
+  (MkContext (Val idents) con sorts defs undefs stages sizeBinds sizeNames bounds) =
+  MkContext
+    (Val (idents :< n)) (con :< ty) (sorts :< sort)
+      (defs :< sub defs tm)
+    (Drop undefs) (stages :< stage) sizeBinds (SS sizeNames)
+    bounds
