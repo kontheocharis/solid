@@ -300,11 +300,16 @@ namespace Th
 -- Thinning
 public export
 interface Thin (0 tm : Ctx -> Type) where
-  thin : Th ns ms -> tm ms -> tm ns
+  thin : (sns : Size ns) => (sms : Size ms) => Th ns ms -> tm ms -> tm ns
 
 namespace Thin
+  public export  
+  keepMany : Count ar => Th ns ms -> Th (ns ::< ar) (ms ::< ar)
+  keepMany @{CZ} r = r
+  keepMany @{CS n} r = keepMany @{n} (Keep r)
+
   public export
-  (.) : Thin tm => Sub ms tm qs -> Th ns ms -> Sub ns tm qs
+  (.) : (sns : Size ns) => (sms : Size ms) => Thin tm => Sub ms tm qs -> Th ns ms -> Sub ns tm qs
   [<] . e = [<]
   (xs :< x) . e = xs . e :< thin e x
 
@@ -428,16 +433,17 @@ data Relab : Ctx -> Ctx -> Type where
   Keep : Relab ns ms -> Relab (ns :< n) (ms :< n)
   Change : (0 n : Ident) -> Relab ns ms -> Relab (ns :< n) (ms :< n')
 
-public export  
-keepMany : Count ar => Relab ns ms -> Relab (ns ::< ar) (ms ::< ar)
-keepMany @{CZ} r = r
-keepMany @{CS n} r = keepMany @{n} (Keep r)
   
 public export
 interface Relabel (0 tm : Ctx -> Type) where
   relabel : Relab ns ms -> tm ms -> tm ns
   
 namespace Relabel
+  public export  
+  keepMany : Count ar => Relab ns ms -> Relab (ns ::< ar) (ms ::< ar)
+  keepMany @{CZ} r = r
+  keepMany @{CS n} r = keepMany @{n} (Keep r)
+
   public export
   (.) : Relabel tm => Relab ns ms -> Sub ms tm qs -> Sub ns tm qs
   r . [<] = [<]
@@ -469,11 +475,15 @@ Weak Lvl where
   weak (Drop x) (LS l) = LS (weak x (wkLvl l))
   
 public export
-Thin Lvl where
+Thin Idx where
   thin Done l impossible
-  thin (Keep x) LZ = LZ
-  thin (Keep x) (LS l) = LS (thin x l)
-  thin (Drop x) l = LS (thin x l)
+  thin (Keep x) IZ = IZ
+  thin {sns = SS sns} {sms = SS sms} (Keep x) (IS l) = IS (thin {sns = sns} {sms = sms} x l)
+  thin {sns = SS sns} (Drop x) l = IS (thin {sns = sns} x l)
+  
+public export
+Thin Lvl where
+  thin r l = idxToLvl sns (thin r (lvlToIdx sms l))
   
 public export
 Weak Idx where
@@ -525,6 +535,11 @@ public export
 Relabel tm => Relabel (Tel ar tm) where
   relabel r [] = []
   relabel r ((n, x) :: xs) = (n, relabel r x) :: relabel (Keep r) xs
+  
+public export
+Thin tm => Thin (Tel ar tm) where
+  thin r [] = []
+  thin r ((n, x) :: xs) = (n, thin r x) :: thin (Keep r) xs
 
 -- Finding variables by name through auto implicits!
 

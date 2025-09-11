@@ -184,7 +184,7 @@ freshMetaAtom {ns = ns} ctx n = do
   -- Get all the bound variables in the context, and apply them to the
   -- metavariable. This will later result in the metavariable being solved as a
   -- lambda of all these variables.
-  pure $ aMeta m (snd ctx.binds)
+  pure $ aMeta m ctx.binds
 
 -- Create a fresh metavariable
 public export covering
@@ -194,7 +194,7 @@ freshMeta ctx n annot = do -- @@Todo: use type
   -- Get all the bound variables in the context, and apply them to the
   -- metavariable. This will later result in the metavariable being solved as a
   -- lambda of all these variables.
-  pure $ meta m (snd ctx.binds) annot
+  pure $ meta m ctx.binds annot
   
 -- Create a `SortData` instance for the given stage and sort kind, by instantiating metas
 -- for the unknown information (byte sizes).

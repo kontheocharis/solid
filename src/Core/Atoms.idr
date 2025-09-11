@@ -85,6 +85,10 @@ public export
 (Relabel (tm Value), Relabel (tm Syntax)) => Relabel (AnyDomain tm) where
   relabel r (Choice syn val) = Choice (relabel r syn) (relabel r val)
   
+public export
+(Thin (tm Value), Thin (tm Syntax)) => Thin (AnyDomain tm) where
+  thin r (Choice syn val) = Choice (thin r syn) (thin r val)
+  
 -- Atom binders
 namespace AtomBinder
   public export
@@ -239,6 +243,10 @@ Op ar ns = (Tel ar Annot ns, Annot (ns ::< ar))
 public export covering
 Relabel Annot where
   relabel r (MkAnnot ty sort s) = MkAnnot (relabel r ty) (relabel r sort) s
+  
+public export covering
+Thin Annot where
+  thin r (MkAnnot ty sort s) = MkAnnot (thin r ty) (thin r sort) s
 
 public export covering
 WeakSized Annot where
@@ -253,6 +261,10 @@ Relabel (AnnotAt s) where
   relabel r (MkAnnotAt ty sort) = MkAnnotAt (relabel r ty) (relabel r sort)
 
 public export covering
+Thin (AnnotAt s) where
+  thin r (MkAnnotAt ty sort) = MkAnnotAt (thin r ty) (thin r sort)
+
+public export covering
 WeakSized (AnnotAt s) where
   weakS e (MkAnnotAt t a) = MkAnnotAt (weakS e t) (weakS e a)
 
@@ -265,6 +277,10 @@ Relabel Expr where
   relabel r (MkExpr t a) = MkExpr (relabel r t) (relabel r a)
 
 public export covering
+Thin Expr where
+  thin r (MkExpr t a) = MkExpr (thin r t) (thin r a)
+
+public export covering
 WeakSized Expr where
   weakS e (MkExpr t a) = MkExpr (weakS e t) (weakS e a)
 
@@ -275,6 +291,10 @@ EvalSized Atom Expr Expr where
 public export covering
 Relabel (ExprAt s) where
   relabel r (MkExpr t a) = MkExpr (relabel r t) (relabel r a)
+
+public export covering
+Thin (ExprAt s) where
+  thin r (MkExpr t a) = MkExpr (thin r t) (thin r a)
 
 public export covering
 WeakSized (ExprAt s) where
@@ -290,6 +310,11 @@ public export covering
   relabel {s = Nothing} r e = relabel {tm = Expr} r e
 
 public export covering
+[thinExprAtMaybe] {s : Maybe Stage} -> Thin (ExprAtMaybe s) where
+  thin {s = Just s} r e = thin {tm = ExprAt s} r e
+  thin {s = Nothing} r e = thin {tm = Expr} r e
+
+public export covering
 [weakExprAtMaybe] {s : Maybe Stage} -> WeakSized (ExprAtMaybe s) where
   weakS {s = Just s} e t = weakS {tm = ExprAt s} e t
   weakS {s = Nothing} e t = weakS {tm = Expr} e t
@@ -302,6 +327,10 @@ public export covering
 public export covering
 Relabel (Op ar) where
   relabel r (a, b) = (relabel r a, relabel (keepMany r) b)
+
+public export covering
+Thin (Op ar) where
+  thin r (a, b) = (thin r a, thin {sms = sms + a.count} {sns = sns + a.count} (keepMany r) b)
   
 export covering
 Show (Term Syntax ns) => Show (Atom ns) where

@@ -396,3 +396,111 @@ export covering
 relabelBody : (0 n' : Ident) -> Body d n ns -> Body d n' ns
 relabelBody n' (Delayed t) = Delayed (relabel (Change n' Id) t)
 relabelBody n' (Closure sub t) = Closure sub (relabel (Change n' Id) t)
+
+-- Weakening (only for values)
+export covering
+Weak (Term Value)
+
+export covering
+Weak (PrimitiveApplied k Value e) where
+  weak e (SimpApplied h sp) = SimpApplied h (weak e sp)
+  weak e (LazyApplied h sp gl) = LazyApplied h (weak e sp) (weak e gl)
+
+export covering
+Weak (Binder md r Value n) where
+  weak e b = mapBinder (weak e) b
+
+export covering
+Weak (Variable Value) where
+  weak s (Level l) = Level (weak s l)
+
+export covering
+Weak (Body Value n) where
+  weak e (Closure env t) = Closure (env . e) t
+
+export covering
+Weak (Binding md r Value) where
+  weak s (Bound {n = n} md bind body) = Bound {n = n} md (weak s bind) (weak s body)
+
+export covering
+Weak (Head Value hk) where
+  weak s (ValVar v) = ValVar (weak s v)
+  weak s (ValMeta m) = ValMeta m
+  weak s (ValDef v) = ValDef (weak s v)
+  weak s (ObjCallable t) = ObjCallable (weak s t)
+  weak s (ObjLazy t) = ObjLazy (weak s t)
+  weak s (PrimNeutral p) = PrimNeutral (weak s p)
+
+export covering
+Weak (HeadApplied Value hk) where
+  weak e (h $$ sp) = weak e h $$ weak e sp
+
+export covering
+Weak (Term Value) where
+  weak e (Glued (LazyApps a f)) = Glued (LazyApps (weak e a) (weak e f))
+  weak e (Glued (LazyPrimNormal a)) = Glued (LazyPrimNormal (weak e a))
+  weak e (SimpApps a) = SimpApps (weak e a)
+  weak e (MtaCallable c) = MtaCallable (weak e c)
+  weak e (SimpObjCallable c) = SimpObjCallable (weak e c)
+  weak e (RigidBinding md c) = RigidBinding md (weak e c)
+  weak e (SimpPrimNormal p) = SimpPrimNormal (weak e p)
+
+-- Thinning
+export covering
+Thin (Term d)
+
+export covering
+Thin (Binder s r d n) where
+  thin r b = mapBinder (thin r) b
+
+export covering
+Thin (Body d n) where
+  thin r (Delayed x) = Delayed (thin (Keep r) x)
+  thin r (Closure x y) = Closure (x . r) y
+
+export covering
+Thin (Binding s r d) where
+  thin r (Bound md b body) = Bound md (thin r b) (thin r body)
+  
+export covering
+Thin (PrimitiveApplied c d k) where
+  thin r (p $$ sp) = p $$ thin r sp
+  thin r (SimpApplied p sp) = SimpApplied p (thin r sp)
+  thin r (LazyApplied p sp f) = LazyApplied p (thin r sp) (thin r f)
+
+export covering
+Thin (Variable d) where
+  thin r (Level l) = Level (thin r l)
+  thin r (Index i) = Index (thin r i)
+
+export covering
+Thin (Head d hk) where
+  thin r (SynVar x) = SynVar (thin r x)
+  thin r (ValVar x) = ValVar (thin r x)
+  thin r (SynMeta x) = SynMeta x
+  thin r (ValMeta x) = ValMeta x
+  thin r (ValDef x) = ValDef (thin r x)
+  thin r (SynBinding s x y) = SynBinding s x (thin r y)
+  thin r (ObjCallable x) = ObjCallable (thin r x)
+  thin r (ObjLazy x) = ObjLazy (thin r x)
+  thin r (PrimNeutral x) = PrimNeutral (thin r x)
+
+export covering
+Thin (HeadApplied d hk) where
+  thin r (x $$ y) = thin r x $$ thin r y
+
+export covering
+Thin LazyValue where
+  thin r (LazyApps x y) = LazyApps (thin r x) (thin r y)
+  thin r (LazyPrimNormal x) = LazyPrimNormal (thin r x)
+
+export covering
+Thin (Term d) where
+  thin r (SynApps x) = SynApps (thin r x)
+  thin r (Glued x) = Glued (thin r x)
+  thin r (SimpApps x) = SimpApps (thin r x)
+  thin r (MtaCallable x) = MtaCallable (thin r x)
+  thin r (SimpObjCallable x) = SimpObjCallable (thin r x)
+  thin r (RigidBinding md x) = RigidBinding md (thin r x)
+  thin r (SynPrimNormal x) = SynPrimNormal (thin r x)
+  thin r (SimpPrimNormal x) = SimpPrimNormal (thin r x)

@@ -41,7 +41,7 @@ record Context (bs : Ctx) (ns : Ctx) where
   sizeNames : Size ns
   -- The bound variables in the context, in the form of a spine ready to be applied
   -- to a metavariable.
-  binds : Spine (ctxToArity bs) AtomTy bs
+  binds : Spine (ctxToArity bs) AtomTy ns
   
 public export
 emptyContext : Context [<] [<]
@@ -112,4 +112,4 @@ define {s = stage}
     (Val (idents :< n)) (con :< ty) (sorts :< sort)
       (defs :< sub defs tm)
     (Drop undefs) (stages :< stage) sizeBinds (SS sizeNames)
-    bounds
+    (wkS bounds)

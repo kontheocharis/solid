@@ -93,10 +93,10 @@ interface (Monad m) => HasTc m where
   metas : HasMetas metasM
 
   -- Throw a typechecking error
-  tcError : Context bs ns -> TcErrorAt ns -> m a
+  tcError : forall a . Context bs ns -> TcErrorAt ns -> m a
 
   -- Set the current typechecking location in the source file
-  enterLoc : Loc -> m a -> m a
+  enterLoc : forall a . Loc -> m a -> m a
 
   -- Add a user goal
   addGoal : Goal -> m ()
