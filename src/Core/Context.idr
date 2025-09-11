@@ -102,11 +102,10 @@ bind {s = stage}
 
 -- Add a definition to the context.
 public export
-define : {s : Stage} -> (n : Ident) -> AnnotAt s ns -> Atom ns -> Context bs ns -> Context bs (ns :< n)
+define : {s : Stage} -> (n : Ident) -> ExprAt s ns -> Context bs ns -> Context bs (ns :< n)
 define {s = stage}
   n
-  (MkAnnotAt ty sort)
-  tm
+  (MkExpr tm (MkAnnotAt ty sort))
   (MkContext (Val idents) con sorts defs undefs stages sizeBinds sizeNames bounds) =
   MkContext
     (Val (idents :< n)) (con :< ty) (sorts :< sort)

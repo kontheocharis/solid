@@ -241,11 +241,11 @@ adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Obj)) Obj = pure $ Left Refl
 adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Mta)) Mta = pure $ Left Refl
 adjustStage' ctx e@(MkExpr tm ann@(MkAnnot ty sort s@Obj)) s'@Mta = do
   ann' <- fitAnnot ctx Obj loosestSortKind ann.f.shape
-  pure $ Right (quot @{ctx.size} (MkExpr tm ann'))
+  pure $ Right (quot @{ctx.sizeNames} (MkExpr tm ann'))
 adjustStage' ctx (MkExpr tm ann@(MkAnnot ty sort s@Mta)) s'@Obj = solving (forceCode ctx ty) >>= \case
   Matching [(_, by), (_, ty)] => do
     ann' <- fitAnnot ctx Obj loosestSortKind (MkAnnotShape ty (objA by).ty)
-    pure $ Right (splice @{ctx.size} ann' tm)
+    pure $ Right (splice @{ctx.sizeNames} ann' tm)
   NonMatching other => tcError ctx $ CannotCoerceToObj other 
 
 -- Adjust the stage of an expression.
@@ -310,7 +310,7 @@ insertLam ctx piStage piIdent bindAnnot bodyAnnot subject = do
   s <- subject
     (bind piIdent bindAnnot.asAnnot ctx)
     (CheckInput _ (objZOrMta piStage (bodyAnnot.inner.open)).a.f)
-  pure $ lam piStage piIdent piIdent bindAnnot bodyAnnot (close ctx.defs s.tm)
+  pure $ lam piStage piIdent piIdent bindAnnot bodyAnnot (close idS s.tm)
   
 -- Infer the given object as a type, also inferring its stage in the process.
 inferAnnot : HasTc m
@@ -335,7 +335,7 @@ tcSpine ctx tms [] = tcError ctx (TooManyApps (map fst tms).count)
 tcSpine ctx [] annots = tcError ctx (TooFewApps annots.count)
 tcSpine ctx ((_, tm) :: tms) ((Val _, annot) :: annots) = do -- @@Todo: spine name
   tm' <- tm Check ctx (CheckInput _ annot.f)
-  tms' <- tcSpine ctx tms (sub (ctx.defs :< tm'.tm) annots)
+  tms' <- tcSpine ctx tms (sub (idS :< tm'.tm) annots)
   pure ((Val _, tm'.p) :: tms')
   
 -- Main combinators:
@@ -367,7 +367,7 @@ tcPi x a b = switch $ ensureKnownStage $ \ctx, stage => case stage of
   Mta => do
     a' <- a Check ctx (CheckInput _ mtaA.f)
     b' <- b Check (bind x (mta a'.tm).f.a ctx) (CheckInput _ mtaA.f)
-    pure $ pi Mta x (MkAnnotFor MtaSort a'.tm) (MkAnnotFor MtaSort (close ctx.defs b'.tm))
+    pure $ pi Mta x (MkAnnotFor MtaSort a'.tm) (MkAnnotFor MtaSort (close idS b'.tm))
   Obj => do
     ba <- reading (freshMeta ctx Nothing layoutStaA.f)
     bb <- reading (freshMeta ctx Nothing layoutStaA.f)
@@ -375,7 +375,7 @@ tcPi x a b = switch $ ensureKnownStage $ \ctx, stage => case stage of
     b' <- b Check (bind x (obj ba.tm a'.tm).a.f ctx) (CheckInput _ (wkS $ objStaA bb.tm).f)
     pure $ pi Obj x
       (MkAnnotFor (ObjSort Sized ba.tm) a'.tm)
-      (MkAnnotFor (ObjSort Sized bb.tm) (close ctx.defs b'.tm))
+      (MkAnnotFor (ObjSort Sized bb.tm) (close idS b'.tm))
 
 -- Check a lambda abstraction.
 public export
@@ -394,7 +394,7 @@ tcLam lamIdent bindTy body Check = \ctx, (CheckInput stage annot@(MkAnnotAt ty s
       body' <- body Check
         (bind lamIdent (a.asAnnot) ctx)
         (CheckInput _ (b.open.asAnnot))
-      pure $ lam stage piIdent lamIdent a b (close ctx.defs body'.tm)
+      pure $ lam stage piIdent lamIdent a b (close idS body'.tm)
     MismatchingPiAt piStage (MkPiData resolvedPi piIdent a b) => case fst piIdent of
       -- Wasn't the right kind of pi; if it was implicit, insert a lambda
       Implicit => do
@@ -445,9 +445,9 @@ tcApps subject args = switch $ \ctx, (InferInput reqStage) => do
       args' <- tcSpine ctx args params
       let result = apps subject' args'
             -- @@Refactor: why does it have to be like this :((
-            (sub {tm = AnnotAt _} @{%search} @{ctx.size}
-              @{ctx.size + args'.count}
-              (ctx.defs ::< (map (.tm) args')) ret.f)
+            (sub {tm = AnnotAt _} @{%search} @{ctx.sizeNames}
+              @{ctx.sizeNames + args'.count}
+              (idS ::< (map (.tm) args')) ret.f)
       adjustStageIfNeeded ctx result.p reqStage
     TooMany extra under p => tcError ctx $ NotAPi fnAnnot.ty extra
 
@@ -467,8 +467,8 @@ tcPrim p args = switch $ \ctx, (InferInput stage) => do
     PrimDeclared => do
      (pParams, pRet) <- definedPrimAnnot p
      pure (
-        evalS {over = Atom} [<] pParams,
-        evalS {over = Atom} {sz = ctx.size + ar.count} {sz' = SZ + ar.count} (liftSMany [<]) pRet
+        sub {over = Atom} [<] pParams,
+        sub {sns = ctx.sizeNames + ar.count} {sms = SZ + ar.count} (liftSMany [<]) pRet
       )
   sp <- tcSpine ctx (dispToList args) pParams
   adjustStageIfNeeded ctx (prim p (map (.tm) sp) pRet) stage
@@ -497,7 +497,7 @@ tcLet name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => d
       tm Check ctx (CheckInput stage ty'.a)
     Nothing => tm Infer ctx (InferInput (Just stage))
   rest' <- rest md (define (Explicit, name) tm' ctx) (wkS inp)
-  let result = sub @{evalExprAtMaybe} {sns = ctx.size} {sms = SS ctx.size} (ctx.defs :< tm'.tm) rest'
+  let result = sub @{evalExprAtMaybe} {sns = ctx.sizeNames} {sms = SS ctx.sizeNames} (idS :< tm'.tm) rest'
   pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result
   
 -- Check a declaration statement.
