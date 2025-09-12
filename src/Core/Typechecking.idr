@@ -199,15 +199,15 @@ reading @{tc} f = enterMetas (f {m' = metasM @{tc}} @{metas @{tc}})
 public export
 unify : HasTc m => Context bs ns -> Atom ns -> Atom ns -> m ()
 unify @{tc} ctx a b = do
-  val : Unification _ <- solving (unify ?sc a.val b.val)
+  val : Unification _ <- solving (unify ctx.scope a b)
   case val of
     AreSame => pure ()
     failure => tcError ctx $ WhenUnifying a b failure
 
 public export
 areEqual : HasTc m => Context bs ns -> Atom ns -> Atom ns -> m (Unification ns)
-areEqual @{tc} ctx a b = do
-  enterMetas (unify {sm = SolvingNotAllowed} @{metas} @{unifyValues} ?sc2 a.val b.val)
+areEqual @{tc} ctx a b = enterMetas
+  (unify {sm = SolvingNotAllowed} @{metas} ctx.scope a b)
 
 -- Fit the given annotation to the given kind.
 fitAnnot : HasTc m
@@ -241,11 +241,11 @@ adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Obj)) Obj = pure $ Left Refl
 adjustStage' ctx e@(MkExpr tm (MkAnnot ty sort Mta)) Mta = pure $ Left Refl
 adjustStage' ctx e@(MkExpr tm ann@(MkAnnot ty sort s@Obj)) s'@Mta = do
   ann' <- fitAnnot ctx Obj loosestSortKind ann.f.shape
-  pure $ Right (quot @{ctx.sizeNames} (MkExpr tm ann'))
+  pure $ Right (quot @{ctx.scope.sizeNames} (MkExpr tm ann'))
 adjustStage' ctx (MkExpr tm ann@(MkAnnot ty sort s@Mta)) s'@Obj = solving (forceCode ctx ty) >>= \case
   Matching [(_, by), (_, ty)] => do
     ann' <- fitAnnot ctx Obj loosestSortKind (MkAnnotShape ty (objA by).ty)
-    pure $ Right (splice @{ctx.sizeNames} ann' tm)
+    pure $ Right (splice @{ctxSize ctx} ann' tm)
   NonMatching other => tcError ctx $ CannotCoerceToObj other 
 
 -- Adjust the stage of an expression.
@@ -445,8 +445,8 @@ tcApps subject args = switch $ \ctx, (InferInput reqStage) => do
       args' <- tcSpine ctx args params
       let result = apps subject' args'
             -- @@Refactor: why does it have to be like this :((
-            (sub {tm = AnnotAt _} @{%search} @{ctx.sizeNames}
-              @{ctx.sizeNames + args'.count}
+            (sub {tm = AnnotAt _} @{%search} @{ctxSize ctx}
+              @{ctxSize ctx + args'.count}
               (idS ::< (map (.tm) args')) ret.f)
       adjustStageIfNeeded ctx result.p reqStage
     TooMany extra under p => tcError ctx $ NotAPi fnAnnot.ty extra
@@ -468,7 +468,7 @@ tcPrim p args = switch $ \ctx, (InferInput stage) => do
      (pParams, pRet) <- definedPrimAnnot p
      pure (
         sub {over = Atom} [<] pParams,
-        sub {sns = ctx.sizeNames + ar.count} {sms = SZ + ar.count} (liftSMany [<]) pRet
+        sub {sns = ctxSize ctx + ar.count} {sms = SZ + ar.count} (liftSMany [<]) pRet
       )
   sp <- tcSpine ctx (dispToList args) pParams
   adjustStageIfNeeded ctx (prim p (map (.tm) sp) pRet) stage
@@ -497,7 +497,7 @@ tcLet name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => d
       tm Check ctx (CheckInput stage ty'.a)
     Nothing => tm Infer ctx (InferInput (Just stage))
   rest' <- rest md (define (Explicit, name) tm' ctx) (wkS inp)
-  let result = sub @{evalExprAtMaybe} {sns = ctx.sizeNames} {sms = SS ctx.sizeNames} (idS :< tm'.tm) rest'
+  let result = sub @{evalExprAtMaybe} {sns = ctxSize ctx} {sms = SS $ ctxSize ctx} (idS :< tm'.tm) rest'
   pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result
   
 -- Check a declaration statement.

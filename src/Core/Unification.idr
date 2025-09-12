@@ -11,6 +11,7 @@ import Core.Syntax
 import Core.Evaluation
 import Core.Primitives.Rules
 import Core.Metavariables
+import Core.Atoms
 import Core.Context
 
 %default covering
@@ -59,18 +60,18 @@ escapeBinder Nothing (Error {under = ar} err)
 public export
 interface Unify sm (0 lhs : Ctx -> Type) (0 rhs : Ctx -> Type) where
   -- Resolve any metas in terms, no-op by default
-  resolveLhs : (HasMetas m) => Scope bs Val ns -> lhs ns -> m sm (lhs ns)
+  resolveLhs : (HasMetas m) => Scope bs Atom ns -> lhs ns -> m sm (lhs ns)
   resolveLhs _ x = pure x
-  resolveRhs : (HasMetas m) => Scope bs Val ns -> rhs ns -> m sm (rhs ns)
+  resolveRhs : (HasMetas m) => Scope bs Atom ns -> rhs ns -> m sm (rhs ns)
   resolveRhs _ x = pure x
 
   -- Unify two terms, given the size of the context, assuming both sides are
   -- already resolved
-  unifyImpl : (HasMetas m) => Size ns => Scope bs Val ns -> lhs ns -> rhs ns -> m sm (Unification ns)
+  unifyImpl : (HasMetas m) => Size ns => Scope bs Atom ns -> lhs ns -> rhs ns -> m sm (Unification ns)
 
 -- The actual unification function, first resolves both sides.
 public export
-unify : HasMetas m => Unify sm lhs rhs => Scope bs Val ns -> lhs ns -> rhs ns -> m sm (Unification ns)
+unify : HasMetas m => Unify sm lhs rhs => Scope bs Atom ns -> lhs ns -> rhs ns -> m sm (Unification ns)
 unify @{_} @{u} ctx l r = do
   l' <- resolveLhs @{u} ctx l
   r' <- resolveRhs @{u} ctx r
@@ -138,9 +139,9 @@ solve m sp t = canSolve >>= \case
   Val SolvingNotAllowed => pure DontKnow
 
 -- Resolve variables from a scope
-resolveVars : Scope bs Val ns -> Val ns -> Val ns
+resolveVars : Scope bs Atom ns -> Val ns -> Val ns
 resolveVars sc v@(SimpApps (ValVar (Level x) $$ sp)) = case getDef sc x of
-  Just tm => Glued (LazyApps (ValVarWithDef (Level x) $$ sp) (resolveVars sc (apps tm sp)))
+  Just tm => Glued (LazyApps (ValVarWithDef (Level x) $$ sp) (resolveVars sc (apps tm.val sp)))
   Nothing => v
 resolveVars _ v = v
 
@@ -196,7 +197,7 @@ Unify SolvingNotAllowed (Variable Value) (Variable Value) where
     -- unify ctx the binders
     = unify ctx bindA bindB
       -- unify ctx the bodies, retaining the name of the first binder (kind of arbirary..)
-      /\ (escapeBinder (displayIdent bindA) <$> unify (liftS {a = n} ctx) {lhs = Term Value} {rhs = Term Value}
+      /\ (escapeBinder (displayIdent bindA) <$> unify (lift {a = n} ctx) {lhs = Term Value} {rhs = Term Value}
           (eval (lift envA) tA)
           (eval (lift envB) tB))
 
@@ -270,3 +271,8 @@ export
 
   -- everything else is different
   unifyImpl ctx _ _ = pure AreDifferent
+
+-- Atom unification
+export
+{sm : SolvingMode} -> Unify sm Atom Atom where
+  unifyImpl ctx a b = unify ctx a.val b.val

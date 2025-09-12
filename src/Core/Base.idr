@@ -443,26 +443,32 @@ namespace LazySub
   data LazySub : Ctx -> (Ctx -> Type) -> Ctx -> Type where
     Lin : LazySub [<] f [<]
     Lift : LazySub ns f ms' -> LazySub (ns :< m') f (ms' :< m)
-    (:<<) : LazySub ns f ms' -> f ms' -> LazySub ns f (ms' :< m)
+    (:<) : LazySub ns f ms' -> f ms' -> LazySub ns f (ms' :< m)
+    
+  export
+  map : (forall us . f us -> g us) -> LazySub ns f ms -> LazySub ns g ms
+  map f [<] = [<]
+  map f (Lift xs) = Lift (map f xs)
+  map f (xs :< x) = map f xs :< f x
     
   export
   (.asSub) : Vars f => (sns : Size ns) => (sms : Size ms) => EvalSized f f f => LazySub ns f ms -> Sub ns f ms
   (.asSub) [<] = [<]
   (.asSub) {sms = SS sms} {sns = SS sns} (Lift x) = let x' = x.asSub in x' `o` Drop Id :< here
-  (.asSub) {sms = SS sms} (x :<< y) = let x' = x.asSub in x' :< sub {sms = sms} x' y
+  (.asSub) {sms = SS sms} (x :< y) = let x' = x.asSub in x' :< sub {sms = sms} x' y
   
   export
   (.inv) : LazySub ns f ms -> Th ms ns
   (.inv) [<] = Done
   (.inv) (Lift x) = Keep x.inv
-  (.inv) (x :<< y) = Drop x.inv
+  (.inv) (x :< y) = Drop x.inv
   
   export
   getDef : WeakSized f => (sms : Size ms) => LazySub ks f ms -> Idx ms -> Maybe (f ms)
   getDef (Lift x) IZ = Nothing
-  getDef {sms = SS sms} (x :<< y) IZ = Just (wkS y)
+  getDef {sms = SS sms} (x :< y) IZ = Just (wkS y)
   getDef {sms = SS sms} (Lift y) (IS x) = wkS <$> getDef y x
-  getDef {sms = SS sms} (y :<< z) (IS x) = wkS <$> getDef y x
+  getDef {sms = SS sms} (y :< z) (IS x) = wkS <$> getDef y x
 
 -- Relabeling should always be the identity
 
@@ -511,12 +517,16 @@ bindsSize = .sizeBinds
 
 namespace Scope
   export
-  liftS : (WeakSized tm, Vars tm) => Scope ns tm ms -> Scope (ns :< a) tm (ms :< a')
-  liftS (MkScope sb sn env) = MkScope (SS sb) (SS sn) (Lift env) 
+  lift : Scope ns tm ms -> Scope (ns :< a) tm (ms :< a')
+  lift (MkScope sb sn env) = MkScope (SS sb) (SS sn) (Lift env) 
+    
+  export
+  map : (forall us . f us -> g us) -> Scope ns f ms -> Scope ns g ms
+  map f (MkScope sb sn env) = MkScope sb sn (map f env)
   
   export
   (:<) : Scope ns f ms -> f ms -> Scope ns f (ms :< m)
-  (MkScope sb sn env) :< arg = MkScope sb (SS sn) (env :<< arg)
+  (MkScope sb sn env) :< arg = MkScope sb (SS sn) (env :< arg)
   
   export
   getDef : WeakSized f => Scope ns f ms -> Lvl ms -> Maybe (f ms)

@@ -120,8 +120,8 @@ forceCode ctx potentialCode = resolve potentialCode >>= \s => case s.val of
   got => do
     by <- freshMeta ctx Nothing layoutA.f
     ty <- freshMeta ctx Nothing objZA.f
-    let exp = code @{ctx.sizeNames} (MkAnnotFor (ObjSort Dyn by.tm) ty.tm)
-    unify ?sc got exp.ty.val >>= \case
+    let exp = code @{ctxSize ctx} (MkAnnotFor (ObjSort Dyn by.tm) ty.tm)
+    unify ctx.scope got exp.ty.val >>= \case
       AreSame => pure $ Matching [(Val _, by.tm), (Val _, ty.tm)]
       _ => pure $ NonMatching (promote got)
     

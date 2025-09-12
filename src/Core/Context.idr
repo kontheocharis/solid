@@ -28,13 +28,9 @@ record Context (bs : Ctx) (ns : Ctx) where
   -- The current context (sorts)
   sorts : Con AtomTy ns
   -- The definitions in the context
-  defs : LazySub bs Atom ns
+  scope : Scope bs Atom ns
   -- The stages of the definitions in the context
   stages : Con (const Stage) ns
-  -- The size of the bindings, for quick access
-  sizeBinds : Size bs
-  -- The size of the context, for quick access
-  sizeNames : Size ns
   -- The bound variables in the context, in the form of a spine ready to be applied
   -- to a metavariable.
   binds : Spine (ctxToArity bs) AtomTy ns
@@ -42,7 +38,7 @@ record Context (bs : Ctx) (ns : Ctx) where
 public export
 emptyContext : Context [<] [<]
 emptyContext =
-  MkContext (Val [<]) [<] [<] [<] [<] SZ SZ []
+  MkContext (Val [<]) [<] [<] (MkScope SZ SZ [<]) [<] []
  
 -- A goal is a hole in a context.
 public export
@@ -63,12 +59,12 @@ record Goal where
 public export
 %hint
 ctxSize : Context bs ns -> Size ns
-ctxSize = .sizeNames
+ctxSize f = f.scope.sizeNames
   
 public export
 %hint
 bindsSize : Context bs ns -> Size bs
-bindsSize = .sizeBinds
+bindsSize f = f.scope.sizeBinds
 
 -- Find a name in the context
 public export
@@ -86,25 +82,11 @@ lookup ctx n = findIdx ctx.idents n
 -- Add a binding with no value to the context.
 public export
 bind : {s : Stage} -> (n : Ident) -> AnnotAt s ns -> Context bs ns -> Context (bs :< n) (ns :< n)
-bind {s = stage}
-  n
-  (MkAnnotAt ty sort)
-  (MkContext (Val idents) con sorts defs stages sizeBinds sizeNames bounds) =
-  MkContext
-    (Val (idents :< n)) (con :< ty) (sorts :< sort)
-      (Lift defs)
-    (stages :< stage) (SS sizeBinds) (SS sizeNames) 
-    (wkS bounds ++ [(Val _, here)])
+bind {s = stage} n (MkAnnotAt ty sort) (MkContext (Val idents) con sorts defs stages bounds) =
+  MkContext (Val (idents :< n)) (con :< ty) (sorts :< sort) (lift defs) (stages :< stage) (wkS bounds ++ [(Val _, here)])
 
 -- Add a definition to the context.
 public export
 define : {s : Stage} -> (n : Ident) -> ExprAt s ns -> Context bs ns -> Context bs (ns :< n)
-define {s = stage}
-  n
-  (MkExpr tm (MkAnnotAt ty sort))
-  (MkContext (Val idents) con sorts defs stages sizeBinds sizeNames bounds) =
-  MkContext
-    (Val (idents :< n)) (con :< ty) (sorts :< sort)
-      (defs :<< tm)
-    (stages :< stage) sizeBinds (SS sizeNames)
-    (wkS bounds)
+define {s = stage} n (MkExpr tm (MkAnnotAt ty sort)) (MkContext (Val idents) con sorts defs stages bounds) =
+  MkContext (Val (idents :< n)) (con :< ty) (sorts :< sort) (defs :< tm) (stages :< stage) (wkS bounds)
