@@ -1,6 +1,7 @@
 -- Defining the primitives in the language
 module Core.Primitives.Definitions
 
+import Data.Singleton
 import Common
 import Core.Base
 import Decidable.Equality
@@ -150,10 +151,6 @@ Eq (Primitive k r na ar) where
 public export
 record PrimitiveAny where
   constructor MkPrimitiveAny
-  0 classif : PrimitiveClass
-  0 reducibility : PrimitiveReducibility
-  0 level : PrimitiveLevel
-  0 arity : Arity
   primitive : Primitive classif reducibility level arity
 
 public export
@@ -161,7 +158,7 @@ Eq PrimitiveAny where
   (==) p p' = isJust $ primEq p.primitive p'.primitive
   
 congPrimitive : {0 a, b : PrimitiveAny} -> a.primitive ~=~ b.primitive -> a = b
-congPrimitive {a = MkPrimitiveAny k r l ar _} {b = MkPrimitiveAny k r l ar _} Refl = Refl
+congPrimitive {a = MkPrimitiveAny _} {b = MkPrimitiveAny _} Refl = Refl
 
 public export
 SemiDecEq PrimitiveAny where
@@ -177,3 +174,79 @@ Hashable PrimitiveAny where
 public export
 Show (Primitive k r na ar) where
   show p = primName p
+
+public export
+nameToPrim : String -> Maybe PrimitiveAny
+nameToPrim "TYPE"    = Just $ MkPrimitiveAny PrimTYPE
+nameToPrim "Code"    = Just $ MkPrimitiveAny PrimCode
+nameToPrim "quote"   = Just $ MkPrimitiveAny PrimQuote
+nameToPrim "splice"  = Just $ MkPrimitiveAny PrimSplice
+nameToPrim "Layout"  = Just $ MkPrimitiveAny PrimLayout
+nameToPrim "zero"    = Just $ MkPrimitiveAny PrimZeroLayout    
+nameToPrim "idx"     = Just $ MkPrimitiveAny PrimIdxLayout     
+nameToPrim "ptr"     = Just $ MkPrimitiveAny PrimPtrLayout     
+nameToPrim "Layout?" = Just $ MkPrimitiveAny PrimLayoutDyn     
+nameToPrim "sta"     = Just $ MkPrimitiveAny PrimSta           
+nameToPrim "Type?"   = Just $ MkPrimitiveAny PrimTypeDyn       
+nameToPrim "seq"     = Just $ MkPrimitiveAny PrimSeqLayout     
+nameToPrim "seq-dyn" = Just $ MkPrimitiveAny PrimSeqLayoutDyn  
+nameToPrim "UNIT"    = Just $ MkPrimitiveAny PrimUNIT          
+nameToPrim "TT"      = Just $ MkPrimitiveAny PrimTT            
+nameToPrim "Unit"    = Just $ MkPrimitiveAny PrimUnit          
+nameToPrim "tt"      = Just $ MkPrimitiveAny PrimTt            
+nameToPrim "SIGMA"   = Just $ MkPrimitiveAny PrimSIGMA         
+nameToPrim "Sigma"   = Just $ MkPrimitiveAny PrimSigma         
+nameToPrim "IO"      = Just $ MkPrimitiveAny PrimIO            
+nameToPrim "PAIR"    = Just $ MkPrimitiveAny PrimPAIR          
+nameToPrim "pair"    = Just $ MkPrimitiveAny PrimPair          
+nameToPrim _   = Nothing
+
+public export
+nameToPrimId : {p : _} -> nameToPrim (primName p) === Just (MkPrimitiveAny p)
+nameToPrimId {p = PrimTYPE}         = Refl
+nameToPrimId {p = PrimCode}         = Refl
+nameToPrimId {p = PrimQuote}        = Refl
+nameToPrimId {p = PrimSplice}       = Refl
+nameToPrimId {p = PrimSta}          = Refl
+nameToPrimId {p = PrimTypeDyn}      = Refl
+nameToPrimId {p = PrimLayout}       = Refl
+nameToPrimId {p = PrimLayoutDyn}    = Refl
+nameToPrimId {p = PrimSeqLayout}    = Refl
+nameToPrimId {p = PrimSeqLayoutDyn} = Refl
+nameToPrimId {p = PrimZeroLayout}   = Refl
+nameToPrimId {p = PrimIdxLayout}    = Refl
+nameToPrimId {p = PrimPtrLayout}    = Refl
+nameToPrimId {p = PrimUNIT}         = Refl
+nameToPrimId {p = PrimTT}           = Refl
+nameToPrimId {p = PrimUnit}         = Refl
+nameToPrimId {p = PrimTt}           = Refl
+nameToPrimId {p = PrimSIGMA}        = Refl
+nameToPrimId {p = PrimPAIR}         = Refl
+nameToPrimId {p = PrimSigma}        = Refl
+nameToPrimId {p = PrimPair}         = Refl
+nameToPrimId {p = PrimIO}           = Refl
+
+public export
+primArity : Primitive k r na ar -> Singleton ar
+primArity PrimTYPE         = Val _
+primArity PrimCode         = Val _
+primArity PrimQuote        = Val _
+primArity PrimSplice       = Val _
+primArity PrimSta          = Val _
+primArity PrimTypeDyn      = Val _
+primArity PrimLayout       = Val _
+primArity PrimLayoutDyn    = Val _
+primArity PrimSeqLayout    = Val _
+primArity PrimSeqLayoutDyn = Val _
+primArity PrimZeroLayout   = Val _
+primArity PrimIdxLayout    = Val _
+primArity PrimPtrLayout    = Val _
+primArity PrimUNIT         = Val _
+primArity PrimTT           = Val _
+primArity PrimUnit         = Val _
+primArity PrimTt           = Val _
+primArity PrimSIGMA        = Val _
+primArity PrimPAIR         = Val _
+primArity PrimSigma        = Val _
+primArity PrimPair         = Val _
+primArity PrimIO           = Val _

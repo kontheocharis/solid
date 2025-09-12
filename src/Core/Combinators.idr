@@ -342,6 +342,11 @@ public export covering
 apps : Size ns => Expr ns -> Spine ar Expr ns -> AnnotAt s ns -> ExprAt s ns
 apps f xs a = MkExpr (promote $ sApps f.tm.syn (map (.tm.syn) xs)) a
 
+public export covering
+lams : Size ns => Tel ar Annot ns -> Expr (ns ::< ar) -> Expr ns
+lams [] body = body
+lams ((n, annot) :: xs) body = ?aj_1 (lams xs body)
+
 -- Find a variable by its name in the context.
 public export covering
 v : Size ns => (n : String) -> {auto prf : In n ns} -> Atom ns
@@ -353,7 +358,7 @@ data GatherPis : Arity -> Ctx -> Type where
   TooMany : (extra : Count ar) -> (under : Count ar') -> AtomTy (ns ::< ar') -> GatherPis ar ns
 
 public export covering
-gatherPis : HasMetas m => Size ns => Annot ns -> (ar : Arity) -> m sm (GatherPis ar ns)
+gatherPis : HasMetas m => (sns : Size ns) => Annot ns -> (ar : Arity) -> m sm (GatherPis ar ns)
 gatherPis x [] = pure $ Gathered [] x
 gatherPis x ar@(n :: ns) = forcePi x.ty >>= \case
   MatchingPi _ (MkPiData resolvedPi piIdent a b) => gatherPis b.open.asAnnot.p ns >>= \case

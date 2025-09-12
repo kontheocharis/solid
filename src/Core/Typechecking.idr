@@ -48,6 +48,8 @@ data TcErrorAt : Ctx -> Type where
   NotAPi : (subj : AtomTy ns) -> (extra : Count ar) -> TcErrorAt ns
   -- Tried to use a meta thing in object position
   CannotCoerceToObj : (givenTy : AtomTy ns) -> TcErrorAt ns
+  -- Cannot find primitive with the given name
+  PrimitiveNotFound : (name : Name) -> TcErrorAt ns
 
 -- Packaging an error with its context
 public export
@@ -76,6 +78,7 @@ export
       show extra
     } argument(s), which is too many"
   show (CannotCoerceToObj given) = "Cannot coerce type `\{show given}` to the object level"
+  show (PrimitiveNotFound prim) = "Primitive `\{prim}` does not exist"
   
 export
 ShowSyntax => Show TcError where
@@ -500,25 +503,31 @@ tcLet name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => d
   let result = sub @{evalExprAtMaybe} {sns = ctxSize ctx} {sms = SS $ ctxSize ctx} (idS :< tm'.tm) rest'
   pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result
   
--- Check a declaration statement.
+-- Check a primitive declaration statement.
 public export
-tcDecl : HasTc m
+tcPrimDecl : HasTc m
   => (name : Name)
   -> (stage : Maybe Stage)
   -> (ty : TcAll m)
-  -> (isPrimitive : Bool)
   -> (rest : TcAll m)
   -> TcAll m
-tcDecl name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => ?tcDeclImpl
-  -- let Val ns = ctx.idents
-  -- tm' : ExprAt stage ns <- case ty of
-  --   Just ty => do
-  --     ty' <- ty Check ctx (CheckInput stage (objZOrMtaA stage))
-  --     tm Check ctx (CheckInput stage ty'.a)
-  --   Nothing => tm Infer ctx (InferInput (Just stage))
-  -- rest' <- rest md (define (Explicit, name) tm' ctx) (wkS inp)
-  -- let result = sub @{evalExprAtMaybe} {sns = ctx.size} {sms = SS ctx.size} (ctx.defs :< tm'.tm) rest'
-  -- pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result
+tcPrimDecl name stage ty rest = inferStageIfNone stage $ \stage, md, ctx, inp => do
+  -- ensure the context is empty
+  -- when ctx.scope.size of
+
+  let Val ns = ctx.idents
+  ty' <- ty Check ctx (CheckInput stage (objZOrMtaA stage))
+  case nameToPrim name of
+    Nothing => tcError ctx $ PrimitiveNotFound name
+    Just (MkPrimitiveAny p) => do
+      pis : GatherPis _ _ <- reading (gatherPis ty'.p.a (primArity p).value)
+      case pis of
+        TooMany extra under p => tcError ctx $ NotAPi ty'.tm extra
+        Gathered params ret => do
+          let tm' : Expr ns = lams params (prim @{?ajj} ?iia heres (weakS {sz = ?ahj} {sz' = ?aikokok} (dropManyAr ?ajjjjjj Id) ret))
+          rest' <- rest md (define (Explicit, name) tm'.f ctx) (wkS inp)
+          let result = sub @{evalExprAtMaybe} {sns = ctxSize ctx} {sms = SS $ ctxSize ctx} (idS :< tm'.tm) rest'
+          pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result
   
 -- Check a let-rec statement.
 public export

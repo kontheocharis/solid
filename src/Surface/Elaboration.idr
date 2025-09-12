@@ -43,11 +43,13 @@ export
 data ElabErrorKind : Type where
   UnknownDirective : Directive -> ElabErrorKind
   DirectiveNotAllowed : KnownDirective -> ElabErrorKind
+  DeclNotSupported : ElabErrorKind
   
 export
 Show ElabErrorKind where
   show (UnknownDirective (MkDirective d)) = "Unknown directive `#\{d}`"
   show (DirectiveNotAllowed d) = "Directive `#\{d.asDirective.name}` is not allowed here"
+  show DeclNotSupported = "Non-primitive declarations without definitions are not supported yet"
   
 export
 record ElabError where
@@ -186,7 +188,9 @@ elab (PBlock t (PBlockTm l tm :: [])) = do
 elab (PBlock t (PDecl l n ty :: bs)) = enterLoc l $ do
   s <- reset stageHintL
   p <- resetIsPrimitive
-  tc $ tcDecl n s !(elab ty) p !(elab (PBlock t bs))
+  if p
+    then tc $ tcPrimDecl n s !(elab ty) !(elab (PBlock t bs))
+    else elabError DeclNotSupported
 elab (PBlock t (PBind l n ty tm :: bs)) = do
   ensureNotPrimitive
   ?todoBind

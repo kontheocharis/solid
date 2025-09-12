@@ -283,6 +283,10 @@ namespace Wk
   dropMany : Size ns' -> Wk ns ms -> Wk (ns ++ ns') ms
   dropMany SZ w = w
   dropMany (SS k) w = Drop (dropMany k w)
+    
+  public export
+  dropManyAr : Count ar -> Wk ns ms -> Wk (ns ::< ar) ms
+  dropManyAr = ?ajj
 
   public export
   (.) : Wk ms ns -> Wk as ms -> Wk as ns
@@ -369,6 +373,11 @@ namespace Weak
 public export
 interface (WeakSized tm) => Vars (0 tm : Ctx -> Type) where
   here : (sz : Size ns) => tm (ns :< n)
+  
+public export
+heres : Vars tm => (sz : Size ns) => (ar : Arity) -> Spine ar tm (ns ::< ar)
+heres [] = []
+heres (x :: xs) = (Val _, weakS {sz = ?ajjjjjjjjj} {sz' = SS sz} ?jji (here {sz = ?gggggggggggg})) :: heres xs
 
 public export
 lift : (Weak tm, Vars tm) => (sz : Size ns) => Sub ns tm ms -> Sub (ns :< a) tm (ms :< a')
