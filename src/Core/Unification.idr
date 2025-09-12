@@ -59,10 +59,10 @@ escapeBinder Nothing (Error {under = ar} err)
 public export
 interface Unify sm (0 lhs : Ctx -> Type) (0 rhs : Ctx -> Type) where
   -- Resolve any metas in terms, no-op by default
-  resolveLhs : (HasMetas m) => lhs ns -> m sm (lhs ns)
-  resolveLhs x = pure x
-  resolveRhs : (HasMetas m) => rhs ns -> m sm (rhs ns)
-  resolveRhs x = pure x
+  resolveLhs : (HasMetas m) => Scope bs Val ns -> lhs ns -> m sm (lhs ns)
+  resolveLhs _ x = pure x
+  resolveRhs : (HasMetas m) => Scope bs Val ns -> rhs ns -> m sm (rhs ns)
+  resolveRhs _ x = pure x
 
   -- Unify two terms, given the size of the context, assuming both sides are
   -- already resolved
@@ -72,8 +72,8 @@ interface Unify sm (0 lhs : Ctx -> Type) (0 rhs : Ctx -> Type) where
 public export
 unify : HasMetas m => Unify sm lhs rhs => Scope bs Val ns -> lhs ns -> rhs ns -> m sm (Unification ns)
 unify @{_} @{u} ctx l r = do
-  l' <- resolveLhs @{u} l
-  r' <- resolveRhs @{u} r
+  l' <- resolveLhs @{u} ctx l
+  r' <- resolveRhs @{u} ctx r
   unifyImpl ctx l' r'
 
 -- Definitively decide a unification outcome based on a decidable equality
@@ -136,6 +136,13 @@ solve m sp t = canSolve >>= \case
     Left err => pure $ Error {under = []} err
     Right () => pure AreSame
   Val SolvingNotAllowed => pure DontKnow
+
+-- Resolve variables from a scope
+resolveVars : Scope bs Val ns -> Val ns -> Val ns
+resolveVars sc v@(SimpApps (ValVar (Level x) $$ sp)) = case getDef sc x of
+  Just tm => Glued (LazyApps (ValVarWithDef (Level x) $$ sp) (resolveVars sc (apps tm sp)))
+  Nothing => v
+resolveVars _ v = v
 
 -- Basic implementations
 
@@ -219,6 +226,7 @@ Unify SolvingNotAllowed (Head Value Simplified) (Head Value Simplified) where
 
 Unify SolvingNotAllowed (Head Value Normalised) (Head Value Normalised) where
   -- conservative
+  unifyImpl ctx (ValVarWithDef v) (ValVarWithDef v') = unify ctx v v'
   unifyImpl ctx (ObjCallable a) (ObjCallable a') = unify ctx a a'
   unifyImpl ctx (ObjLazy a) (ObjLazy b) = unify ctx a b
   unifyImpl ctx (PrimNeutral p) (PrimNeutral p') = noSolving (unify ctx p p')
@@ -237,8 +245,9 @@ Unify SolvingNotAllowed LazyValue LazyValue where
 -- Finally, term unification
 export
 [unifyValues] {sm : SolvingMode} -> Unify sm (Term Value) (Term Value) where
-  resolveLhs = resolveMetas
-  resolveRhs = resolveMetas
+  -- @@Todo: short-circuit some glued stuff (metas + vars) here
+  resolveLhs ctx x = resolveMetas x (pure . resolveVars ctx)
+  resolveRhs ctx x = resolveMetas x (pure . resolveVars ctx)
 
   unifyImpl ctx (MtaCallable m) (MtaCallable m') = unify ctx m m'
   unifyImpl ctx (SimpPrimNormal p) (SimpPrimNormal p') = unify ctx p p'

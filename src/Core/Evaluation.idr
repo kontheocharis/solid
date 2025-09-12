@@ -110,6 +110,7 @@ EvalPrims => Eval (Term Value) (Head Syntax NA) (Term Value) where
 public export
 EvalPrims => Quote (Head Value hk) (Head Syntax NA) where
   quote (ValVar v) = SynVar (quote v)
+  quote (ValVarWithDef v) = SynVar (quote v)
   quote (ValMeta m) = SynMeta m
   quote (ObjCallable t) = SynBinding Obj Callable (quote t)
   quote (ObjLazy t) = SynBinding Obj Thunk (quote t)

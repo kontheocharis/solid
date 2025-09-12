@@ -441,24 +441,28 @@ nf @{(_, _, e, _)} @{s} tm = quote (evalS @{e} id tm)
 namespace LazySub
   public export
   data LazySub : Ctx -> (Ctx -> Type) -> Ctx -> Type where
-    Lin : LazySub ns f [<]
-    (:<) : LazySub ns f ms' -> f ns -> LazySub ns f (ms' :< m)
+    Lin : LazySub [<] f [<]
+    Lift : LazySub ns f ms' -> LazySub (ns :< m') f (ms' :< m)
     (:<<) : LazySub ns f ms' -> f ms' -> LazySub ns f (ms' :< m)
     
-  (.asSub) : (sns : Size ns) => (sms : Size ms) => EvalSized f f f => LazySub ns f ms -> Sub ns f ms
+  export
+  (.asSub) : Vars f => (sns : Size ns) => (sms : Size ms) => EvalSized f f f => LazySub ns f ms -> Sub ns f ms
   (.asSub) [<] = [<]
-  (.asSub) {sms = SS sms} (x :< y) = let x' = x.asSub in x' :< y
+  (.asSub) {sms = SS sms} {sns = SS sns} (Lift x) = let x' = x.asSub in x' `o` Drop Id :< here
   (.asSub) {sms = SS sms} (x :<< y) = let x' = x.asSub in x' :< sub {sms = sms} x' y
-
-  public export
-  (.) : WeakSized tm => Size ns => Size ms => LazySub ms tm qs -> Wk ns ms -> LazySub ns tm qs
-  (.) [<] e = [<]
-  (.) (xs :< x) e = xs . e :< weakS e x
-  (.) (xs :<< x) e = xs . e :<< x
   
-  public export
-  lift : WeakSized tm => Vars tm => Size ns => LazySub ns tm ms -> LazySub (ns :< n) tm (ms :< m)
-  lift su = su . Drop Id :< here
+  export
+  (.inv) : LazySub ns f ms -> Th ms ns
+  (.inv) [<] = Done
+  (.inv) (Lift x) = Keep x.inv
+  (.inv) (x :<< y) = Drop x.inv
+  
+  export
+  getDef : WeakSized f => (sms : Size ms) => LazySub ks f ms -> Idx ms -> Maybe (f ms)
+  getDef (Lift x) IZ = Nothing
+  getDef {sms = SS sms} (x :<< y) IZ = Just (wkS y)
+  getDef {sms = SS sms} (Lift y) (IS x) = wkS <$> getDef y x
+  getDef {sms = SS sms} (y :<< z) (IS x) = wkS <$> getDef y x
 
 -- Relabeling should always be the identity
 
@@ -494,9 +498,6 @@ record Scope (bs : Ctx) (0 tm : Ctx -> Type) (ns : Ctx) where
 
   -- The definitions
   defs : LazySub bs tm ns
-
-  -- Embed a fully expanded term into the names
-  undefs : Th ns bs
   
 public export
 %hint
@@ -511,11 +512,15 @@ bindsSize = .sizeBinds
 namespace Scope
   export
   liftS : (WeakSized tm, Vars tm) => Scope ns tm ms -> Scope (ns :< a) tm (ms :< a')
-  liftS (MkScope sb sn env th) = MkScope (SS sb) (SS sn) (lift env) (Keep th)
+  liftS (MkScope sb sn env) = MkScope (SS sb) (SS sn) (Lift env) 
   
   export
   (:<) : Scope ns f ms -> f ms -> Scope ns f (ms :< m)
-  (MkScope sb sn env th) :< arg = MkScope sb (SS sn) (env :<< arg) (Drop th)
+  (MkScope sb sn env) :< arg = MkScope sb (SS sn) (env :<< arg)
+  
+  export
+  getDef : WeakSized f => Scope ns f ms -> Lvl ms -> Maybe (f ms)
+  getDef sc l = getDef sc.defs (lvlToIdx sc.sizeNames l)
 
 -- Basic implementations for the defined types
 

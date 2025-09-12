@@ -29,8 +29,6 @@ record Context (bs : Ctx) (ns : Ctx) where
   sorts : Con AtomTy ns
   -- The definitions in the context
   defs : LazySub bs Atom ns
-  -- Bindings are OPEd into definitions
-  undefs : Th ns bs
   -- The stages of the definitions in the context
   stages : Con (const Stage) ns
   -- The size of the bindings, for quick access
@@ -44,7 +42,7 @@ record Context (bs : Ctx) (ns : Ctx) where
 public export
 emptyContext : Context [<] [<]
 emptyContext =
-  MkContext (Val [<]) [<] [<] [<] Done [<] SZ SZ []
+  MkContext (Val [<]) [<] [<] [<] [<] SZ SZ []
  
 -- A goal is a hole in a context.
 public export
@@ -91,11 +89,11 @@ bind : {s : Stage} -> (n : Ident) -> AnnotAt s ns -> Context bs ns -> Context (b
 bind {s = stage}
   n
   (MkAnnotAt ty sort)
-  (MkContext (Val idents) con sorts defs undefs stages sizeBinds sizeNames bounds) =
+  (MkContext (Val idents) con sorts defs stages sizeBinds sizeNames bounds) =
   MkContext
     (Val (idents :< n)) (con :< ty) (sorts :< sort)
-      (lift defs)
-    (Keep undefs) (stages :< stage) (SS sizeBinds) (SS sizeNames) 
+      (Lift defs)
+    (stages :< stage) (SS sizeBinds) (SS sizeNames) 
     (wkS bounds ++ [(Val _, here)])
 
 -- Add a definition to the context.
@@ -104,9 +102,9 @@ define : {s : Stage} -> (n : Ident) -> ExprAt s ns -> Context bs ns -> Context b
 define {s = stage}
   n
   (MkExpr tm (MkAnnotAt ty sort))
-  (MkContext (Val idents) con sorts defs undefs stages sizeBinds sizeNames bounds) =
+  (MkContext (Val idents) con sorts defs stages sizeBinds sizeNames bounds) =
   MkContext
     (Val (idents :< n)) (con :< ty) (sorts :< sort)
       (defs :<< tm)
-    (Drop undefs) (stages :< stage) sizeBinds (SS sizeNames)
+    (stages :< stage) sizeBinds (SS sizeNames)
     (wkS bounds)

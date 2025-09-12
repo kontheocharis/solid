@@ -236,20 +236,18 @@ data Flex : MetaVar -> Ctx -> Type where
 
 -- Resolve any top-level metas appearing in the value
 public export
-resolveMetas : HasMetas m => Term Value ns -> m sm (Term Value ns)
-resolveMetas t@(SimpApps (ValMeta m $$ sp)) = getMeta m >>= \case
-  Nothing => pure t
-  Just t' => resolveMetas $ apps (weak Terminal t') sp
-resolveMetas t = pure t
+resolveMetas : HasMetas m => Term Value ns -> (Term Value ns -> m sm (Term Value ns)) -> m sm (Term Value ns)
+resolveMetas t@(SimpApps (ValMeta m $$ sp)) andThen = getMeta m >>= \case
+  Nothing => andThen t
+  Just t' => resolveMetas (apps (weak Terminal t') sp) andThen
+resolveMetas t andThen = andThen t
 
 -- Resolve any top-level metas appearing in the value, as well as any glued values.
 public export
 resolveGlueAndMetas : HasMetas m => Term Value ns -> m sm (Term Value ns)
-resolveGlueAndMetas t@(SimpApps (ValMeta m $$ sp)) = getMeta m >>= \case
-  Nothing => pure t
-  Just t' => resolveGlueAndMetas $ apps (weak Terminal t') sp
-resolveGlueAndMetas (Glued t) = resolveGlueAndMetas (simplified t)
-resolveGlueAndMetas t = pure t
+resolveGlueAndMetas t = resolveMetas t $ \case
+  Glued u => pure (simplified u)
+  u' => pure u'
 
 -- Ensure that a spine contains all variables, and thus
 -- turn it into a renaming.

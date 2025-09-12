@@ -165,6 +165,7 @@ data Head : (d : Domain) -> HeadKind d -> Ctx -> Type where
   -- Variables and metas are simplified if they are values
   SynVar : Variable Syntax ns -> Head Syntax NA ns
   ValVar : Variable Value ns -> Head Value Simplified ns
+  ValVarWithDef : Variable Value ns -> Head Value Normalised ns
   SynMeta : MetaVar -> Head Syntax NA ns
   ValMeta : MetaVar -> Head Value Simplified ns
 
@@ -361,6 +362,7 @@ export covering
 Relabel (Head d hk) where
   relabel r (SynVar x) = SynVar (relabel r x)
   relabel r (ValVar x) = ValVar (relabel r x)
+  relabel r (ValVarWithDef x) = ValVarWithDef (relabel r x)
   relabel r (SynMeta x) = SynMeta x
   relabel r (ValMeta x) = ValMeta x
   relabel r (SynBinding s x y) = SynBinding s x (relabel r y)
@@ -421,6 +423,7 @@ Weak (Binding md r Value) where
 export covering
 Weak (Head Value hk) where
   weak s (ValVar v) = ValVar (weak s v)
+  weak s (ValVarWithDef v) = ValVarWithDef (weak s v)
   weak s (ValMeta m) = ValMeta m
   weak s (ObjCallable t) = ObjCallable (weak s t)
   weak s (ObjLazy t) = ObjLazy (weak s t)
@@ -472,6 +475,7 @@ export covering
 Thin (Head d hk) where
   thin r (SynVar x) = SynVar (thin r x)
   thin r (ValVar x) = ValVar (thin r x)
+  thin r (ValVarWithDef x) = ValVarWithDef (thin r x)
   thin r (SynMeta x) = SynMeta x
   thin r (ValMeta x) = ValMeta x
   thin r (SynBinding s x y) = SynBinding s x (thin r y)
