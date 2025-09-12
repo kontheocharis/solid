@@ -168,9 +168,6 @@ data Head : (d : Domain) -> HeadKind d -> Ctx -> Type where
   SynMeta : MetaVar -> Head Syntax NA ns
   ValMeta : MetaVar -> Head Value Simplified ns
 
-  -- A definition, which is unfolded lazily
-  ValDef : Variable Value ns -> Head Value Normalised ns
-
   -- A syntactic binding
   SynBinding : (s : Stage) -> (r : Reducibility) -> Binding s r Syntax ns -> Head Syntax NA ns
 
@@ -366,7 +363,6 @@ Relabel (Head d hk) where
   relabel r (ValVar x) = ValVar (relabel r x)
   relabel r (SynMeta x) = SynMeta x
   relabel r (ValMeta x) = ValMeta x
-  relabel r (ValDef x) = ValDef (relabel r x)
   relabel r (SynBinding s x y) = SynBinding s x (relabel r y)
   relabel r (ObjCallable x) = ObjCallable (relabel r x)
   relabel r (ObjLazy x) = ObjLazy (relabel r x)
@@ -426,7 +422,6 @@ export covering
 Weak (Head Value hk) where
   weak s (ValVar v) = ValVar (weak s v)
   weak s (ValMeta m) = ValMeta m
-  weak s (ValDef v) = ValDef (weak s v)
   weak s (ObjCallable t) = ObjCallable (weak s t)
   weak s (ObjLazy t) = ObjLazy (weak s t)
   weak s (PrimNeutral p) = PrimNeutral (weak s p)
@@ -479,7 +474,6 @@ Thin (Head d hk) where
   thin r (ValVar x) = ValVar (thin r x)
   thin r (SynMeta x) = SynMeta x
   thin r (ValMeta x) = ValMeta x
-  thin r (ValDef x) = ValDef (thin r x)
   thin r (SynBinding s x y) = SynBinding s x (thin r y)
   thin r (ObjCallable x) = ObjCallable (thin r x)
   thin r (ObjLazy x) = ObjLazy (thin r x)

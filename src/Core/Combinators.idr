@@ -161,11 +161,6 @@ namespace AnnotFor
   
 -- Language items
 
--- Create a glued application expression.
-public export covering
-glued : {d : Domain} -> Size ns => Variable d (ns :< n) -> Atom (ns :< n) -> Atom (ns :< n)
-glued v t = Choice (here) (Glued (LazyApps (ValDef (Level here) $$ []) t.val))
-
 -- Create a metavariable atom.
 public export covering
 aMeta : Size ns => MetaVar -> Spine ar Atom ns -> Atom ns

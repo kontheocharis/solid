@@ -28,6 +28,7 @@ Arity = List Ident
 
 export infixl 7 ::<
 export infixl 7 >::
+export infixl 7 :<<
 
 public export
 arityToCtx : Arity -> Ctx
@@ -88,6 +89,12 @@ public export
 (.size) : (ns : Ctx) -> Size ns
 [<] .size = SZ
 (ns :< n) .size = SS (ns.size)
+  
+namespace Size
+  public export
+  (+) : Size ns -> Size ms -> Size (ns ++ ms)
+  s + SZ = s
+  s + (SS c) = SS (s + c)
 
 public export
 data Count : Arity -> Type where
@@ -271,6 +278,11 @@ namespace Wk
     Id : Wk ns ns
     Terminal : Wk ns [<]
     Drop : Wk ns ms -> Wk (ns :< n) ms
+    
+  public export
+  dropMany : Size ns' -> Wk ns ms -> Wk (ns ++ ns') ms
+  dropMany SZ w = w
+  dropMany (SS k) w = Drop (dropMany k w)
 
   public export
   (.) : Wk ms ns -> Wk as ms -> Wk as ns
@@ -284,13 +296,13 @@ namespace Wk
 namespace Th
   public export
   data Th : Ctx -> Ctx -> Type where
-    Done : Th [<] [<]
+    Done : Th ns [<]
     Keep : Th ns ms -> Th (ns :< n) (ms :< m)
     Drop : Th ns ms -> Th (ns :< n) ms
 
   public export
   (.) : Th ms ns -> Th as ms -> Th as ns
-  Done . Done = Done
+  Done . x = Done
   y . (Drop x) = Drop (y . x)
   (Keep y) . (Keep x) = Keep (y . x)
   (Drop y) . (Keep x) = Drop (y . x)
@@ -425,6 +437,29 @@ interface Quote (0 val : Ctx -> Type) (0 tm : Ctx -> Type) where
 nf : (Weak over, Vars over, EvalSized over tm val, Quote val tm) => Size ns => tm ns -> tm ns
 nf @{(_, _, e, _)} @{s} tm = quote (evalS @{e} id tm)
 
+-- Lazy substitutions
+namespace LazySub
+  public export
+  data LazySub : Ctx -> (Ctx -> Type) -> Ctx -> Type where
+    Lin : LazySub ns f [<]
+    (:<) : LazySub ns f ms' -> f ns -> LazySub ns f (ms' :< m)
+    (:<<) : LazySub ns f ms' -> f ms' -> LazySub ns f (ms' :< m)
+    
+  (.asSub) : (sns : Size ns) => (sms : Size ms) => EvalSized f f f => LazySub ns f ms -> Sub ns f ms
+  (.asSub) [<] = [<]
+  (.asSub) {sms = SS sms} (x :< y) = let x' = x.asSub in x' :< y
+  (.asSub) {sms = SS sms} (x :<< y) = let x' = x.asSub in x' :< sub {sms = sms} x' y
+
+  public export
+  (.) : WeakSized tm => Size ns => Size ms => LazySub ms tm qs -> Wk ns ms -> LazySub ns tm qs
+  (.) [<] e = [<]
+  (.) (xs :< x) e = xs . e :< weakS e x
+  (.) (xs :<< x) e = xs . e :<< x
+  
+  public export
+  lift : WeakSized tm => Vars tm => Size ns => LazySub ns tm ms -> LazySub (ns :< n) tm (ms :< m)
+  lift su = su . Drop Id :< here
+
 -- Relabeling should always be the identity
 
 public export
@@ -432,7 +467,6 @@ data Relab : Ctx -> Ctx -> Type where
   Id : Relab ns ns
   Keep : Relab ns ms -> Relab (ns :< n) (ms :< n)
   Change : (0 n : Ident) -> Relab ns ms -> Relab (ns :< n) (ms :< n')
-
   
 public export
 interface Relabel (0 tm : Ctx -> Type) where
@@ -448,6 +482,40 @@ namespace Relabel
   (.) : Relabel tm => Relab ns ms -> Sub ms tm qs -> Sub ns tm qs
   r . [<] = [<]
   r . (xs :< x) = r . xs :< relabel r x
+  
+-- Scopes
+public export
+record Scope (bs : Ctx) (0 tm : Ctx -> Type) (ns : Ctx) where
+  constructor MkScope
+  -- The size of the bindings, for quick access
+  sizeBinds : Size bs
+  -- The size of the context, for quick access
+  sizeNames : Size ns
+
+  -- The definitions
+  defs : LazySub bs tm ns
+
+  -- Embed a fully expanded term into the names
+  undefs : Th ns bs
+  
+public export
+%hint
+namesSize : Scope bs tm ns -> Size ns
+namesSize = .sizeNames
+  
+public export
+%hint
+bindsSize : Scope bs tm ns -> Size bs
+bindsSize = .sizeBinds
+
+namespace Scope
+  export
+  liftS : (WeakSized tm, Vars tm) => Scope ns tm ms -> Scope (ns :< a) tm (ms :< a')
+  liftS (MkScope sb sn env th) = MkScope (SS sb) (SS sn) (lift env) (Keep th)
+  
+  export
+  (:<) : Scope ns f ms -> f ms -> Scope ns f (ms :< m)
+  (MkScope sb sn env th) :< arg = MkScope sb (SS sn) (env :<< arg) (Drop th)
 
 -- Basic implementations for the defined types
 

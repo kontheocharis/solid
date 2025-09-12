@@ -111,7 +111,6 @@ public export
 EvalPrims => Quote (Head Value hk) (Head Syntax NA) where
   quote (ValVar v) = SynVar (quote v)
   quote (ValMeta m) = SynMeta m
-  quote (ValDef v) = SynVar (quote v)
   quote (ObjCallable t) = SynBinding Obj Callable (quote t)
   quote (ObjLazy t) = SynBinding Obj Thunk (quote t)
   quote (PrimNeutral p) = PrimNeutral {e = NA} (quote p)

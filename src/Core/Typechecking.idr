@@ -199,7 +199,7 @@ reading @{tc} f = enterMetas (f {m' = metasM @{tc}} @{metas @{tc}})
 public export
 unify : HasTc m => Context bs ns -> Atom ns -> Atom ns -> m ()
 unify @{tc} ctx a b = do
-  val : Unification _ <- solving (unify a.val b.val)
+  val : Unification _ <- solving (unify ?sc a.val b.val)
   case val of
     AreSame => pure ()
     failure => tcError ctx $ WhenUnifying a b failure
@@ -207,7 +207,7 @@ unify @{tc} ctx a b = do
 public export
 areEqual : HasTc m => Context bs ns -> Atom ns -> Atom ns -> m (Unification ns)
 areEqual @{tc} ctx a b = do
-  enterMetas (unify {sm = SolvingNotAllowed} @{metas} @{unifyValues} a.val b.val)
+  enterMetas (unify {sm = SolvingNotAllowed} @{metas} @{unifyValues} ?sc2 a.val b.val)
 
 -- Fit the given annotation to the given kind.
 fitAnnot : HasTc m

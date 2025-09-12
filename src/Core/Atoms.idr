@@ -10,8 +10,6 @@ import Utils
 import Core.Primitives.Definitions
 import Core.Syntax
 import Core.Evaluation
-import Core.Metavariables
-import Core.Unification
 import Core.Primitives.Rules
 
 public export

@@ -12,8 +12,6 @@ import Core.Primitives.Definitions
 import Core.Syntax
 import Core.Evaluation
 import Core.Primitives.Rules
-import Core.Metavariables
-import Core.Unification
 import Core.Atoms
 
 %default covering
@@ -30,7 +28,7 @@ record Context (bs : Ctx) (ns : Ctx) where
   -- The current context (sorts)
   sorts : Con AtomTy ns
   -- The definitions in the context
-  defs : Sub bs Atom ns
+  defs : LazySub bs Atom ns
   -- Bindings are OPEd into definitions
   undefs : Th ns bs
   -- The stages of the definitions in the context
@@ -96,7 +94,7 @@ bind {s = stage}
   (MkContext (Val idents) con sorts defs undefs stages sizeBinds sizeNames bounds) =
   MkContext
     (Val (idents :< n)) (con :< ty) (sorts :< sort)
-      (defs `o` Drop Id :< here)
+      (lift defs)
     (Keep undefs) (stages :< stage) (SS sizeBinds) (SS sizeNames) 
     (wkS bounds ++ [(Val _, here)])
 
@@ -109,6 +107,6 @@ define {s = stage}
   (MkContext (Val idents) con sorts defs undefs stages sizeBinds sizeNames bounds) =
   MkContext
     (Val (idents :< n)) (con :< ty) (sorts :< sort)
-      (defs :< sub defs tm)
+      (defs :<< tm)
     (Drop undefs) (stages :< stage) sizeBinds (SS sizeNames)
     (wkS bounds)
