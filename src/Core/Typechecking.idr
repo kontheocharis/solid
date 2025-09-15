@@ -32,24 +32,16 @@ data TcMode : Type where
 -- Typechecking errors, context-aware
 public export
 data TcErrorAt : Ctx -> Type where
-  -- An error arising from unification
   WhenUnifying : Atom ns -> Atom ns -> Unification ns -> TcErrorAt ns
-  -- Mismatching pi modes
   WrongPiMode : PiMode -> AtomTy ns -> TcErrorAt ns
-  -- Cannot infer stage
   CannotInferStage : TcErrorAt ns
-  -- Cannot find a name
   UnknownName : Name -> TcErrorAt ns
-  -- Too many applications
   TooManyApps : (less : Count ar) -> TcErrorAt ns
-  -- Not enough applications
   TooFewApps : (more : Count ar) -> TcErrorAt ns
-  -- Tried to apply something that isn't a pi type
   NotAPi : (subj : AtomTy ns) -> (extra : Count ar) -> TcErrorAt ns
-  -- Tried to use a meta thing in object position
   CannotCoerceToObj : (givenTy : AtomTy ns) -> TcErrorAt ns
-  -- Cannot find primitive with the given name
   PrimitiveNotFound : (name : Name) -> TcErrorAt ns
+  PrimitiveDeclsMustBeTopLevel : TcErrorAt ns
 
 -- Packaging an error with its context
 public export
@@ -79,6 +71,7 @@ export
     } argument(s), which is too many"
   show (CannotCoerceToObj given) = "Cannot coerce type `\{show given}` to the object level"
   show (PrimitiveNotFound prim) = "Primitive `\{prim}` does not exist"
+  show PrimitiveDeclsMustBeTopLevel = "Primitive declarations can only appear at the top level"
   
 export
 ShowSyntax => Show TcError where
@@ -443,16 +436,15 @@ tcApps : HasTc m
   -> TcAll m
 tcApps subject args = switch $ \ctx, (InferInput reqStage) => do
   subject'@(MkExpr _ fnAnnot) <- (.mp) <$> subject Infer ctx (InferInput reqStage)
-  reading (gatherPis fnAnnot (map fst args)) >>= \case
-    Gathered params ret => do
-      args' <- tcSpine ctx args params
-      let result = apps subject' args'
-            -- @@Refactor: why does it have to be like this :((
-            (sub {tm = AnnotAt _} @{%search} @{ctxSize ctx}
-              @{ctxSize ctx + args'.count}
-              (idS ::< (map (.tm) args')) ret.f)
-      adjustStageIfNeeded ctx result.p reqStage
-    TooMany extra under p => tcError ctx $ NotAPi fnAnnot.ty extra
+  Gathered params ret <- reading (gatherPis fnAnnot (map fst args))
+    | TooMany extra under p => tcError ctx $ NotAPi fnAnnot.ty extra
+  args' <- tcSpine ctx args params
+  let result = apps subject' args'
+        -- @@Refactor: why does it have to be like this :((
+        (sub {tm = AnnotAt _} @{%search} @{ctxSize ctx}
+          @{ctxSize ctx + args'.count}
+          (idS ::< (map (.tm) args')) ret.f)
+  adjustStageIfNeeded ctx result.p reqStage
 
 -- Check a primitive
 public export
@@ -512,22 +504,42 @@ tcPrimDecl : HasTc m
   -> (rest : TcAll m)
   -> TcAll m
 tcPrimDecl name stage ty rest = inferStageIfNone stage $ \stage, md, ctx, inp => do
-  -- ensure the context is empty
-  -- when ctx.scope.size of
-
+  -- Ensure we are in root scope, otherwise there might be bindings!
+  let SZ = ctx.scope.sizeBinds
+    | SS k => tcError ctx $ PrimitiveDeclsMustBeTopLevel
   let Val ns = ctx.idents
+
+  -- Lookup the primitive
+  let Just (MkPrimitiveAny {arity = ar} {level = lvl} p) = nameToPrim name
+    | Nothing => tcError ctx $ PrimitiveNotFound name
+
+  -- Turn the type signature into an operation signature
   ty' <- ty Check ctx (CheckInput stage (objZOrMtaA stage))
-  case nameToPrim name of
-    Nothing => tcError ctx $ PrimitiveNotFound name
-    Just (MkPrimitiveAny p) => do
-      pis : GatherPis _ _ <- reading (gatherPis ty'.p.a (primArity p).value)
-      case pis of
-        TooMany extra under p => tcError ctx $ NotAPi ty'.tm extra
-        Gathered params ret => do
-          let tm' : Expr ns = lams params (prim @{?ajj} ?iia heres (weakS {sz = ?ahj} {sz' = ?aikokok} (dropManyAr ?ajjjjjj Id) ret))
-          rest' <- rest md (define (Explicit, name) tm'.f ctx) (wkS inp)
-          let result = sub @{evalExprAtMaybe} {sns = ctxSize ctx} {sms = SS $ ctxSize ctx} (idS :< tm'.tm) rest'
-          pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result
+  Gathered params ret <- reading (gatherPis ty'.p.a ar)
+    | TooMany extra under p => tcError ctx $ NotAPi ty'.tm extra
+
+  let arC = ar.count
+  let nsS = ctxSize ctx
+  let closing = ctx.scope.defs.asSub
+  let paramsClosed = sub closing params
+  let retClosed = sub {sms = nsS + arC} {sns = SZ + arC} (liftSMany closing) ret
+
+  -- Close the primitive with lambdas
+  let tm' : Expr [<] = lams paramsClosed
+          (prim @{SZ + arC} p (heres _)
+            (weakS {sz = SZ + arC + arC} {sz' = SZ + arC}
+              (dropManyAr arC Id) retClosed))
+                
+  -- If it is a declared primitive, save it to primitives
+  case lvl of
+    PrimDeclared => setDefinedPrimAnnot p (paramsClosed, retClosed)
+    PrimNative => pure ()
+
+  -- Thin it back to the names scope
+  let tmTh : Expr ns = thin ctx.scope.defs.inv tm'
+  rest' <- rest md (define (Explicit, name) tmTh.f ctx) (wkS inp)
+  let result = sub @{evalExprAtMaybe} {sns = nsS} {sms = SS nsS} (idS :< tmTh.tm) rest'
+  pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result
   
 -- Check a let-rec statement.
 public export

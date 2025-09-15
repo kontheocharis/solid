@@ -149,25 +149,38 @@ Eq (Primitive k r na ar) where
   (==) p p' = isJust $ primEq p p'
 
 public export
-record PrimitiveAny where
-  constructor MkPrimitiveAny
+record PrimitiveAnyIrr where
+  constructor MkPrimitiveAnyIrr
+  {0 classif : PrimitiveClass}
+  {0 reducibility : PrimitiveReducibility}
+  {0 level : PrimitiveLevel}
+  {0 arity : Arity}
   primitive : Primitive classif reducibility level arity
 
 public export
-Eq PrimitiveAny where
-  (==) p p' = isJust $ primEq p.primitive p'.primitive
-  
-congPrimitive : {0 a, b : PrimitiveAny} -> a.primitive ~=~ b.primitive -> a = b
-congPrimitive {a = MkPrimitiveAny _} {b = MkPrimitiveAny _} Refl = Refl
+record PrimitiveAny where
+  constructor MkPrimitiveAny
+  {classif : PrimitiveClass}
+  {reducibility : PrimitiveReducibility}
+  {level : PrimitiveLevel}
+  {arity : Arity}
+  primitive : Primitive classif reducibility level arity
 
 public export
-SemiDecEq PrimitiveAny where
+Eq PrimitiveAnyIrr where
+  (==) p p' = isJust $ primEq p.primitive p'.primitive
+  
+congPrimitive : {0 a, b : PrimitiveAnyIrr} -> a.primitive ~=~ b.primitive -> a = b
+congPrimitive {a = MkPrimitiveAnyIrr _} {b = MkPrimitiveAnyIrr _} Refl = Refl
+
+public export
+SemiDecEq PrimitiveAnyIrr where
   semiDecEq p p' = case (primEq p.primitive p'.primitive) of
     Just p => Just (congPrimitive p)
     Nothing => Nothing
 
 public export
-Hashable PrimitiveAny where
+Hashable PrimitiveAnyIrr where
   -- @@Optim: use integers!
   hashWithSalt s p = hashWithSalt s (primName p.primitive)
   
@@ -225,28 +238,3 @@ nameToPrimId {p = PrimPAIR}         = Refl
 nameToPrimId {p = PrimSigma}        = Refl
 nameToPrimId {p = PrimPair}         = Refl
 nameToPrimId {p = PrimIO}           = Refl
-
-public export
-primArity : Primitive k r na ar -> Singleton ar
-primArity PrimTYPE         = Val _
-primArity PrimCode         = Val _
-primArity PrimQuote        = Val _
-primArity PrimSplice       = Val _
-primArity PrimSta          = Val _
-primArity PrimTypeDyn      = Val _
-primArity PrimLayout       = Val _
-primArity PrimLayoutDyn    = Val _
-primArity PrimSeqLayout    = Val _
-primArity PrimSeqLayoutDyn = Val _
-primArity PrimZeroLayout   = Val _
-primArity PrimIdxLayout    = Val _
-primArity PrimPtrLayout    = Val _
-primArity PrimUNIT         = Val _
-primArity PrimTT           = Val _
-primArity PrimUnit         = Val _
-primArity PrimTt           = Val _
-primArity PrimSIGMA        = Val _
-primArity PrimPAIR         = Val _
-primArity PrimSigma        = Val _
-primArity PrimPair         = Val _
-primArity PrimIO           = Val _

@@ -47,7 +47,7 @@ record CompilerState where
   metaState : MetaState
   loc : Loc
   goals : SnocList Goal
-  definedPrimitives : HashDMap PrimitiveAny (\p => Op p.arity [<])
+  definedPrimitives : HashDMap PrimitiveAnyIrr (\p => Op p.arity [<])
 
 emptyCompilerState : CompilerState
 emptyCompilerState = MkCompilerState emptyMetaState dummyLoc [<] empty
@@ -140,7 +140,7 @@ HasTc Comp where
     
   definedPrimAnnot p = do
     m <- gets definedPrimitives
-    let res = lookup (MkPrimitiveAny _ _ _ _ p) m
+    let res = lookup (MkPrimitiveAnyIrr p) m
     case res of
       Just r => pure r
       Nothing => error "Tried to access primitive \{show p} but it has not been defined yet!"
@@ -149,7 +149,7 @@ HasTc Comp where
     m <- modify
       (\s =>
         { definedPrimitives
-          := insert (MkPrimitiveAny _ _ _ _ p) v s.definedPrimitives } s)
+          := insert (MkPrimitiveAnyIrr p) v s.definedPrimitives } s)
     pure ()
     
 -- Inputs and outputs of the compiler
