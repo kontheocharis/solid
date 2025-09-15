@@ -525,10 +525,11 @@ tcPrimDecl name stage ty rest = inferStageIfNone stage $ \stage, md, ctx, inp =>
   let retClosed = sub {sms = nsS + arC} {sns = SZ + arC} (liftSMany closing) ret
 
   -- Close the primitive with lambdas
-  let tm' : Expr [<] = lams paramsClosed
+  let tmAtom : Atom [<] = internalLams ar
           (prim @{SZ + arC} p (heres _)
             (weakS {sz = SZ + arC + arC} {sz' = SZ + arC}
-              (dropManyAr arC Id) retClosed))
+              (dropManyAr arC Id) retClosed)).tm
+  let tm' : Expr [<] = MkExpr tmAtom (sub closing ty'.p.a)
                 
   -- If it is a declared primitive, save it to primitives
   case lvl of

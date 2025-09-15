@@ -219,6 +219,10 @@ namespace ExprAt
   public export
   (.a) : ExprAt s ns -> AnnotAt s ns
   (.a) (MkExpr ty (MkAnnotAt sort s)) = MkAnnotAt ty sort
+  
+  public export
+  (.e) : AnnotAt s ns -> Atom ns -> ExprAt s ns
+  (.e) (MkAnnotAt ty sort) s = MkExpr ty (MkAnnotAt sort s)
 
 
 -- Helper to decide which `Expr` to pick based on an optional stage

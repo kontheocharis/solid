@@ -238,21 +238,32 @@ lam piStage piIdent lamIdent bindAnnot bodyAnnot body =
           
 -- Create a pi expression
 public export covering
+piAnnotFor : Size ns
+  => (piStage : Stage)
+  -> (piIdent : Ident)
+  -> (bindAnnot : AnnotFor piStage Sized AtomTy ns)
+  -> (bodyAnnot : AnnotFor piStage Sized (AtomBody piIdent) ns)
+  -> AnnotFor piStage Sized AtomTy ns
+piAnnotFor piStage piIdent bindAnnot bodyAnnot = case piStage of
+  Mta =>
+    let MkAnnotFor MtaSort bindTy = bindAnnot in
+    let MkAnnotFor MtaSort bodyClosure = bodyAnnot in
+    MkAnnotFor MtaSort (promote $ sMtaPi piIdent bindTy.syn bodyClosure.open.syn)
+  Obj =>
+    let MkAnnotFor (ObjSort Sized ba) bindTy = bindAnnot in
+    let MkAnnotFor (ObjSort Sized bb) bodyClosure = bodyAnnot in
+    MkAnnotFor (ObjSort Sized (promote ptrLayout)) (promote $ sObjPi piIdent ba.syn bb.syn bindTy.syn bodyClosure.open.syn)
+          
+-- Create a pi expression
+public export covering
 pi : Size ns
   => (piStage : Stage)
   -> (piIdent : Ident)
   -> (bindAnnot : AnnotFor piStage Sized AtomTy ns)
   -> (bodyAnnot : AnnotFor piStage Sized (AtomBody piIdent) ns)
   -> ExprAt piStage ns
-pi piStage piIdent bindAnnot bodyAnnot = case piStage of
-  Mta =>
-    let MkAnnotFor MtaSort bindTy = bindAnnot in
-    let MkAnnotFor MtaSort bodyClosure = bodyAnnot in
-    (mta (promote $ sMtaPi piIdent bindTy.syn bodyClosure.open.syn)).f
-  Obj =>
-    let MkAnnotFor (ObjSort Sized ba) bindTy = bindAnnot in
-    let MkAnnotFor (ObjSort Sized bb) bodyClosure = bodyAnnot in
-    (obj (promote ptrLayout) (promote $ sObjPi piIdent ba.syn bb.syn bindTy.syn bodyClosure.open.syn)).f
+pi piStage piIdent bindAnnot bodyAnnot =
+  (piAnnotFor piStage piIdent bindAnnot bodyAnnot).asAnnot.e (objZOrMtaA piStage).ty
     
 public export
 record PiData (stage : Stage) (ns : Ctx) where
@@ -342,10 +353,11 @@ public export covering
 apps : Size ns => Expr ns -> Spine ar Expr ns -> AnnotAt s ns -> ExprAt s ns
 apps f xs a = MkExpr (promote $ sApps f.tm.syn (map (.tm.syn) xs)) a
 
+-- @@Todo: Make these non-internal!
 public export covering
-lams : Size ns => Tel ar Annot ns -> Expr (ns ::< ar) -> Expr ns
-lams [] body = body
-lams ((n, annot) :: xs) body = ?aj_1 (lams xs body)
+internalLams : Size ns => (ar : Arity) -> Atom (ns ::< ar) -> Atom ns
+internalLams [] body = body
+internalLams (n :: xs) body = let body' = internalLams xs body in promote $ internalLam n body'.syn
 
 -- Find a variable by its name in the context.
 public export covering
