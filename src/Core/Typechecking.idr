@@ -327,6 +327,7 @@ tcSpine : HasTc m
   -> List (Ident, TcAll m)
   -> Tel ar Annot ns
   -> m (Spine ar Expr ns)
+tcSpine ctx [] [] = pure []
 tcSpine ctx tms [] = tcError ctx (TooManyApps (map fst tms).count)
 tcSpine ctx [] annots = tcError ctx (TooFewApps annots.count)
 tcSpine ctx ((_, tm) :: tms) ((Val _, annot) :: annots) = do -- @@Todo: spine name

@@ -140,7 +140,6 @@ handleDirective d p b = case (parseDirective d, p) of
   (Just d, InTm) => elabError $ DirectiveNotAllowed d
 
 elab (PLoc l t) = enterLoc l $ elab t
-elab (PName n) = tc (tcVar n)
 elab (PLam (MkPTel []) t) = elab t
 elab (PLam (MkPTel ((MkPParam l n ty) :: xs)) t) = do
   t' <- elab (PLam (MkPTel xs) t)
@@ -152,9 +151,12 @@ elab (PPi (MkPTel ((MkPParam l n ty) :: xs)) t) = do
   let ty' = fromMaybe (PHole Nothing) ty
   ty <- enterLoc l $ elab ty'
   tc $ tcPi n ty t'
+elab (PName n) with (nameToPrim n) 
+  _ | Just (MkPrimitiveAny {level = PrimNative} p) = tc (tcPrimUser p [])
+  _ | _ = tc (tcVar n)
 elab (PApp subject@(PName n) sp) with (nameToPrim n)
-  _ | Just (MkPrimitiveAny p) = tc $ tcPrimUser p !(elabSpine sp)
-  _ | Nothing = tc $ tcApps !(elab subject) !(elabSpine sp)
+  _ | Just (MkPrimitiveAny {level = PrimNative} p) = tc $ tcPrimUser p !(elabSpine sp)
+  _ | _ = tc $ tcApps !(elab subject) !(elabSpine sp)
 elab (PApp subject sp) = tc $ tcApps !(elab subject) !(elabSpine sp)
 elab (PHole n) = tc $ tcHole n
 elab PUnit = tc $ whenInStage $ \case
