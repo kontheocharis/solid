@@ -1,4 +1,3 @@
-
 -- Synonym for sized types
 Type : Layout -> Type? (sta zero)
 Type l = Type? (sta l)

@@ -61,7 +61,7 @@ export
   show (WhenUnifying x y z) = "When unifying `\{show x}` with `\{show y}`: \{show z}"
   show (WrongPiMode mode ty) = "Wrong pi mode \{show mode} for type `\{show ty}`"
   show CannotInferStage = "Cannot infer stage"
-  show (UnknownName name) = "Unknown name: `\{show name}`"
+  show (UnknownName name) = "Unknown name: `\{name}`"
   show (TooManyApps count) = "Too many applications (expected \{show count} fewer)"
   show (TooFewApps count) = "Too few applications (expected \{show count} more)"
   show (NotAPi subj extra) = "The type of the subject is `\{
@@ -448,15 +448,15 @@ tcApps subject args = switch $ \ctx, (InferInput reqStage) => do
 
 -- Check a primitive
 public export
-tcPrim : HasTc m
+tcPrimUser : HasTc m
   => {ar : _}
   -> {r : PrimitiveReducibility}
   -> {k : PrimitiveClass}
   -> {l : PrimitiveLevel}
   -> Primitive k r l ar
-  -> DispList ar (TcAll m)
+  -> List (Ident, TcAll m)
   -> TcAll m
-tcPrim p args = switch $ \ctx, (InferInput stage) => do
+tcPrimUser p args = switch $ \ctx, (InferInput stage) => do
   (pParams, pRet) : Op _ _ <- case l of
     PrimNative => pure $ primAnnot p
     PrimDeclared => do
@@ -465,8 +465,20 @@ tcPrim p args = switch $ \ctx, (InferInput stage) => do
         sub {over = Atom} [<] pParams,
         sub {sns = ctxSize ctx + ar.count} {sms = SZ + ar.count} (liftSMany [<]) pRet
       )
-  sp <- tcSpine ctx (dispToList args) pParams
+  sp <- tcSpine ctx args pParams
   adjustStageIfNeeded ctx (prim p (map (.tm) sp) pRet) stage
+
+-- Check a primitive
+public export
+tcPrim : HasTc m
+  => {ar : _}
+  -> {r : PrimitiveReducibility}
+  -> {k : PrimitiveClass}
+  -> {l : PrimitiveLevel}
+  -> Primitive k r l ar
+  -> DispList ar (TcAll m)
+  -> TcAll m
+tcPrim p args = tcPrimUser p (dispToList args)
   
 inferStageIfNone : HasTc m => Maybe Stage -> (Stage -> TcAll m) -> TcAll m
 inferStageIfNone (Just s) m = m s

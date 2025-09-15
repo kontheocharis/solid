@@ -152,6 +152,9 @@ elab (PPi (MkPTel ((MkPParam l n ty) :: xs)) t) = do
   let ty' = fromMaybe (PHole Nothing) ty
   ty <- enterLoc l $ elab ty'
   tc $ tcPi n ty t'
+elab (PApp subject@(PName n) sp) with (nameToPrim n)
+  _ | Just (MkPrimitiveAny p) = tc $ tcPrimUser p !(elabSpine sp)
+  _ | Nothing = tc $ tcApps !(elab subject) !(elabSpine sp)
 elab (PApp subject sp) = tc $ tcApps !(elab subject) !(elabSpine sp)
 elab (PHole n) = tc $ tcHole n
 elab PUnit = tc $ whenInStage $ \case
