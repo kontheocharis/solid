@@ -57,7 +57,7 @@ invertRen (xs :< x) = do
     Just _ => Nothing
     Nothing => Just (MkPRen (SS dom) cod
       (\i' => case decEq i' x of
-        Yes Refl => Just (firstIdx dom)
+        Yes Refl => Just IZ
         No _ => map IS (contains i')))
 
 -- An error while performing renaming on a term.

@@ -36,11 +36,7 @@ zero P z s = z
 
 #mta
 succ : Nat -> Nat
-succ n P z s = {
-  y := n P
-
-  s (?q)
-}
+succ n P z s = s (n P z s)
 
 #mta
 bing : UNIT
