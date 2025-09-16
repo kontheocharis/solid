@@ -93,28 +93,3 @@ public export
 define : {s : Stage} -> (n : Ident) -> ExprAt s ns -> Context bs ns -> Context bs (ns :< n)
 define {s = stage} n (MkExpr tm (MkAnnotAt ty sort)) (MkContext (Val idents) (Val bindIdents) con sorts defs stages bounds) =
   MkContext (Val (idents :< n)) (Val bindIdents) (con :< ty) (sorts :< sort) (defs :< tm) (stages :< stage) (wkS bounds)
-  
--- Printing:
-
-0 ContextEntry : Ctx -> Type
-ContextEntry ns = (Stage, Ident, Atom ns, Maybe (Atom ns))
-
-showContextEntry : ShowSyntax => {ns : _} -> ContextEntry ns -> String
-showContextEntry (s, id, ty, Nothing) = "#\{show s} \{show @{showIdent} id} : \{show ty}"
-showContextEntry (s, id, ty, (Just tm)) =  "#\{show s} \{show @{showIdent} id} : \{show ty} = \{show tm}"
-
-dummy : Size ns => {ar : Arity} -> Spine ar Atom ns
-dummy {ar = []} = []
-dummy {ar = (x :: xs)} = (Val _, ?tgodo) :: dummy {ar = xs}
-
-toEntries : Context bs ns -> List (ns ** ContextEntry ns)
-toEntries (MkContext (Val [<]) (Val [<]) [<] [<] (MkScope SZ SZ [<]) [<] bs) = []
-toEntries (MkContext (Val (sx :< x)) (Val (bx :< x')) (tys :< ty) (sorts :< sort) (MkScope (SS sb) (SS sn) (Lift zs)) (sts :< s) bs)
-  = (sx ** (s, (x, (ty, Nothing)))) :: toEntries (MkContext (Val sx) (Val bx) tys sorts (MkScope sb sn zs) sts dummy)
-toEntries (MkContext (Val (sx :< x)) (Val bx) (tys :< ty) (sorts :< sort) (MkScope sb (SS sn) (zs :< z)) (sts :< s) bs)
-  = (sx ** (s, (x, (ty, Just z)))) :: toEntries (MkContext (Val sx) (Val bx) tys sorts (MkScope sb sn zs) sts dummy)
-toEntries _ = []
-
-export covering
-ShowSyntax => Show (Context bs ns) where
-  show ctx = map (\x => showContextEntry (snd x)) (toEntries ctx) |> cast |> joinBy "\n"

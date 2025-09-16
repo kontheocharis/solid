@@ -11,6 +11,7 @@ import Core.Primitives.Definitions
 import Core.Syntax
 import Core.Evaluation
 import Core.Primitives.Rules
+import Core.Atoms
 
 %default covering
 
@@ -18,13 +19,9 @@ import Core.Primitives.Rules
 -- renaming is a renaming that leaves gaps for some variables in the output
 -- context.
 --
--- A partial renaming can be viewed a "strengthening" followed by a
--- monomorphism, followed by a weakening. The strengthening can fail, which
--- means some variables are "escaping".
---
--- Warning: the notions of mono and epi are swapped for variables: a mono uses
--- each variable at *least* once, while an epi uses each variable at *most*
--- once.
+-- A partial renaming can be viewed a "strengthening" followed by a monomorphism
+-- (using each variable at least once), followed by a weakening. The
+-- strengthening can fail, which means some variables are "escaping".
 namespace PRen
   -- Here we represent a partial renaming as a partial function from indices to
   -- indices.
@@ -74,6 +71,10 @@ data PRenError : Ctx -> Type where
 Weak PRenError where
   weak s (Escapes l) = Escapes (weak s l)
   weak s (InvalidMeta m) = InvalidMeta m
+
+Thin PRenError where
+  thin s (Escapes l) = Escapes (thin s l)
+  thin s (InvalidMeta m) = InvalidMeta m
   
 Relabel PRenError where
   relabel s (Escapes l) = Escapes (relabel s l)
@@ -93,7 +94,7 @@ differentFrom m m' = case decEq m m' of
   Yes Refl => Invalid
   No _ => Valid
 
--- What is the plan? It consists of a partial renaming and a function that
+-- This consists of a partial renaming and a function that
 -- decides whether a meta variable can appear here.
 --
 -- @@Todo: add spine pruning support to this.
@@ -140,8 +141,8 @@ Rename (Binder md r Syntax n) where
 Rename Idx where
   -- We have not lifted; proceed with renaming
   rename (MkPlan pren SZ v) i = case pren.contains i of
-    Just j => pure j
-    Nothing => Left (Escapes (idxToLvl pren.cod i))
+      Just j => pure j
+      Nothing => Left (Escapes (idxToLvl pren.cod i))
 
   -- We have lifted. Do not rename, just recurse
   rename (MkPlan pren (SS lifted) v) IZ = pure IZ
@@ -180,6 +181,10 @@ public export
 data SolvingMode : Type where
   SolvingAllowed : SolvingMode
   SolvingNotAllowed : SolvingMode
+  
+public export
+Metas : Type
+Metas = MetaVar -> Maybe (Val [<])
 
 -- A monad for metavariable solving.
 public export
@@ -199,6 +204,9 @@ interface (forall sm . Monad (m sm)) => HasMetas (0 m : SolvingMode -> Type -> T
   -- Switch to a context where we are not allowed to solve metavariables.
   noSolving : {sm : SolvingMode} -> m SolvingNotAllowed a -> m sm a
 
+  -- Get all metas
+  getAllMetas : m sm Metas
+
 public export
 data SolveError : Ctx -> Type where
   -- A variable appears more than once in the metavariable spine.
@@ -213,6 +221,12 @@ Weak SolveError where
   weak s (NonLinear sp) = NonLinear (weak s sp)
   weak s (NonVar sp) = NonVar (weak s sp)
   weak s (RenamingError err) = RenamingError (weak s err)
+
+public export
+Thin SolveError where
+  thin s (NonLinear sp) = NonLinear (thin s sp)
+  thin s (NonVar sp) = NonVar (thin s sp)
+  thin s (RenamingError err) = RenamingError (thin s err)
 
 public export
 Relabel SolveError where

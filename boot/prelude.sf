@@ -29,9 +29,9 @@ PAIR : [A : TYPE] [B : A -> TYPE] (a : A) (b : B a) -> SIGMA A B
 fst : [A] [B] (p : SIGMA A B) -> A
 fst = ?faj
 
-#mta
-snd : [A : TYPE] [B : A -> TYPE] (p : SIGMA A B) -> B (fstS p)
-snd = ?fajj
+-- #mta
+-- snd : [A : TYPE] [B : A -> TYPE] (p : SIGMA A B) -> B (fst p)
+-- snd = ?fajj
 
 
 -- Synonym for sized types

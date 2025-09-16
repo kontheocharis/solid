@@ -113,6 +113,11 @@ liftIO i = lift $ Control.App.primIO i
       (\(MkMetaState sm metas c ** Refl)
         => (MkMetaState sm (insert m Nothing metas) (c + 1) ** Refl))
     pure m
+    
+  getAllMetas = do
+    mtas <- gets (metas . fst)
+    pure $ \m => join (lookup m mtas)
+    
 
 HasTc Comp where
   metasM = MetaComp

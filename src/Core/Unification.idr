@@ -127,19 +127,26 @@ mx \/ my = do
     DontKnow => my
 
 -- Solve a unification problem if possible, and return an appropriate outcome
-solve : HasMetas m => Size ns
-  => MetaVar
+solve : forall bs . HasMetas m => Size ns
+  => Scope bs Atom ns
+  -> MetaVar
   -> Spine ar (Term Value) ns
   -> Term Value ns
   -> m sm (Unification ns)
-solve m sp t = canSolve >>= \case
-  Val SolvingAllowed => solveProblem (MkFlex m sp) t >>= \case
-    Left err => pure $ Error {under = []} err
-    Right () => pure AreSame
+solve sc m sp t = canSolve >>= \case
+  Val SolvingAllowed => 
+    -- First expand all context names from the given scope
+    let expand = sc.defs.asSub in
+    let inv = sc.defs.inv in
+    let sp' = sub expand (promoteSpine sp) in
+    let t' = sub expand (promote t) in
+    solveProblem (MkFlex m sp'.val) t'.val >>= \case
+      Left err => pure $ Error {under = []} (thin inv err)
+      Right () => pure AreSame
   Val SolvingNotAllowed => pure DontKnow
 
 -- Resolve variables from a scope
-resolveVars : Scope bs Atom ns -> Val ns -> Val ns
+resolveVars : forall bs . Scope bs Atom ns -> Val ns -> Val ns
 resolveVars sc v@(SimpApps (ValVar (Level x) $$ sp)) = case getDef sc x of
   Just tm => Glued (LazyApps (ValVarWithDef (Level x) $$ sp) (resolveVars sc (apps tm.val sp)))
   Nothing => v
@@ -152,7 +159,7 @@ Unify sm Lvl Lvl where
   unifyImpl ctx l l' = ifAndOnlyIf (decEq l l') (\Refl => pure AreSame)
 
 public export
-Unify sm val val' => Unify sm (Spine as val) (Spine as' val') where
+Unify sm vl vl' => Unify sm (Spine as vl) (Spine as' vl') where
   unifyImpl ctx [] [] = pure AreSame
   unifyImpl ctx ((_, x) :: xs) ((_, y) :: ys) = unify ctx x y /\ unify ctx xs ys
   unifyImpl ctx _ _ = pure AreDifferent
@@ -256,8 +263,8 @@ export
   unifyImpl ctx (RigidBinding md r) (RigidBinding md' r') = ifAndOnlyIf (decEq md md') (\Refl => unify ctx r r')
 
   -- Solve metas
-  unifyImpl ctx a (SimpApps (ValMeta m' $$ sp')) = solve m' sp' a
-  unifyImpl ctx (SimpApps (ValMeta m $$ sp)) b = solve m sp b
+  unifyImpl ctx a (SimpApps (ValMeta m' $$ sp')) = solve ctx m' sp' a
+  unifyImpl ctx (SimpApps (ValMeta m $$ sp)) b = solve ctx m sp b
 
   -- glued terms can reduce further
   unifyImpl ctx (Glued a) (Glued b) = noSolving (unify ctx a b) \/ unify ctx (simplified a) (simplified b)

@@ -92,6 +92,11 @@ data KnownDirective : Type where
   ObjDir : KnownDirective 
   PrimitiveDir : KnownDirective
   
+export
+fromStage : Stage -> KnownDirective
+fromStage Obj = ObjDir
+fromStage Mta = MtaDir
+  
 export covering
 (.asDirective) : KnownDirective -> Directive
 (.asDirective) MtaDir = MkDirective "mta"
@@ -142,6 +147,12 @@ data PBlockStatement : Type where
   --
   -- a
   PBlockTm : Loc -> PTm -> PBlockStatement
+
+-- Handy wrapper for top-level statements
+public export
+record PBlockStatements where
+  constructor MkPBlockStatements
+  inner : List PBlockStatement
 
 -- Main syntax tree, pretty self explanatory
 --
@@ -300,6 +311,10 @@ Show PBlockStatement where
   show (PBind _ n Nothing v) = n ++ " <- " ++ show v
   show (PBlockTm _ t) = show t
   show (PDirSt d s) = show d ++ "\n" ++ show s
+
+public export covering
+Show PBlockStatements where
+  show (MkPBlockStatements xs) = map show xs |> joinBy "\n"
 
 public export total
 Show BinOp where

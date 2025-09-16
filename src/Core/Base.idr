@@ -616,6 +616,10 @@ Eval over tm val => Eval over (Spine ar tm) (Spine ar val) where
   eval env sp = map (eval env) sp
 
 public export
+EvalSized over tm val => EvalSized over (Spine ar tm) (Spine ar val) where
+  evalS env sp = map (evalS env) sp
+
+public export
 (WeakSized over, Vars over, EvalSized over tm val) => EvalSized over (Tel ar tm) (Tel ar val) where
   evalS env [] = []
   evalS env ((n, x) :: xs) = (n, evalS env x) :: evalS (liftS env) xs

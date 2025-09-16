@@ -23,6 +23,7 @@ import Data.Maybe
 import Control.Monad.State
 import Control.Monad.Error.Either
 import Debug.Trace
+import Surface.Unelaboration
 
 export
 record ElabState where
@@ -184,7 +185,11 @@ elab (PPairs (MkPSpine ((MkPArg l n t) :: ts))) = do
 elab (PProj v n) = ?tcProj
 elab (PBlock t []) = do
   e <- elab PUnit
-  tc (interceptContext (\ctx => trace (show ctx) (pure ())) e)
+  -- @@Debugging
+  tc (interceptContext (\ctx => do
+    let Val _ = ctx.idents 
+    mtas <- enterMetas (getAllMetas {sm = SolvingNotAllowed} @{metas})
+    trace (show @{showUnelabWithMetas {unel = contextUnelab} mtas} ctx) (pure ())) e)
 elab (PBlock t (PLet l n ty tm :: bs)) = enterLoc l $ ensureNotPrimitive >> do
   s <- reset stageHintL
   ty' <- traverse elab ty
