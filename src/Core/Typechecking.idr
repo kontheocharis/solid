@@ -82,7 +82,7 @@ ShowSyntax => Show TcError where
 -- Typechecking has access to metas
 -- @@Enhancement: refactor to use lenses
 public export
-interface ShowSyntax => (Monad m) => HasTc m where
+interface (Monad m) => HasTc m where
   
   -- Explicit instance of metas so that the resolution doesn't die..
   0 metasM : SolvingMode -> Type -> Type
@@ -179,7 +179,7 @@ interceptAll f x Infer = \ctx, s => f (x Infer ctx s)
   
 -- Map a monadic context operation over TcAll.
 public export
-interceptContext : ShowSyntax => HasTc m => (forall bs, ns . Context bs ns -> m ()) -> TcAll m -> TcAll m
+interceptContext : HasTc m => (forall bs, ns . Context bs ns -> m ()) -> TcAll m -> TcAll m
 interceptContext f x Check = \ctx, as => do
   f ctx
   x Check ctx as
@@ -521,7 +521,7 @@ tcLet name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => d
   
 -- Check a primitive declaration statement.
 public export
-tcPrimDecl : ShowSyntax => HasTc m
+tcPrimDecl : HasTc m
   => (name : Name)
   -> (stage : Maybe Stage)
   -> (ty : TcAll m)
@@ -539,7 +539,7 @@ tcPrimDecl name stage ty rest = inferStageIfNone stage $ \stage, md, ctx, inp =>
 
   -- Turn the type signature into an operation signature
   ty' <- trace "got primitive \{primName p}" $ ty Check ctx (CheckInput stage (objZOrMtaA stage))
-  Gathered params ret <- trace "got type \{show ty'.tm.syn}" $ reading (gatherPis ty'.p.a ar)
+  Gathered params ret <- reading (gatherPis ty'.p.a ar)
     | TooMany extra under p => tcError ctx $ NotAPi ty'.tm extra
 
   let arC = ar.count

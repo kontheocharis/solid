@@ -25,8 +25,7 @@ import Surface.Presyntax
 -- We need to be able to generate fresh names during unelaboration,
 -- and to lookup metas.
 public export
-interface Monad m => HasUnelab (0 m : Type -> Type) where
-  getMeta : MetaVar -> m (Maybe (Val [<]))
+interface Monad m => Metas => HasUnelab (0 m : Type -> Type) where
   fresh : m Ident
 
 -- Implemented for each syntactic construct that can be unelaborated to surface syntax.
@@ -35,22 +34,16 @@ interface Unelab (0 t : Ctx -> Type) (0 p : Type) | t where
   unelab : HasUnelab m => {ns : Ctx} -> t ns -> m p
   
 public export
-[stateUnelab] HasUnelab (ReaderT Metas (State Int)) where
-  getMeta _ = pure Nothing
+[stateUnelab] Metas => HasUnelab (State Int) where
   fresh = do
     n <- get
     put (n + 1)
     pure (Explicit, "x" ++ show n)
   
--- Unelaborate a term locally but with metas
-export
-localUnelabWithMetas : (forall m . (HasUnelab m) => m t) -> Metas -> t
-localUnelabWithMetas op mtas = evalState 0 (runReaderT mtas (op @{stateUnelab}))
-  
 -- Unelaborate a term locally (the fresh names will vary across invocations!).
 export
-localUnelab : (forall m . (HasUnelab m) => m t) -> t
-localUnelab op = localUnelabWithMetas op (\_ => Nothing)
+localUnelab : Metas => (forall m . (HasUnelab m) => m t) -> t
+localUnelab op = evalState 0 (op @{stateUnelab})
 
 export
 {d : Domain} -> Unelab (Term d) PTm
@@ -96,7 +89,7 @@ Unelab (Head Syntax NA) PTm where
   unelab {ns} (SynVar (Index i)) =
     pure $ let (_, n) = getIdx ns i in PName n
   unelab (SynMeta m) = do
-    mta <- getMeta m
+    let mta = lookupMeta m
     case mta of
       Just m => unelab (quote {val = Val} {tm = Tm} m)
       Nothing => case m of
@@ -108,7 +101,7 @@ Unelab (Head Syntax NA) PTm where
 export
 Unelab (HeadApplied Syntax NA) PTm where
   unelab {ns} (($$) x@(SynMeta m) {ar = ar} sp) = do
-    mta <- getMeta m
+    let mta = lookupMeta m
     case mta of
       Just m => do
         let vsp = eval {over = Val} {val = Spine ar Val} (id {sz = ns.size}) sp
@@ -154,27 +147,20 @@ export
 
 -- We can thus implement show for anything that can be unelaborated.
 public export
-[showUnelab] (ns : Ctx) => Unelab t p => Show p => Show (t ns) where
+[showUnelab] Metas => (ns : Ctx) => (unel : Unelab t p) => Show p => Show (t ns) where
   show x = show (localUnelab (unelab x))
-  
-[withMetas] (mtas : Metas) => (ns : Ctx) => Unelab t p => Show p => Show (t ns) where
-  show x = show (localUnelabWithMetas (unelab x) mtas)
-
-public export
-showUnelabWithMetas : Metas -> (ns : Ctx) => (unel : Unelab t p) => Show p => Show (t ns)
-showUnelabWithMetas mtas = withMetas {mtas = mtas}
   
 public export
 %hint
-showUnelabAtom : Show (Atom [<])
+showUnelabAtom : Metas => Show (Atom [<])
 showUnelabAtom = showUnelab
 
 public export
 %hint
-showUnelabVal : Show (Val [<])
+showUnelabVal : Metas => Show (Val [<])
 showUnelabVal = showUnelab
 
 public export
 %hint
-showSyntax : ShowSyntax
-showSyntax = (showUnelab, showUnelab)
+showSyntax : Metas => ShowSyntax
+showSyntax @{mtas} = (mtas, showUnelab, showUnelab)

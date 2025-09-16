@@ -26,6 +26,9 @@ import System
 import System.File
 import Lib.HashMap
 import Data.DPair
+import Debug.Trace
+
+%default covering
 
 -- States in the compiler:
 
@@ -53,10 +56,19 @@ emptyCompilerState : CompilerState
 emptyCompilerState = MkCompilerState emptyMetaState dummyLoc [<] empty
 
 -- Errors in the compiler:
+  
+record WithMetas (a : Type) where
+  constructor MkWithMetas
+  metas : Metas
+  inner : a
+  
+covering
+(Metas => Show a) => Show (WithMetas a) where
+  show (MkWithMetas metas inner) = show inner
 
 public export
 compilerErrors : List Error
-compilerErrors = [ParseError, TcError, ElabError, AppHasIO]
+compilerErrors = [ParseError, WithMetas TcError, WithMetas ElabError, AppHasIO]
   
 -- Setup monads:
 
@@ -116,8 +128,10 @@ liftIO i = lift $ Control.App.primIO i
     
   getAllMetas = do
     mtas <- gets (metas . fst)
-    pure $ \m => join (lookup m mtas)
+    pure $ fromFn (\m => join (lookup m mtas))
     
+covering
+accessMetas : Comp Metas
 
 HasTc Comp where
   metasM = MetaComp
@@ -141,7 +155,8 @@ HasTc Comp where
 
   tcError ctx err = do
     l <- gets loc
-    lift $ throw (MkTcError ctx l err)
+    mtas <- accessMetas
+    lift $ throw (MkWithMetas mtas (MkTcError ctx l err))
     
   definedPrimAnnot p = do
     m <- gets definedPrimitives
@@ -156,6 +171,8 @@ HasTc Comp where
         { definedPrimitives
           := insert (MkPrimitiveAnyIrr p) v s.definedPrimitives } s)
     pure ()
+
+accessMetas = enterMetas {sm = SolvingNotAllowed} (getAllMetas @{metaCompMetas})
     
 -- Inputs and outputs of the compiler
   
@@ -172,8 +189,8 @@ data CompilerOutput : (a : Type) -> Type where
   Start : CompilerOutput Input
   Contents : CompilerOutput String
   Parsed : CompilerOutput PTm
-  Elaborated : CompilerOutput (Atom [<])
-  Staged : CompilerOutput (Val [<])
+  Elaborated : CompilerOutput (WithMetas (Atom [<]))
+  Staged : CompilerOutput (WithMetas (Val [<]))
   Code : CompilerOutput String
   
 public export covering
@@ -238,27 +255,30 @@ parse input = case parse topLevelBlock input of
   Left err => lift $ throw err
 
 covering
-elaborate : PTm -> Comp (Atom [<])
+elaborate : PTm -> Comp (WithMetas (Atom [<]))
 elaborate ptm = do
   case runElab (elab ptm) of
     Right ok => do
       res <- runAt Check ok emptyContext (CheckInput _ mainAnnot)
-      pure $ res.tm
-    Left err => lift $ throw err
+      mtas <- accessMetas
+      pure $ MkWithMetas mtas res.tm
+    Left err => do
+      mtas <- accessMetas
+      lift $ throw (MkWithMetas mtas err)
 
 covering
-stage : Atom [<] -> Comp (Val [<])
+stage : WithMetas (Atom [<]) -> Comp (WithMetas (Val [<]))
 stage atom = ?stageImpl
 
 covering
-codegen : Val [<] -> Comp String
+codegen : WithMetas (Val [<]) -> Comp String
 codegen val = ?codegenImpl
 
 -- All the stages together in a pipeline
 public export covering
 compiler : Pipeline CompilerOutput Comp CompilerStages
 compiler = (read, parse, elaborate, stage, codegen)
-  
+
 -- Main compilation function: compile until a certain stage.
 export covering
 compileUntil : Input -> CompilerStageElem out k -> (Show out, IO out)

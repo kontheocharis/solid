@@ -322,11 +322,27 @@ public export
 varApp : (n : String) -> {auto prf : In n ns} -> Ident -> Term Syntax ns -> Tm ns
 varApp n {prf = prf} a v = SynApps (SynVar (Index (idx @{prf})) $$ ((::) (Val a, v) []))
 
+  
+-- Readonly metas view
+export
+record Metas where
+  constructor MkMetas
+  get : MetaVar -> Maybe (Val [<])
+  
+export
+fromFn : (MetaVar -> Maybe (Val [<])) -> Metas
+fromFn = MkMetas
+  
+export
+lookupMeta : Metas => MetaVar -> Maybe (Val [<])
+lookupMeta @{MkMetas g} m = g m
+
 -- Showing (just traits for now)
 
 public export
 0 ShowSyntax : Type
 ShowSyntax = (
+    Metas,
     {d : _} -> (ns : Ctx) => Show (Term d ns),
     {d : _} -> forall ar . (ns : Ctx) => Show (Spine ar (Term d) ns)
   )

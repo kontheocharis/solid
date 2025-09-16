@@ -189,7 +189,7 @@ elab (PBlock t []) = do
   tc (interceptContext (\ctx => do
     let Val _ = ctx.idents 
     mtas <- enterMetas (getAllMetas {sm = SolvingNotAllowed} @{metas})
-    trace (show @{showUnelabWithMetas {unel = contextUnelab} mtas} ctx) (pure ())) e)
+    trace (show @{showUnelab {unel = contextUnelab}} ctx) (pure ())) e)
 elab (PBlock t (PLet l n ty tm :: bs)) = enterLoc l $ ensureNotPrimitive >> do
   s <- reset stageHintL
   ty' <- traverse elab ty

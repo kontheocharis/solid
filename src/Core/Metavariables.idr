@@ -181,10 +181,6 @@ public export
 data SolvingMode : Type where
   SolvingAllowed : SolvingMode
   SolvingNotAllowed : SolvingMode
-  
-public export
-Metas : Type
-Metas = MetaVar -> Maybe (Val [<])
 
 -- A monad for metavariable solving.
 public export
