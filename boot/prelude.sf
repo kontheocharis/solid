@@ -1,3 +1,5 @@
+foo := #import "hello.foo"
+
 #mta
 #primitive
 UNIT : TYPE
@@ -28,19 +30,19 @@ PAIR : [A : TYPE] [B : A -> TYPE] (a : A) (b : B a) -> SIGMA A B
 
 #mta
 Nat : TYPE
-Nat = (P : TYPE) -> P -> (P -> P) -> P
+Nat = [P : TYPE] -> P -> (P -> P) -> P
 
 #mta
 zero : Nat
-zero P z s = z
+zero [P] z s = z
 
 #mta
 succ : Nat -> Nat
-succ n P z s = s (n P z s)
+succ n [P] z s = s (n [P] z s)
 
 #mta
 rec : (N : TYPE) -> N -> (N -> N) -> Nat -> N
-rec N z s n = n N z s
+rec N z s n = n [N] z s
 
 #mta
 add : Nat -> Nat -> Nat

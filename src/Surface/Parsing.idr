@@ -282,10 +282,9 @@ piArg = atom . located (|>) $
     t <- singleTm
     pure $ \l => MkPArg l Nothing t
   ) $ do
-    n <- identifier
-    symbol "="
+    n <- optional (identifier <* symbol "=")
     t <- tm
-    pure $ \m, l => MkPArg l (Just $ (m, n)) t)
+    pure $ \m, l => MkPArg l (Just (m, fromMaybe "_" n)) t)
 
 pairArg : Parse (PArg Pairs)
 pairArg = atom . located (|>) $ do

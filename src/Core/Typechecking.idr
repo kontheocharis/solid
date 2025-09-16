@@ -356,10 +356,21 @@ tcSpine : HasTc m
 tcSpine ctx [] [] = pure []
 tcSpine ctx tms [] = tcError ctx (TooManyApps (map fst tms).count)
 tcSpine ctx [] annots = tcError ctx (TooFewApps annots.count)
-tcSpine ctx ((_, tm) :: tms) ((Val _, annot) :: annots) = do -- @@Todo: spine name
-  tm' <- tm Check ctx (CheckInput _ annot.f)
-  tms' <- tcSpine ctx tms (sub (idS :< tm'.tm) annots)
-  pure ((Val _, tm'.p) :: tms')
+tcSpine ctx (((md, name), tm) :: tms) ((Val (piMd, piName), annot) :: annots) with (decEq md piMd)
+  tcSpine ctx (((md, name), tm) :: tms) ((Val (md, piName), annot) :: annots) | Yes Refl = do
+    -- use the term directly
+    tm' <- tm Check ctx (CheckInput _ annot.f)
+    tms' <- tcSpine ctx tms (sub (idS :< tm'.tm) annots)
+    pure ((Val _, tm'.p) :: tms')
+  tcSpine ctx (((Explicit, name), tm) :: tms) ((Val (Implicit, piName), annot) :: annots) | No _ = do
+    -- insert application
+    tm' <- reading (freshMeta ctx Nothing annot.f)
+    tms' <- tcSpine ctx (((Explicit, name), tm) :: tms) (sub (idS :< tm'.tm) annots)
+    pure ((Val _, tm'.p) :: tms')
+  tcSpine ctx (((Implicit, name), tm) :: tms) ((Val (Explicit, piName), annot) :: annots) | No _ = do
+    tcError ctx $ WrongPiMode Implicit annot.ty
+  tcSpine ctx (((Explicit, name), tm) :: tms) ((Val (Explicit, piName), annot) :: annots) | No p = absurd $ p Refl
+  tcSpine ctx (((Implicit, name), tm) :: tms) ((Val (Implicit, piName), annot) :: annots) | No p = absurd $ p Refl
   
 -- Main combinators:
 
