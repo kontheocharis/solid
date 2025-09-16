@@ -346,33 +346,64 @@ inferAnnot ctx kind ty = do
   MkExpr t (MkAnnot univ _ stage) <- ty ctx (InferInput Nothing)
   res <- fitAnnot ctx stage kind (MkAnnotShape t univ)
   pure (stage ** res)
+  
+-- @@Todo: deduplicate!
 
 -- Check a spine against a telescope.
 --
--- Returns the checked spine and the remaining terms in the input.
-tcSpine : HasTc m
+-- Returns the checked spine.
+tcSpineExact : HasTc m
   => Context bs ns
   -> List (Ident, TcAll m)
   -> Tel ar Annot ns
   -> m (Spine ar Expr ns)
-tcSpine ctx [] [] = pure []
-tcSpine ctx tms [] = tcError ctx (TooManyApps (map fst tms).count)
-tcSpine ctx [] annots = tcError ctx (TooFewApps annots.count)
-tcSpine ctx (((md, name), tm) :: tms) ((Val (piMd, piName), annot) :: annots) with (decEq md piMd)
-  tcSpine ctx (((md, name), tm) :: tms) ((Val (md, piName), annot) :: annots) | Yes Refl = do
+tcSpineExact ctx [] [] = pure []
+tcSpineExact ctx tms [] = tcError ctx (TooManyApps (map fst tms).count)
+tcSpineExact ctx [] annots = tcError ctx (TooFewApps annots.count)
+tcSpineExact ctx (((md, name), tm) :: tms) ((Val (piMd, piName), annot) :: annots) with (decEq md piMd)
+  tcSpineExact ctx (((md, name), tm) :: tms) ((Val (md, piName), annot) :: annots) | Yes Refl = do
     -- use the term directly
     tm' <- tm Check ctx (CheckInput _ annot.f)
-    tms' <- tcSpine ctx tms (sub (idS :< tm'.tm) annots)
+    tms' <- tcSpineExact ctx tms (sub (idS :< tm'.tm) annots)
     pure ((Val _, tm'.p) :: tms')
-  tcSpine ctx (((Explicit, name), tm) :: tms) ((Val (Implicit, piName), annot) :: annots) | No _ = do
+  tcSpineExact ctx (((Explicit, name), tm) :: tms) ((Val (Implicit, piName), annot) :: annots) | No _ = do
     -- insert application
     tm' <- reading (freshMeta ctx Nothing annot.f)
-    tms' <- tcSpine ctx (((Explicit, name), tm) :: tms) (sub (idS :< tm'.tm) annots)
+    tms' <- tcSpineExact ctx (((Explicit, name), tm) :: tms) (sub (idS :< tm'.tm) annots)
     pure ((Val _, tm'.p) :: tms')
-  tcSpine ctx (((Implicit, name), tm) :: tms) ((Val (Explicit, piName), annot) :: annots) | No _ = do
+  tcSpineExact ctx (((Implicit, name), tm) :: tms) ((Val (Explicit, piName), annot) :: annots) | No _ = do
     tcError ctx $ WrongPiMode Implicit annot.ty
-  tcSpine ctx (((Explicit, name), tm) :: tms) ((Val (Explicit, piName), annot) :: annots) | No p = absurd $ p Refl
-  tcSpine ctx (((Implicit, name), tm) :: tms) ((Val (Implicit, piName), annot) :: annots) | No p = absurd $ p Refl
+  tcSpineExact ctx (((Explicit, name), tm) :: tms) ((Val (Explicit, piName), annot) :: annots) | No p = absurd $ p Refl
+  tcSpineExact ctx (((Implicit, name), tm) :: tms) ((Val (Implicit, piName), annot) :: annots) | No p = absurd $ p Refl
+
+-- Check a spine against a type.
+--
+-- Returns the checked spine and the result type.
+tcSpine : HasTc m
+  => Context bs ns
+  -> List (Ident, TcAll m)
+  -> Annot ns
+  -> m (ar ** (Annot ns, Spine ar Expr ns))
+tcSpine ctx [] ann = pure ([] ** (ann, []))
+tcSpine ctx allTms@(((md, name), tm) :: tms) ann = reading (forcePi ctx.scope ann.ty) >>= \case
+  MatchingPi _ (MkPiData resolvedPi (piMd, piName) a b) => case decEq md piMd of
+    Yes Refl => do
+      -- use the term directly
+      tm' <- tm Check ctx (CheckInput _ a.asAnnot)
+      (ar ** (ann', tms')) <- tcSpine ctx tms (apply b tm'.tm).asAnnot.p
+      pure ((md, name) :: ar ** (ann', (Val _, tm'.p) :: tms'))
+    No p => case piMd of
+      Explicit => case md of
+        Explicit => absurd $ p Refl
+        Implicit => tcError ctx $ WrongPiMode Implicit ann.ty
+      Implicit => case md of
+        Explicit => do
+          -- insert application
+          tm' <- reading (freshMeta ctx Nothing a.asAnnot)
+          (ar ** (ann', tms')) <- tcSpine ctx allTms (apply b tm'.tm).asAnnot.p
+          pure ((piMd, piName) :: ar ** (ann', (Val _, tm'.p) :: tms'))
+        Implicit => absurd $ p Refl
+  OtherwiseNotPi t => tcError ctx (TooManyApps (map fst tms).count)
   
 -- Main combinators:
 
@@ -476,14 +507,8 @@ tcApps : HasTc m
   -> TcAll m
 tcApps subject args = switch $ \ctx, (InferInput reqStage) => do
   subject'@(MkExpr _ fnAnnot) <- (.mp) <$> subject Infer ctx (InferInput reqStage)
-  Gathered _ _ params ret <- reading (gatherPis ctx.scope fnAnnot (map fst args))
-    | TooMany extra under p => tcError ctx $ NotAPi fnAnnot.ty extra
-  args' <- tcSpine ctx args params
-  let result = apps subject' args'
-        -- @@Refactor: why does it have to be like this :((
-        (sub {tm = AnnotAt _} @{%search} @{ctxSize ctx}
-          @{ctxSize ctx + args'.count}
-          (idS ::< (map (.tm) args')) ret.f)
+  (ar' ** (ret, args')) <- tcSpine ctx args fnAnnot
+  let result = apps subject' args' ret.f
   adjustStageIfNeeded ctx result.p reqStage
 
 -- Check a primitive
@@ -505,7 +530,7 @@ tcPrimUser p args = switch $ \ctx, (InferInput stage) => do
         sub {over = Atom} [<] pParams,
         sub {sns = ctxSize ctx + ar.count} {sms = SZ + ar.count} (liftSMany [<]) pRet
       )
-  sp <- tcSpine ctx args pParams
+  sp <- tcSpineExact ctx args pParams
   adjustStageIfNeeded ctx (prim p (map (.tm) sp) pRet) stage
   
 -- Check a primitive

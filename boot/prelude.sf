@@ -40,7 +40,7 @@ succ n [P] z s = s ((#debug-type-exp n) [P] z s)
 
 #mta
 rec : (N : TYPE) -> N -> (N -> N) -> Nat -> N
-rec N z s n = n [N] z s
+rec N z s n = n z s
 
 #mta
 add : Nat -> Nat -> Nat
