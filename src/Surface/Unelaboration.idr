@@ -77,9 +77,9 @@ Unelab (Binding s r Syntax) PTm where
   unelab (Bound Obj (BindObjLet (_, n) tyBytes ty rhs) y) =
     pure $ pLet dummyLoc n !(Just <$> unelab ty) !(unelab rhs) !(unelab y)
   unelab (Bound Mta (BindMtaPi n dom) y) =
-    pure $ pPi (MkPParam dummyLoc n Nothing) !(unelab y)
+    pure $ pPi (MkPParam dummyLoc n !(Just <$> unelab dom)) !(unelab y)
   unelab (Bound Obj (BindObjPi n domBytes codBytes dom) y) =
-    pure $ pPi (MkPParam dummyLoc n Nothing) !(unelab y)
+    pure $ pPi (MkPParam dummyLoc n !(Just <$> unelab dom)) !(unelab y)
   
 public export
 {d : Domain} -> Unelab (Term d) PTm

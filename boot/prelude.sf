@@ -23,6 +23,25 @@ SIGMA : (A : TYPE) -> (A -> TYPE) -> TYPE
 #primitive
 PAIR : [A : TYPE] [B : A -> TYPE] (a : A) (b : B a) -> SIGMA A B
 
+
+-- Some tests
+
+#mta
+Nat : TYPE
+Nat = (P : TYPE) -> P -> (P -> P) -> P
+
+#mta
+zero : Nat
+zero P z s = z
+
+#mta
+succ : Nat -> Nat
+succ n P z s = s (?q)
+
+#mta
+bing : UNIT
+bing = ?boo
+
 -- Synonym for sized types
 -- #mta
 -- Type : Layout -> Type? (sta zero)

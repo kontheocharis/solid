@@ -225,6 +225,7 @@ pLet l n ty tm u = PBlock True [PLet l n ty tm, PBlockTm dummyLoc u]
 public export total
 isAtomic : PTm -> Bool
 isAtomic (PName _) = True
+isAtomic (PApp x (MkPSpine [])) = isAtomic x
 isAtomic (PSigmas _) = True
 isAtomic PUnit = True
 isAtomic (PHole _) = True
@@ -243,7 +244,6 @@ showAtomic t = if isAtomic t then show t else "(" ++ show t ++ ")"
 public export covering
 Show (PParam Functions) where
   show (MkPParam l (Explicit, n) (Just t)) = "(" ++ n ++ " : " ++ show t ++ ")"
-  show (MkPParam l (Explicit, "_") (Just t)) = showAtomic t
   show (MkPParam l (Implicit, n) (Just t)) = "[" ++ n ++ " : " ++ show t ++ "]"
   show (MkPParam l (Explicit, n) Nothing) = "(" ++ n ++ " : _)"
   show (MkPParam l (Implicit, n) Nothing) = "[" ++ n ++ "]"
@@ -271,6 +271,7 @@ Show (PArg Pairs) where
 -- [A] (x : A) [z : B]
 public export covering
 Show (PTel Functions) where
+  show (MkPTel [MkPParam l (Explicit, "_") (Just t)]) = showAtomic t
   show (MkPTel []) = ""
   show (MkPTel ts) = (map show ts |> cast |> joinBy " ")
 
