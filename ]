@@ -180,19 +180,13 @@ interceptAll : HasTc m => (forall a . m a -> m a) -> TcAll m -> TcAll m
 interceptAll f x Check = \ctx, as => f (x Check ctx as)
 interceptAll f x Infer = \ctx, s => f (x Infer ctx s)
 
--- View the current term
+-- Map a term operation over TcAll.
 public export
-interceptTerm : HasTc m => (forall bs, ns . {s : _} -> Context bs ns -> ExprAtMaybe s ns -> m ()) -> TcAll m -> TcAll m
-interceptTerm f x Check = \ctx, as => do
-  y <- x Check ctx as
-  f ctx y
-  pure y
-interceptTerm f x Infer = \ctx, s => do
-  y <- x Infer ctx s
-  f ctx y
-  pure y
+interceptTerm : HasTc m => (forall s, ns . ExprAtMaybe s ns -> m ()) -> TcAll m -> TcAll m
+interceptTerm f x Check = \ctx, as => ?fdsj
+interceptTerm f x Infer = \ctx, s => f (x Infer ctx s)
   
--- View the current context
+-- Map a monadic context operation over TcAll.
 public export
 interceptContext : HasTc m => (forall bs, ns . Context bs ns -> m ()) -> TcAll m -> TcAll m
 interceptContext f x Check = \ctx, as => do

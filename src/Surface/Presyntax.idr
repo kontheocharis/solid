@@ -92,6 +92,10 @@ data KnownDirective : Type where
   ObjDir : KnownDirective 
   PrimitiveDir : KnownDirective
   DebugCtx : KnownDirective
+  DebugTerm : KnownDirective
+  DebugTermExp : KnownDirective
+  DebugType : KnownDirective
+  DebugTypeExp : KnownDirective
   
 export
 fromStage : Stage -> KnownDirective
@@ -104,6 +108,10 @@ export covering
 (.asDirective) ObjDir = MkDirective "obj"
 (.asDirective) PrimitiveDir = MkDirective "primitive"
 (.asDirective) DebugCtx = MkDirective "debug-ctx"
+(.asDirective) DebugTerm = MkDirective "debug-term"
+(.asDirective) DebugTermExp = MkDirective "debug-term-exp"
+(.asDirective) DebugType = MkDirective "debug-type"
+(.asDirective) DebugTypeExp = MkDirective "debug-type-exp"
   
 export covering
 parseDirective : Directive -> Maybe KnownDirective
@@ -111,6 +119,10 @@ parseDirective (MkDirective "mta") = Just MtaDir
 parseDirective (MkDirective "obj") = Just ObjDir
 parseDirective (MkDirective "primitive") = Just PrimitiveDir
 parseDirective (MkDirective "debug-ctx") = Just DebugCtx
+parseDirective (MkDirective "debug-term") = Just DebugTerm
+parseDirective (MkDirective "debug-term-exp") = Just DebugTermExp
+parseDirective (MkDirective "debug-type") = Just DebugType
+parseDirective (MkDirective "debug-type-exp") = Just DebugTypeExp
 parseDirective _ = Nothing
 
 export covering
@@ -119,6 +131,10 @@ directiveCoh {k = MtaDir} = Refl
 directiveCoh {k = ObjDir} = Refl
 directiveCoh {k = PrimitiveDir} = Refl
 directiveCoh {k = DebugCtx} = Refl
+directiveCoh {k = DebugTerm} = Refl
+directiveCoh {k = DebugTermExp} = Refl
+directiveCoh {k = DebugType} = Refl
+directiveCoh {k = DebugTypeExp} = Refl
 
 -- A block is a sequence of assignment-like things. It is written like
 -- { x1 := a1; ... ; xn := an; y }, similar to Rust.

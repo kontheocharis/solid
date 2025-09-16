@@ -10,6 +10,7 @@ import Data.Singleton
 import Data.DPair
 import Core.Base
 import Core.Atoms
+import Core.Evaluation
 import Core.Combinators
 import Core.Metavariables
 import Core.Context
@@ -150,6 +151,38 @@ printCtxAnd b = do
     ) b'
 
 covering
+printTermAnd : HasTc x => (expand : Bool) -> Elab (TcAll x) -> Elab (TcAll x)
+printTermAnd expand b = do
+  b' <- b
+  tc $ interceptTerm (\ctx, tm => do
+      let Val _ = ctx.idents 
+      mtas <- enterMetas (getAllMetas {sm = SolvingNotAllowed} @{metas})
+      loc <- getLoc
+      let term : Atom _ = if expand
+                    then expandDefs ctx.scope.defs tm.mp.tm
+                    else tm.mp.tm
+      dbg "--- <Term at \{show loc}> ---"
+      dbg (show @{showUnelab} term)
+      dbg "--- </Term> ---\n"
+    ) b'
+
+covering
+printTypeAnd : HasTc x => (expand : Bool) -> Elab (TcAll x) -> Elab (TcAll x)
+printTypeAnd expand b = do
+  b' <- b
+  tc $ interceptTerm (\ctx, tm => do
+      let Val _ = ctx.idents 
+      mtas <- enterMetas (getAllMetas {sm = SolvingNotAllowed} @{metas})
+      loc <- getLoc
+      let type : Atom _ = if expand
+                    then expandDefs ctx.scope.defs tm.mp.annot.ty
+                    else tm.mp.annot.ty
+      dbg "--- <Type at \{show loc}> ---"
+      dbg (show @{showUnelab} type)
+      dbg "--- </Type> ---\n"
+    ) b'
+
+covering
 handleDirective : HasTc x => Directive -> DirectivePlacement -> Elab (TcAll x) -> Elab (TcAll x)
 handleDirective d p b = case (parseDirective d, p) of
   (Nothing, _) => elabError (UnknownDirective d)
@@ -157,6 +190,10 @@ handleDirective d p b = case (parseDirective d, p) of
   (Just ObjDir, InBlockSt) => enter stageHintL (Just Obj) b
   (Just PrimitiveDir, InBlockSt) => enter isPrimitiveL True b
   (Just DebugCtx, _) => printCtxAnd b
+  (Just DebugTerm, _) => printTermAnd False b
+  (Just DebugTermExp, _) => printTermAnd True b
+  (Just DebugType, _) => printTypeAnd False b
+  (Just DebugTypeExp, _) => printTypeAnd True b
   (Just d, InTm) => elabError $ DirectiveNotAllowed d
 
 elab (PLoc l t) =

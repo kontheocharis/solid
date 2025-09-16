@@ -40,11 +40,11 @@ succ n P z s = s (n P z s)
 
 #mta
 rec : (N : TYPE) -> N -> (N -> N) -> Nat -> N
-rec N z s n = n N z ?sdaj
+rec N z s n = n N z s
 
 #mta
-bing : UNIT
-bing = ?boo
+add : Nat -> Nat -> Nat
+add x y = (rec Nat x succ y)
 
 #debug-ctx ()
 

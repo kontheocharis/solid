@@ -480,6 +480,10 @@ namespace LazySub
   getDef {sms = SS sms} (Lift y) (IS x) = wkS <$> getDef y x
   getDef {sms = SS sms} (y :< z) (IS x) = wkS <$> getDef y x
 
+  export
+  expandDefs : Vars f => Thin f => Size ns => Size bs => EvalSized f f f => LazySub bs f ns -> f ns -> f ns
+  expandDefs defs at = thin defs.inv (sub defs.asSub at)
+
 -- Relabeling should always be the identity
 
 public export
