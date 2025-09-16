@@ -32,11 +32,11 @@ Nat = [P : TYPE] -> P -> (P -> P) -> P
 
 #mta
 zero : Nat
-zero [P] z s = z
+zero z s = z
 
 #mta
 succ : Nat -> Nat
-succ n [P] z s = s ((#debug-type-exp n) [P] z s)
+succ n z s = s (n z s)
 
 #mta
 rec : (N : TYPE) -> N -> (N -> N) -> Nat -> N
