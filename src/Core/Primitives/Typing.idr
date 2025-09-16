@@ -119,7 +119,7 @@ public export covering
 forceCode : HasMetas m => Context bs ns
   -> (potentialCode : Atom ns)
   -> m SolvingAllowed (ForceTo Atom (PrimArgs PrimCode Atom) ns)
-forceCode ctx potentialCode = resolve potentialCode >>= \s => case s.val of
+forceCode ctx potentialCode = resolve ctx.scope potentialCode >>= \s => case s.val of
   SimpPrimNormal (SimpApplied PrimCode sp) => pure $ Matching (promoteSpine sp)
   got => do
     by <- freshMeta ctx Nothing layoutA.f

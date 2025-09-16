@@ -254,10 +254,10 @@ resolveMetas t andThen = andThen t
 
 -- Resolve any top-level metas appearing in the value, as well as any glued values.
 public export
-resolveGlueAndMetas : HasMetas m => Term Value ns -> m sm (Term Value ns)
-resolveGlueAndMetas t = resolveMetas t $ \case
-  Glued u => pure (simplified u)
-  u' => pure u'
+resolveGlueAndMetas : HasMetas m => Term Value ns -> (Term Value ns -> m sm (Term Value ns)) -> m sm (Term Value ns)
+resolveGlueAndMetas t andThen = resolveMetas t $ \case
+  Glued u => resolveGlueAndMetas (simplified u) andThen
+  u' => andThen u'
 
 -- Ensure that a spine contains all variables, and thus
 -- turn it into a renaming.
@@ -267,7 +267,7 @@ spineToRen : (HasMetas m) => (sz : Size ns)
   => Spine ar (Term Value) ns
   -> m sm (Maybe (Sub ns Idx (arityToCtx ar)))
 spineToRen [] = pure $ Just [<]
-spineToRen {sz = s} ((_, x) :: xs) = resolveGlueAndMetas x >>= \case
+spineToRen {sz = s} ((_, x) :: xs) = resolveGlueAndMetas x pure >>= \case
   SimpApps (ValVar (Level l) $$ []) => do
     xs' <- spineToRen xs
     pure $ ([<lvlToIdx s l] ++) <$> xs'

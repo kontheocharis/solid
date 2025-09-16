@@ -273,7 +273,7 @@ insertAll ctx mExpr = mExpr >>= insertAll' ctx
     insertAll' : forall ns, m . HasTc m => Context bs ns -> {s : Stage} -> ExprAt s ns -> m (ExprAt s ns)
     insertAll' ctx expr = do
       let (MkExpr tm (MkAnnotAt ty sort)) = expr
-      reading (forcePi ty) >>= \case
+      reading (forcePi ctx.scope ty) >>= \case
         MatchingPi stage (MkPiData resolvedPi (Implicit, piName) a b) => do
           subject <- reading (freshMeta ctx Nothing a.asAnnot)
           let res = apps expr.p
@@ -287,7 +287,7 @@ insertAll ctx mExpr = mExpr >>= insertAll' ctx
 insert : (HasTc m) => Context bs ns -> {s : Stage} -> m (ExprAt s ns) -> m (ExprAt s ns)
 insert ctx mExpr = do
   expr@(MkExpr tm (MkAnnotAt ty sort)) <- mExpr
-  reading (forceLam tm) >>= \case
+  reading (forceLam ctx.scope tm) >>= \case
     MatchingLam Mta (BindMtaLam (Implicit, name)) body => pure expr
     MatchingLam Obj (BindObjLam (Implicit, name) domBytes codBytes) body => pure expr
     _ => insertAll ctx (pure expr)
@@ -393,7 +393,7 @@ tcLam : HasTc m
   -> (body : TcAll m)
   -> TcAll m
 tcLam lamIdent bindTy body Check = \ctx, (CheckInput stage annot@(MkAnnotAt ty sort)) => do
-  reading (forcePiAt stage lamIdent ty) >>= \case
+  reading (forcePiAt ctx.scope stage lamIdent ty) >>= \case
     MatchingPiAt (MkPiData resolvedPi piIdent a b) => do
       -- Pi matches
       whenJust bindTy $ \bindTy' => do
@@ -448,7 +448,7 @@ tcApps : HasTc m
   -> TcAll m
 tcApps subject args = switch $ \ctx, (InferInput reqStage) => do
   subject'@(MkExpr _ fnAnnot) <- (.mp) <$> subject Infer ctx (InferInput reqStage)
-  Gathered params ret <- reading (gatherPis fnAnnot (map fst args))
+  Gathered params ret <- reading (gatherPis ctx.scope fnAnnot (map fst args))
     | TooMany extra under p => tcError ctx $ NotAPi fnAnnot.ty extra
   args' <- tcSpine ctx args params
   let result = apps subject' args'
@@ -539,7 +539,7 @@ tcPrimDecl name stage ty rest = inferStageIfNone stage $ \stage, md, ctx, inp =>
 
   -- Turn the type signature into an operation signature
   ty' <- ty Check ctx (CheckInput stage (objZOrMtaA stage))
-  Gathered params ret <- reading (gatherPis ty'.p.a ar)
+  Gathered params ret <- reading (gatherPis ctx.scope ty'.p.a ar)
     | TooMany extra under p => tcError ctx $ NotAPi ty'.tm extra
 
   let arC = ar.count

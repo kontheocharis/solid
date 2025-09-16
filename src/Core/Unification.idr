@@ -146,11 +146,20 @@ solve sc m sp t = canSolve >>= \case
   Val SolvingNotAllowed => pure DontKnow
 
 -- Resolve variables from a scope
+export
 resolveVars : forall bs . Scope bs Atom ns -> Val ns -> Val ns
 resolveVars sc v@(SimpApps (ValVar (Level x) $$ sp)) = case getDef sc x of
-  Just tm => Glued (LazyApps (ValVarWithDef (Level x) $$ sp) (resolveVars sc (apps tm.val sp)))
+  Just tm => resolveVars sc (apps tm.val sp)
   Nothing => v
 resolveVars _ v = v
+
+-- Resolve variables from a scope (keep the glued representation)
+export
+resolveVarsGlued : forall bs . Scope bs Atom ns -> Val ns -> Val ns
+resolveVarsGlued sc v@(SimpApps (ValVar (Level x) $$ sp)) = case getDef sc x of
+  Just tm => Glued (LazyApps (ValVarWithDef (Level x) $$ sp) (resolveVarsGlued sc (apps tm.val sp)))
+  Nothing => v
+resolveVarsGlued _ v = v
 
 -- Basic implementations
 
@@ -254,8 +263,8 @@ Unify SolvingNotAllowed LazyValue LazyValue where
 export
 [unifyValues] {sm : SolvingMode} -> Unify sm (Term Value) (Term Value) where
   -- @@Todo: short-circuit some glued stuff (metas + vars) here
-  resolveLhs ctx x = resolveMetas x (pure . resolveVars ctx)
-  resolveRhs ctx x = resolveMetas x (pure . resolveVars ctx)
+  resolveLhs ctx x = resolveMetas x (pure . resolveVarsGlued ctx)
+  resolveRhs ctx x = resolveMetas x (pure . resolveVarsGlued ctx)
 
   unifyImpl ctx (MtaCallable m) (MtaCallable m') = unify ctx m m'
   unifyImpl ctx (SimpPrimNormal p) (SimpPrimNormal p') = unify ctx p p'

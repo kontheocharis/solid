@@ -18,9 +18,9 @@ import Core.Context
 -- All these should only be called on *well-typed terms!*
 
 public export covering
-resolve : HasMetas m => Size ns => Atom ns -> m sm (Atom ns)
-resolve x = do
-  t <- resolveGlueAndMetas {sm = sm} x.val
+resolve : HasMetas m => Size ns => Scope bs Atom ns -> Atom ns -> m sm (Atom ns)
+resolve sc x = do
+  t <- resolveGlueAndMetas {sm = sm} x.val (pure . resolveVars sc)
   pure $ promote t
 
 public export covering
@@ -291,9 +291,9 @@ data ForcePiAt : Stage -> Ctx -> Type where
 
 -- Given a `potentialPi`, try to force it to be a pi type
 public export covering
-forcePi : HasMetas m => Size ns => (potentialPi : AtomTy ns) -> m sm (ForcePi ns)
-forcePi potentialPi
-  = resolve potentialPi >>= \a => case a.val of
+forcePi : HasMetas m => Size ns => Scope bs Atom ns -> (potentialPi : AtomTy ns) -> m sm (ForcePi ns)
+forcePi sc potentialPi
+  = resolve sc potentialPi >>= \a => case a.val of
     resolvedPi@(RigidBinding piStage@Obj (Bound _ (BindObjPi (piMode, piName) ba bb a) b)) => 
       let
         ba' = promote ba
@@ -314,11 +314,11 @@ forcePi potentialPi
 -- `mode` and `stage`.
 public export covering
 forcePiAt : HasMetas m => Size ns
-  => (stage : Stage)
+  => Scope bs Atom ns -> (stage : Stage)
   -> (ident : Ident)
   -> (potentialPi : AtomTy ns)
   -> m sm (ForcePiAt stage ns)
-forcePiAt stage (mode, name) potentialPi = forcePi potentialPi >>= \case
+forcePiAt sc stage (mode, name) potentialPi = forcePi sc potentialPi >>= \case
   MatchingPi piStage piData@(MkPiData resolvedPi (piMode, piName) a b) =>
     pure $ case decEq (piMode, piStage) (mode, stage) of
       Yes Refl => MatchingPiAt piData
@@ -332,8 +332,8 @@ data ForceLam : Ctx -> Type where
 
 -- Given a `potentialLam`, try to force it to be a lambda
 public export covering
-forceLam : HasMetas m => Size ns => (potentialLam : Atom ns) -> m sm (ForceLam ns)
-forceLam potentialLam = resolve potentialLam >>= \a => case a.val of
+forceLam : HasMetas m => Size ns => Scope bs Atom ns -> (potentialLam : Atom ns) -> m sm (ForceLam ns)
+forceLam sc potentialLam = resolve sc potentialLam >>= \a => case a.val of
   MtaCallable (Bound Mta binder body) => pure $ MatchingLam Mta (promoteBinder binder) (promoteBody body)
   SimpObjCallable (Bound Obj binder body) => pure $ MatchingLam Obj (promoteBinder binder) (promoteBody body)
   -- @@Consider: Do we need to handle the glued stuff?
@@ -370,10 +370,10 @@ data GatherPis : Arity -> Ctx -> Type where
   TooMany : (extra : Count ar) -> (under : Count ar') -> AtomTy (ns ::< ar') -> GatherPis ar ns
 
 public export covering
-gatherPis : HasMetas m => (sns : Size ns) => Annot ns -> (ar : Arity) -> m sm (GatherPis ar ns)
-gatherPis x [] = pure $ Gathered [] x
-gatherPis x ar@(n :: ns) = forcePi x.ty >>= \case
-  MatchingPi _ (MkPiData resolvedPi piIdent a b) => gatherPis b.open.asAnnot.p ns >>= \case
+gatherPis : HasMetas m => (sns : Size ns) => Scope bs Atom ns -> Annot ns -> (ar : Arity) -> m sm (GatherPis ar ns)
+gatherPis sc x [] = pure $ Gathered [] x
+gatherPis sc x ar@(n :: ns) = forcePi sc x.ty >>= \case
+  MatchingPi _ (MkPiData resolvedPi piIdent a b) => gatherPis (lift {a = piIdent} sc) b.open.asAnnot.p ns >>= \case
     Gathered params ret => pure $ Gathered ((Val _, a.asAnnot.p) :: params) ret
     TooMany c u t => pure $ TooMany (CS ns.count) (CS u) t
   OtherwiseNotPi t => pure $ TooMany (CS ns.count) CZ t
