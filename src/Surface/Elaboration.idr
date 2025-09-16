@@ -137,12 +137,26 @@ ensureNotPrimitive = resetIsPrimitive >>= \case
 data DirectivePlacement = InTm | InBlockSt
 
 covering
-handleDirective : Directive -> DirectivePlacement -> Elab x -> Elab x
+printCtxAnd : HasTc x => Elab (TcAll x) -> Elab (TcAll x)
+printCtxAnd b = do
+  b' <- b
+  tc $ interceptContext (\ctx => do
+      let Val _ = ctx.idents 
+      mtas <- enterMetas (getAllMetas {sm = SolvingNotAllowed} @{metas})
+      loc <- getLoc
+      dbg "--- <Context at \{show loc}> ---"
+      dbg (show @{showUnelab {unel = unelabContext {onlyBinds = False}}} ctx)
+      dbg "--- </Context> ---\n"
+    ) b'
+
+covering
+handleDirective : HasTc x => Directive -> DirectivePlacement -> Elab (TcAll x) -> Elab (TcAll x)
 handleDirective d p b = case (parseDirective d, p) of
   (Nothing, _) => elabError (UnknownDirective d)
   (Just MtaDir, InBlockSt) => enter stageHintL (Just Mta) b
   (Just ObjDir, InBlockSt) => enter stageHintL (Just Obj) b
   (Just PrimitiveDir, InBlockSt) => enter isPrimitiveL True b
+  (Just DebugCtx, _) => printCtxAnd b
   (Just d, InTm) => elabError $ DirectiveNotAllowed d
 
 elab (PLoc l t) =

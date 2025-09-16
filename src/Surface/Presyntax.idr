@@ -91,6 +91,7 @@ data KnownDirective : Type where
   MtaDir : KnownDirective 
   ObjDir : KnownDirective 
   PrimitiveDir : KnownDirective
+  DebugCtx : KnownDirective
   
 export
 fromStage : Stage -> KnownDirective
@@ -102,19 +103,22 @@ export covering
 (.asDirective) MtaDir = MkDirective "mta"
 (.asDirective) ObjDir = MkDirective "obj"
 (.asDirective) PrimitiveDir = MkDirective "primitive"
+(.asDirective) DebugCtx = MkDirective "debug-ctx"
   
 export covering
 parseDirective : Directive -> Maybe KnownDirective
 parseDirective (MkDirective "mta") = Just MtaDir
 parseDirective (MkDirective "obj") = Just ObjDir
 parseDirective (MkDirective "primitive") = Just PrimitiveDir
+parseDirective (MkDirective "debug-ctx") = Just DebugCtx
 parseDirective _ = Nothing
 
 export covering
-0 directiveCoh : parseDirective k.asDirective = Just k
+directiveCoh : {k : _} -> parseDirective k.asDirective = Just k
 directiveCoh {k = MtaDir} = Refl
 directiveCoh {k = ObjDir} = Refl
 directiveCoh {k = PrimitiveDir} = Refl
+directiveCoh {k = DebugCtx} = Refl
 
 -- A block is a sequence of assignment-like things. It is written like
 -- { x1 := a1; ... ; xn := an; y }, similar to Rust.
@@ -290,22 +294,6 @@ Show (PSpine Functions) where
 public export covering
 Show (PSpine Pairs) where
   show (MkPSpine ts) = "(" ++ (map show ts |> cast |> joinBy ", ") ++ ")"
-
--- Calculate prefix flags to let statements
--- public export total
--- showLetFlags : LetFlags -> String
--- showLetFlags (MkLetFlags s i) =
---   let result = catMaybes [stage s, irr i] |> joinBy " " in
---   if result == "" then "" else result ++ " "
--- where
---   stage : Maybe Stage -> Maybe String
---   stage Nothing = Nothing
---   stage (Just Obj) = Just "#obj"
---   stage (Just Mta) = Just "#mta"
-
---   irr : Bool -> Maybe String
---   irr False = Nothing
---   irr True = Just "#0"
   
 public export total
 Show Directive where

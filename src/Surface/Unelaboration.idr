@@ -128,7 +128,7 @@ dummy {ar = []} = []
 dummy {ar = (x :: xs)} = (Val _, promote (SynPrimNormal (PrimUNIT $$ []))) :: dummy {ar = xs}
 
 export
-Unelab (Context bs) PBlockStatements where
+[unelabContext] {onlyBinds : Bool} -> Unelab (Context bs) PBlockStatements where
   unelab (MkContext (Val [<]) (Val [<]) [<] [<] (MkScope SZ SZ [<]) [<] bs) = pure $ MkPBlockStatements []
   unelab (MkContext (Val (sx :< x)) (Val (bx :< x')) (tys :< ty) (sorts :< sort) (MkScope (SS sb) (SS sn) (Lift zs)) (sts :< s) bs)
     = do
@@ -137,19 +137,21 @@ Unelab (Context bs) PBlockStatements where
       let st = PDirSt (fromStage s).asDirective (PDecl dummyLoc (snd x) ty')
       pure $ MkPBlockStatements (rest ++ [st])
   unelab (MkContext (Val (sx :< x)) (Val bx) (tys :< ty) (sorts :< sort) (MkScope sb (SS sn) (zs :< z)) (sts :< s) bs)
-    = do 
-      MkPBlockStatements rest <- unelab (MkContext (Val sx) (Val bx) tys sorts (MkScope sb sn zs) sts dummy)
-      ty' <- unelab ty
-      tm' <- unelab z
-      let st = PDirSt (fromStage s).asDirective (PLet dummyLoc (snd x) (Just ty') tm')
-      pure $ MkPBlockStatements (rest ++ [st])
+    = if onlyBinds
+         then unelab (MkContext (Val sx) (Val bx) tys sorts (MkScope sb sn zs) sts dummy)
+         else do 
+          MkPBlockStatements rest <- unelab (MkContext (Val sx) (Val bx) tys sorts (MkScope sb sn zs) sts dummy)
+          ty' <- unelab ty
+          tm' <- unelab z
+          let st = PDirSt (fromStage s).asDirective (PLet dummyLoc (snd x) (Just ty') tm')
+          pure $ MkPBlockStatements (rest ++ [st])
   unelab _ = pure $ MkPBlockStatements []
   
 export
 [unelabGoal] Unelab (\_ => Goal) PGoal where
   unelab (MkGoal name hole ctx) = do
     let Val _ = ctx.idents
-    ctx' <- unelab ctx
+    ctx' <- unelab @{unelabContext {onlyBinds = True}} ctx
     ty' <- unelab hole.annot.ty
     pure $ MkPGoal
       ctx' hole.annot.stage

@@ -82,7 +82,7 @@ ShowSyntax => Show TcError where
 -- Typechecking has access to metas
 -- @@Enhancement: refactor to use lenses
 public export
-interface (Monad m) => HasTc m where
+interface (Monad m, Dbg m) => HasTc m where
   
   -- Explicit instance of metas so that the resolution doesn't die..
   0 metasM : SolvingMode -> Type -> Type
@@ -94,6 +94,9 @@ interface (Monad m) => HasTc m where
 
   -- Set the current typechecking location in the source file
   enterLoc : forall a . Loc -> m a -> m a
+
+  -- Get the current typechecking location
+  getLoc : m Loc
 
   -- Add a user goal
   addGoal : Goal -> m ()

@@ -134,6 +134,9 @@ liftIO i = lift $ Control.App.primIO i
 covering
 accessMetas : Comp Metas
 
+Dbg Comp where
+  dbg s = liftIO $ putStrLn s
+
 HasTc Comp where
   metasM = MetaComp
 
@@ -153,6 +156,8 @@ HasTc Comp where
     res <- act
     modify (\s => { loc := old } s)
     pure res
+    
+  getLoc = gets loc
 
   tcError ctx err = do
     l <- gets loc

@@ -39,8 +39,14 @@ succ : Nat -> Nat
 succ n P z s = s (n P z s)
 
 #mta
+rec : (N : TYPE) -> N -> (N -> N) -> Nat -> N
+rec N z s n = n N z ?sdaj
+
+#mta
 bing : UNIT
 bing = ?boo
+
+#debug-ctx ()
 
 -- Synonym for sized types
 -- #mta
