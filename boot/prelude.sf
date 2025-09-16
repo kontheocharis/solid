@@ -1,5 +1,3 @@
-foo := #import "hello.foo"
-
 #mta
 #primitive
 UNIT : TYPE
@@ -19,7 +17,7 @@ IO : [a] (A : Type a) -> Type ptr
 -- Sigma
 #mta
 #primitive
-SIGMA : (A : TYPE) -> (A -> TYPE) -> TYPE
+SIGMA : (A : TYPE) -> (B : A -> TYPE) -> TYPE
 
 #mta
 #primitive
@@ -38,7 +36,7 @@ zero [P] z s = z
 
 #mta
 succ : Nat -> Nat
-succ n [P] z s = s (n [P] z s)
+succ n [P] z s = s ((#debug-type-exp n) [P] z s)
 
 #mta
 rec : (N : TYPE) -> N -> (N -> N) -> Nat -> N
@@ -46,7 +44,7 @@ rec N z s n = n [N] z s
 
 #mta
 add : Nat -> Nat -> Nat
-add x y = (rec Nat x succ y)
+add x y = ?asj
 
 #debug-ctx ()
 

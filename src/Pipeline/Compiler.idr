@@ -135,7 +135,10 @@ covering
 accessMetas : Comp Metas
 
 Dbg Comp where
-  dbg s = liftIO $ putStrLn s
+  dbg s = do
+    mtas <- accessMetas
+    let syn = showSyntax @{mtas}
+    liftIO $ putStrLn (s @{syn})
 
 HasTc Comp where
   metasM = MetaComp

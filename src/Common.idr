@@ -61,7 +61,3 @@ public export
 Show Stage where
   show Mta = "mta"
   show Obj = "obj"
-  
-public export
-interface Dbg (0 m : Type -> Type) where
-  dbg : String -> m ()

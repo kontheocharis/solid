@@ -366,14 +366,14 @@ v n = promote (var n)
 
 public export
 data GatherPis : Arity -> Ctx -> Type where
-  Gathered : Tel ar Annot ns -> Annot (ns ::< ar) -> GatherPis ar ns
+  Gathered : (ar' : Arity) -> length ar' = length ar -> Tel ar' Annot ns -> Annot (ns ::< ar') -> GatherPis ar ns
   TooMany : (extra : Count ar) -> (under : Count ar') -> AtomTy (ns ::< ar') -> GatherPis ar ns
 
 public export covering
 gatherPis : HasMetas m => (sns : Size ns) => Scope bs Atom ns -> Annot ns -> (ar : Arity) -> m sm (GatherPis ar ns)
-gatherPis sc x [] = pure $ Gathered [] x
+gatherPis sc x [] = pure $ Gathered [] Refl [] x
 gatherPis sc x ar@(n :: ns) = forcePi sc x.ty >>= \case
   MatchingPi _ (MkPiData resolvedPi piIdent a b) => gatherPis (lift {a = piIdent} sc) b.open.asAnnot.p ns >>= \case
-    Gathered params ret => pure $ Gathered ((Val _, a.asAnnot.p) :: params) ret
+    Gathered ar' p params ret => pure $ Gathered (piIdent :: ar') (cong S p) ((Val _, a.asAnnot.p) :: params) ret
     TooMany c u t => pure $ TooMany (CS ns.count) (CS u) t
   OtherwiseNotPi t => pure $ TooMany (CS ns.count) CZ t

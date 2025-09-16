@@ -346,6 +346,10 @@ ShowSyntax = (
     {d : _} -> (ns : Ctx) => Show (Term d ns),
     {d : _} -> forall ar . (ns : Ctx) => Show (Spine ar (Term d) ns)
   )
+  
+public export
+interface Dbg (0 m : Type -> Type) where
+  dbg : (ShowSyntax => String) -> m ()
 
 -- Relabeling
 export covering

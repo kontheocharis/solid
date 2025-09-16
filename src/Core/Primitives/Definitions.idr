@@ -60,16 +60,16 @@ data Primitive : PrimitiveClass -> PrimitiveReducibility -> PrimitiveLevel -> Ar
   PrimUnit : Primitive PrimNorm PrimIrreducible PrimNative []
   PrimTt : Primitive PrimNorm PrimIrreducible PrimNative []
 
-  PrimSIGMA : Primitive PrimNorm PrimIrreducible PrimDeclared [(Explicit, "a"), (Explicit, "b")]
+  PrimSIGMA : Primitive PrimNorm PrimIrreducible PrimDeclared [(Explicit, "A"), (Explicit, "B")]
   PrimPAIR : Primitive PrimNorm PrimIrreducible PrimDeclared
-    [(Implicit, "a"), (Implicit, "b"), (Explicit, "x"), (Explicit, "y")]
+    [(Implicit, "A"), (Implicit, "B"), (Explicit, "a"), (Explicit, "b")]
 
   PrimSigma : Primitive PrimNorm PrimIrreducible PrimDeclared [(Implicit, "ba"), (Implicit, "bb"), (Explicit, "a"), (Explicit, "b")]
   PrimPair : Primitive PrimNorm PrimIrreducible PrimDeclared
      [(Implicit, "ba"), (Implicit, "bb"), (Implicit, "a"), (Implicit, "b"), (Explicit, "x"), (Explicit, "y")]
 
-  PrimIO : Primitive PrimNorm PrimIrreducible PrimDeclared [(Implicit, "ba"), (Explicit, "a")]
-  PrimIOPure : Primitive PrimNorm PrimIrreducible PrimDeclared [(Implicit, "ba"), (Explicit, "a"), (Explicit, "x")]
+  PrimIO : Primitive PrimNorm PrimIrreducible PrimDeclared [(Implicit, "a"), (Explicit, "A")]
+  PrimIOPure : Primitive PrimNorm PrimIrreducible PrimDeclared [(Implicit, "a"), (Explicit, "A"), (Explicit, "x")]
 
 -- Can't be DecEq without writing out all cases smh
 export

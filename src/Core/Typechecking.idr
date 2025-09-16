@@ -42,6 +42,7 @@ data TcErrorAt : Ctx -> Type where
   NotAPi : (subj : AtomTy ns) -> (extra : Count ar) -> TcErrorAt ns
   CannotCoerceToObj : (givenTy : AtomTy ns) -> TcErrorAt ns
   PrimitiveNotFound : (name : Name) -> TcErrorAt ns
+  PrimitiveWrongArity : (name : Name) -> TcErrorAt ns
   PrimitiveDeclsMustBeTopLevel : TcErrorAt ns
 
 -- Packaging an error with its context
@@ -72,6 +73,7 @@ export
     } argument(s), which is too many"
   show (CannotCoerceToObj given) = "Cannot coerce type `\{show given}` to the object level"
   show (PrimitiveNotFound prim) = "Primitive `\{prim}` does not exist"
+  show (PrimitiveWrongArity prim) = "Primitive `\{prim}` has been declared with the wrong arity"
   show PrimitiveDeclsMustBeTopLevel = "Primitive declarations can only appear at the top level"
   
 export
@@ -474,7 +476,7 @@ tcApps : HasTc m
   -> TcAll m
 tcApps subject args = switch $ \ctx, (InferInput reqStage) => do
   subject'@(MkExpr _ fnAnnot) <- (.mp) <$> subject Infer ctx (InferInput reqStage)
-  Gathered params ret <- reading (gatherPis ctx.scope fnAnnot (map fst args))
+  Gathered _ _ params ret <- reading (gatherPis ctx.scope fnAnnot (map fst args))
     | TooMany extra under p => tcError ctx $ NotAPi fnAnnot.ty extra
   args' <- tcSpine ctx args params
   let result = apps subject' args'
@@ -565,8 +567,10 @@ tcPrimDecl name stage ty rest = inferStageIfNone stage $ \stage, md, ctx, inp =>
 
   -- Turn the type signature into an operation signature
   ty' <- ty Check ctx (CheckInput stage (objZOrMtaA stage))
-  Gathered params ret <- reading (gatherPis ctx.scope ty'.p.a ar)
+  Gathered ar' _ params ret <- reading (gatherPis ctx.scope ty'.p.a ar)
     | TooMany extra under p => tcError ctx $ NotAPi ty'.tm extra
+  let Yes Refl = decEq ar' ar
+    | No _ =>  tcError ctx $ PrimitiveWrongArity name
 
   let arC = ar.count
   let nsS = ctxSize ctx
