@@ -23,6 +23,8 @@ SIGMA : (A : TYPE) -> (B : A -> TYPE) -> TYPE
 #primitive
 PAIR : [A : TYPE] [B : A -> TYPE] (a : A) (b : B a) -> SIGMA A B
 
+-- #primitive
+-- Unit : Type? (sta zero)
 
 -- Some tests
 
