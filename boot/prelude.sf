@@ -1,69 +1,101 @@
--- Synonym for sized types
-Type : Layout -> Type? (sta zero)
-Type l = Type? (sta l)
-
--- Generating data
-#primitive
-Make : [b] (A : Type? b) -> Type idx
-
-#primitive
-give : [b] [A : Type b] (a : A) -> Make A
-
-#primitive
-push : [b] [A : Type b] (a : Make A) -> A
-
--- Unit
-
+#mta
 #primitive
 UNIT : TYPE
 
+#mta
 #primitive
-ttS : UNIT
+TT : UNIT
 
-#primitive
-Unit : (l : Layout?) -> Type? l
+#mta
+Type : Layout -> TYPE
+Type l = TYPE
 
-#primitive
-tt : [l] -> Unit l
 
--- Irrelevance
-#primitive
-Irr : [b] (A : Type? b) -> Type zero
-
-#primitive
-irr : [b] [A : Type b] (a : A) -> Irr A
-
--- Sigma
-#primitive
-SIGMA : (A : TYPE) -> (A -> TYPE) -> TYPE
-
-#primitive
-pairS : [A : TYPE] [B : A -> TYPE] (a : A) (b : B a) -> SIGMA A B
-
-#primitive
-fstS : [A] [B] (p : SIGMA A B) -> A
-
-#primitive
-sndS : [A : TYPE] [B : A -> TYPE] (p : SIGMA A B) -> B (fstS p)
-
-#primitive
-Sigma : [a] (A : Type? a) [b] (B : Irr A -> Type? b) -> Type? (seq? a b)
-
-#primitive
-pair : [a] [A] [b] [B] (a : A) (b : B a) -> Sigma A B
-
-#primitive
-fst : [a] [A] [b] [B] (p : SIGMA A B) -> A
-
-#primitive
-snd : [a] [A] [b] [B] (p : SIGMA A B) -> B (fst p)
-
--- IO
+-- -- IO
+#mta
 #primitive
 IO : [a] (A : Type a) -> Type ptr
 
+-- Sigma
+#mta
 #primitive
-io-bind : [a] [A : Type a] (m : IO A) (f : A -> IO b) -> IO b
+SIGMA : (A : TYPE) -> (A -> TYPE) -> TYPE
 
+#mta
 #primitive
-io-return : [a] [A : Type a] (a : A) -> IO A
+PAIR : [A : TYPE] [B : A -> TYPE] (a : A) (b : B a) -> SIGMA A B
+
+#mta
+fst : [A] [B] (p : SIGMA A B) -> A
+fst = ?faj
+
+#mta
+snd : [A : TYPE] [B : A -> TYPE] (p : SIGMA A B) -> B (fstS p)
+snd = ?fajj
+
+
+-- Synonym for sized types
+-- #mta
+-- Type : Layout -> Type? (sta zero)
+-- Type l = Type? (sta l)
+
+-- Generating data
+-- #primitive
+-- Make : [b] (A : Type? b) -> Type idx
+
+-- #primitive
+-- give : [b] [A : Type b] (a : A) -> Make A
+
+-- #primitive
+-- push : [b] [A : Type b] (a : Make A) -> A
+
+-- -- Unit
+
+
+-- #primitive
+-- Unit : (l : Layout?) -> Type? l
+
+-- #primitive
+-- tt : [l] -> Unit l
+
+-- -- Irrelevance
+-- #primitive
+-- Irr : [b] (A : Type? b) -> Type zero
+
+-- #primitive
+-- irr : [b] [A : Type b] (a : A) -> Irr A
+
+-- -- Sigma
+-- #primitive
+-- SIGMA : (A : TYPE) -> (A -> TYPE) -> TYPE
+
+-- #primitive
+-- pairS : [A : TYPE] [B : A -> TYPE] (a : A) (b : B a) -> SIGMA A B
+
+-- #primitive
+-- fstS : [A] [B] (p : SIGMA A B) -> A
+
+-- #primitive
+-- sndS : [A : TYPE] [B : A -> TYPE] (p : SIGMA A B) -> B (fstS p)
+
+-- #primitive
+-- Sigma : [a] (A : Type? a) [b] (B : Irr A -> Type? b) -> Type? (seq? a b)
+
+-- #primitive
+-- pair : [a] [A] [b] [B] (a : A) (b : B a) -> Sigma A B
+
+-- #primitive
+-- fst : [a] [A] [b] [B] (p : SIGMA A B) -> A
+
+-- #primitive
+-- snd : [a] [A] [b] [B] (p : SIGMA A B) -> B (fst p)
+
+-- -- IO
+-- #primitive
+-- IO : [a] (A : Type a) -> Type ptr
+
+-- #primitive
+-- io-bind : [a] [A : Type a] (m : IO A) (f : A -> IO b) -> IO b
+
+-- #primitive
+-- io-return : [a] [A : Type a] (a : A) -> IO A

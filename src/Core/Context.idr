@@ -5,6 +5,7 @@ import Utils
 import Common
 import Decidable.Equality
 import Data.Singleton
+import Data.String
 import Data.DPair
 import Data.Maybe
 import Core.Base
@@ -23,6 +24,8 @@ record Context (bs : Ctx) (ns : Ctx) where
   constructor MkContext
   -- All the identifiers in scope
   idents : Singleton ns
+  -- All the bindings in scope
+  bindIdents : Singleton bs
   -- The current context (types)
   con : Con AtomTy ns
   -- The current context (sorts)
@@ -38,7 +41,7 @@ record Context (bs : Ctx) (ns : Ctx) where
 public export
 emptyContext : Context [<] [<]
 emptyContext =
-  MkContext (Val [<]) [<] [<] (MkScope SZ SZ [<]) [<] []
+  MkContext (Val [<]) (Val [<]) [<] [<] (MkScope SZ SZ [<]) [<] []
  
 -- A goal is a hole in a context.
 public export
@@ -82,11 +85,36 @@ lookup ctx n = findIdx ctx.idents n
 -- Add a binding with no value to the context.
 public export
 bind : {s : Stage} -> (n : Ident) -> AnnotAt s ns -> Context bs ns -> Context (bs :< n) (ns :< n)
-bind {s = stage} n (MkAnnotAt ty sort) (MkContext (Val idents) con sorts defs stages bounds) =
-  MkContext (Val (idents :< n)) (con :< ty) (sorts :< sort) (lift defs) (stages :< stage) (wkS bounds ++ [(Val _, here)])
+bind {s = stage} n (MkAnnotAt ty sort) (MkContext (Val idents) (Val bi) con sorts defs stages bounds) =
+  MkContext (Val (idents :< n)) (Val (bi :< n)) (con :< ty) (sorts :< sort) (lift defs) (stages :< stage) (wkS bounds ++ [(Val _, here)])
 
 -- Add a definition to the context.
 public export
 define : {s : Stage} -> (n : Ident) -> ExprAt s ns -> Context bs ns -> Context bs (ns :< n)
-define {s = stage} n (MkExpr tm (MkAnnotAt ty sort)) (MkContext (Val idents) con sorts defs stages bounds) =
-  MkContext (Val (idents :< n)) (con :< ty) (sorts :< sort) (defs :< tm) (stages :< stage) (wkS bounds)
+define {s = stage} n (MkExpr tm (MkAnnotAt ty sort)) (MkContext (Val idents) (Val bindIdents) con sorts defs stages bounds) =
+  MkContext (Val (idents :< n)) (Val bindIdents) (con :< ty) (sorts :< sort) (defs :< tm) (stages :< stage) (wkS bounds)
+  
+-- Printing:
+
+0 ContextEntry : Ctx -> Type
+ContextEntry ns = (Stage, Ident, Atom ns, Maybe (Atom ns))
+
+showContextEntry : ShowSyntax => {ns : _} -> ContextEntry ns -> String
+showContextEntry (s, id, ty, Nothing) = "#\{show s} \{show @{showIdent} id} : \{show ty}"
+showContextEntry (s, id, ty, (Just tm)) =  "#\{show s} \{show @{showIdent} id} : \{show ty} = \{show tm}"
+
+dummy : Size ns => {ar : Arity} -> Spine ar Atom ns
+dummy {ar = []} = []
+dummy {ar = (x :: xs)} = (Val _, ?tgodo) :: dummy {ar = xs}
+
+toEntries : Context bs ns -> List (ns ** ContextEntry ns)
+toEntries (MkContext (Val [<]) (Val [<]) [<] [<] (MkScope SZ SZ [<]) [<] bs) = []
+toEntries (MkContext (Val (sx :< x)) (Val (bx :< x')) (tys :< ty) (sorts :< sort) (MkScope (SS sb) (SS sn) (Lift zs)) (sts :< s) bs)
+  = (sx ** (s, (x, (ty, Nothing)))) :: toEntries (MkContext (Val sx) (Val bx) tys sorts (MkScope sb sn zs) sts dummy)
+toEntries (MkContext (Val (sx :< x)) (Val bx) (tys :< ty) (sorts :< sort) (MkScope sb (SS sn) (zs :< z)) (sts :< s) bs)
+  = (sx ** (s, (x, (ty, Just z)))) :: toEntries (MkContext (Val sx) (Val bx) tys sorts (MkScope sb sn zs) sts dummy)
+toEntries _ = []
+
+export covering
+ShowSyntax => Show (Context bs ns) where
+  show ctx = map (\x => showContextEntry (snd x)) (toEntries ctx) |> cast |> joinBy "\n"

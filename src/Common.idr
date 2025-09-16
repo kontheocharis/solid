@@ -56,3 +56,8 @@ DecEq Stage where
 public export
 Eq Stage where
   a == b = isYes (decEq a b)
+
+public export
+Show Stage where
+  show Mta = "mta"
+  show Obj = "obj"

@@ -18,6 +18,7 @@ import Core.Atoms
 import Core.Combinators
 import Core.Primitives.Typing
 import Core.Context
+import Debug.Trace
 
 %default covering
 
@@ -81,7 +82,7 @@ ShowSyntax => Show TcError where
 -- Typechecking has access to metas
 -- @@Enhancement: refactor to use lenses
 public export
-interface (Monad m) => HasTc m where
+interface ShowSyntax => (Monad m) => HasTc m where
   
   -- Explicit instance of metas so that the resolution doesn't die..
   0 metasM : SolvingMode -> Type -> Type
@@ -175,6 +176,16 @@ public export
 interceptAll : HasTc m => (forall a . m a -> m a) -> TcAll m -> TcAll m
 interceptAll f x Check = \ctx, as => f (x Check ctx as)
 interceptAll f x Infer = \ctx, s => f (x Infer ctx s)
+  
+-- Map a monadic context operation over TcAll.
+public export
+interceptContext : ShowSyntax => HasTc m => (forall bs, ns . Context bs ns -> m ()) -> TcAll m -> TcAll m
+interceptContext f x Check = \ctx, as => do
+  f ctx
+  x Check ctx as
+interceptContext f x Infer = \ctx, as => do
+  f ctx
+  x Infer ctx as
 
 -- Some useful shorthands
 
@@ -468,7 +479,7 @@ tcPrimUser p args = switch $ \ctx, (InferInput stage) => do
       )
   sp <- tcSpine ctx args pParams
   adjustStageIfNeeded ctx (prim p (map (.tm) sp) pRet) stage
-
+  
 -- Check a primitive
 public export
 tcPrim : HasTc m
@@ -510,7 +521,7 @@ tcLet name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => d
   
 -- Check a primitive declaration statement.
 public export
-tcPrimDecl : HasTc m
+tcPrimDecl : ShowSyntax => HasTc m
   => (name : Name)
   -> (stage : Maybe Stage)
   -> (ty : TcAll m)
@@ -527,8 +538,8 @@ tcPrimDecl name stage ty rest = inferStageIfNone stage $ \stage, md, ctx, inp =>
     | Nothing => tcError ctx $ PrimitiveNotFound name
 
   -- Turn the type signature into an operation signature
-  ty' <- ty Check ctx (CheckInput stage (objZOrMtaA stage))
-  Gathered params ret <- reading (gatherPis ty'.p.a ar)
+  ty' <- trace "got primitive \{primName p}" $ ty Check ctx (CheckInput stage (objZOrMtaA stage))
+  Gathered params ret <- trace "got type \{show ty'.tm.syn}" $ reading (gatherPis ty'.p.a ar)
     | TooMany extra under p => tcError ctx $ NotAPi ty'.tm extra
 
   let arC = ar.count
@@ -542,7 +553,7 @@ tcPrimDecl name stage ty rest = inferStageIfNone stage $ \stage, md, ctx, inp =>
           (prim @{SZ + arC} p (heres _)
             (weakS {sz = SZ + arC + arC} {sz' = SZ + arC}
               (dropManyAr arC Id) retClosed)).tm
-  let tm' : Expr [<] = MkExpr tmAtom (sub closing ty'.p.a)
+  let tm' : Expr [<] = trace "got lams " $ MkExpr tmAtom (sub closing ty'.p.a)
                 
   -- If it is a declared primitive, save it to primitives
   case lvl of
@@ -556,6 +567,7 @@ tcPrimDecl name stage ty rest = inferStageIfNone stage $ \stage, md, ctx, inp =>
   pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result
   
 -- Check a let-rec statement.
+-- @@Todo: make this recursive
 public export
 tcLetRec : HasTc m
   => (name : Name)
@@ -567,8 +579,7 @@ tcLetRec : HasTc m
 tcLetRec name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => do
   let Val ns = ctx.idents
   ty' <- ty Check ctx (CheckInput stage (objZOrMtaA stage))
-  tm' <- tm Check (bind (Explicit, name) ty'.a ctx) (CheckInput stage (wkS ty'.a))
-  ?tcLetRecImpl
-  -- rest' <- rest md (define (Explicit, name) tm' ?ctx) (wkS inp)
-  -- let result = sub @{evalExprAtMaybe} {sns = ctx.size} {sms = SS ctx.size} (ctx.defs :< tm'.tm) rest'
-  -- pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result
+  tm' : ExprAt stage ns <- tm Check ctx (CheckInput stage ty'.a)
+  rest' <- rest md (define (Explicit, name) tm' ctx) (wkS inp)
+  let result = sub @{evalExprAtMaybe} {sns = ctxSize ctx} {sms = SS $ ctxSize ctx} (idS :< tm'.tm) rest'
+  pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result

@@ -55,11 +55,10 @@ data Primitive : PrimitiveClass -> PrimitiveReducibility -> PrimitiveLevel -> Ar
   PrimZeroLayout : Primitive PrimNorm PrimIrreducible PrimNative []
   PrimIdxLayout : Primitive PrimNorm PrimIrreducible PrimNative []
   PrimPtrLayout : Primitive PrimNorm PrimIrreducible PrimNative []
-
-  PrimUNIT : Primitive PrimNorm PrimIrreducible PrimDeclared []
-  PrimTT : Primitive PrimNorm PrimIrreducible PrimDeclared []
-  PrimUnit : Primitive PrimNorm PrimIrreducible PrimDeclared []
-  PrimTt : Primitive PrimNorm PrimIrreducible PrimDeclared []
+  PrimUNIT : Primitive PrimNorm PrimIrreducible PrimNative []
+  PrimTT : Primitive PrimNorm PrimIrreducible PrimNative []
+  PrimUnit : Primitive PrimNorm PrimIrreducible PrimNative []
+  PrimTt : Primitive PrimNorm PrimIrreducible PrimNative []
 
   PrimSIGMA : Primitive PrimNorm PrimIrreducible PrimDeclared [(Explicit, "a"), (Explicit, "b")]
   PrimPAIR : Primitive PrimNorm PrimIrreducible PrimDeclared
@@ -70,6 +69,7 @@ data Primitive : PrimitiveClass -> PrimitiveReducibility -> PrimitiveLevel -> Ar
      [(Implicit, "ba"), (Implicit, "bb"), (Implicit, "a"), (Implicit, "b"), (Explicit, "x"), (Explicit, "y")]
 
   PrimIO : Primitive PrimNorm PrimIrreducible PrimDeclared [(Implicit, "ba"), (Explicit, "a")]
+  PrimIOPure : Primitive PrimNorm PrimIrreducible PrimDeclared [(Implicit, "ba"), (Explicit, "a"), (Explicit, "x")]
 
 -- Can't be DecEq without writing out all cases smh
 export
@@ -118,6 +118,8 @@ primEq PrimPAIR PrimPAIR = Just Refl
 primEq PrimPAIR _ = Nothing
 primEq PrimPair PrimPair = Just Refl
 primEq PrimPair _ = Nothing
+primEq PrimIOPure PrimIOPure = Just Refl
+primEq PrimIOPure _ = Nothing
 
 public export
 primName : Primitive k r na ar -> String
@@ -143,6 +145,7 @@ primName PrimSigma = "Sigma"
 primName PrimIO = "IO"
 primName PrimPAIR = "PAIR"
 primName PrimPair = "pair"
+primName PrimIOPure = "io-pure"
 
 public export
 Eq (Primitive k r na ar) where
@@ -212,6 +215,7 @@ nameToPrim "Sigma"   = Just $ MkPrimitiveAny PrimSigma
 nameToPrim "IO"      = Just $ MkPrimitiveAny PrimIO            
 nameToPrim "PAIR"    = Just $ MkPrimitiveAny PrimPAIR          
 nameToPrim "pair"    = Just $ MkPrimitiveAny PrimPair          
+nameToPrim "io-pure"    = Just $ MkPrimitiveAny PrimIOPure          
 nameToPrim _   = Nothing
 
 public export
@@ -238,3 +242,4 @@ nameToPrimId {p = PrimPAIR}         = Refl
 nameToPrimId {p = PrimSigma}        = Refl
 nameToPrimId {p = PrimPair}         = Refl
 nameToPrimId {p = PrimIO}           = Refl
+nameToPrimId {p = PrimIOPure}           = Refl

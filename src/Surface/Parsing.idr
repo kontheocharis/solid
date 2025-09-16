@@ -375,16 +375,16 @@ termStatement = do
   pure $ \l => PBlockTm l t
 
 blockStatement = atom . located (|>) $ do
-  d <- optional directive
+  ds <- optional $ sepBy (whitespace anySpace) directive
   whitespace anySpace 
-  wrapInDirective d <$> ((decl >>= \case
+  wrapInDirectives (fromMaybe [] ds) <$> ((decl >>= \case
       (n, Just ty) => letWithType n ty <|> bindWithType n ty <|> letRec n ty <|> justDecl n ty
       (n, Nothing) => letWithoutType n <|> bindWithoutType n
     ) <|> termStatement)
   where
-    wrapInDirective : Maybe Directive -> (a -> PBlockStatement) -> (a -> PBlockStatement)
-    wrapInDirective Nothing y a = y a
-    wrapInDirective (Just x) y a = PDirSt x (y a)
+    wrapInDirectives : List Directive -> (a -> PBlockStatement) -> (a -> PBlockStatement)
+    wrapInDirectives [] y a = y a
+    wrapInDirectives (x :: xs) y a = PDirSt x (wrapInDirectives xs y a)
 
 block : Parse PTm
 block = located PLoc . curlies $ do

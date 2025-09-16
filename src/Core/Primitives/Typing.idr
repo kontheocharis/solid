@@ -56,7 +56,7 @@ primAnnot PrimSta = ([arg $ mta (PrimLayout $> [])], ret $ mta (PrimLayoutDyn $>
 primAnnot PrimTypeDyn = ([
       arg $ mta (PrimLayoutDyn $> [])
     ],
-    ret $ objZ (PrimTypeDyn $> [(Val _, PrimZeroLayout $> [])])
+    ret $ objZ (PrimTypeDyn $> [(Val _, PrimSta $> [(Val _, PrimZeroLayout $> [])])])
   )
 primAnnot PrimSeqLayout = ([
       arg $ mta (PrimLayout $> []),
@@ -75,6 +75,10 @@ primAnnot PrimZeroLayout = ([], ret $ mta (PrimLayout $> []))
 primAnnot PrimIdxLayout = ([], ret $ mta (PrimLayout $> []))
 primAnnot PrimPtrLayout = ([], ret $ mta (PrimLayout $> []))
 primAnnot PrimLayoutDyn = ([], ret $ mta (PrimTYPE $> []))
+primAnnot PrimUNIT = ([], ret $ mta (PrimTYPE $> []))
+primAnnot PrimTT = ([], ret $ mta (PrimUNIT $> []))
+primAnnot PrimUnit = ([], ret $ objZ (PrimTypeDyn $> [(Val _, PrimSta $> [(Val _, PrimZeroLayout $> [])])]))
+primAnnot PrimTt = ([], ret $ objZ (PrimUnit $> []))
 
 -- The argument types for the given primitive
 public export covering

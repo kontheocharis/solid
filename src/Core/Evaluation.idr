@@ -86,6 +86,7 @@ EvalPrims => Quote (Binding md r Value) (Binding md r Syntax) where
 -- the syntax is not well-typed (only well-scoped).
 public export
 apps : EvalPrims => Term Value ns -> Spine ar (Term Value) ns -> Term Value ns
+apps x [] = x
 apps (Glued (LazyApps (v $$ sp) gl)) sp' = Glued (LazyApps (v $$ sp ++ sp') (apps gl sp'))
 apps (SimpApps (v $$ sp)) sp' = SimpApps (v $$ sp ++ sp')
 apps (MtaCallable t) [] = MtaCallable t

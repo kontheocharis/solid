@@ -57,8 +57,8 @@ invertRen [<] = Just removeAll
 invertRen (xs :< x) = do
   MkPRen dom cod contains <- invertRen xs
   case contains x of
-    Nothing => Nothing
-    Just i => Just (MkPRen (SS dom) cod
+    Just _ => Nothing
+    Nothing => Just (MkPRen (SS dom) cod
       (\i' => case decEq i' x of
         Yes Refl => Just (firstIdx dom)
         No _ => map IS (contains i')))

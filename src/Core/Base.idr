@@ -176,11 +176,11 @@ Show (Size ns) where
   
 public export
 (ns : Ctx) => Show (Lvl ns) where
-  show l = show (getIdx ns (lvlToIdx ns.size l))
+  show l = show @{showIdent} (getIdx ns (lvlToIdx ns.size l))
   
 public export
 (ns : Ctx) => Show (Idx ns) where
-  show i = show (getIdx ns i)
+  show i = show @{showIdent} (getIdx ns i)
 
 -- Telescopes, spines, contexts and substitutions parameterised over
 -- the actual syntax they contain

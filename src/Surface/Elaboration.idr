@@ -22,6 +22,7 @@ import Core.Syntax
 import Data.Maybe
 import Control.Monad.State
 import Control.Monad.Error.Either
+import Debug.Trace
 
 export
 record ElabState where
@@ -86,10 +87,11 @@ elab : (HasTc m) => PTm -> Elab (TcAll m)
 -- The annotation of the entry point of the program
 export covering
 mainAnnot : AnnotAt Obj [<]
-mainAnnot = (objZ (PrimIO $> [
-    (Val _, PrimZeroLayout $> []),
-    (Val _, PrimUnit $> [])])
-  ).f.a
+-- mainAnnot = (objZ (PrimIO $> [
+--     (Val _, PrimZeroLayout $> []),
+--     (Val _, PrimUnit $> [])])
+--   ).f.a
+mainAnnot = (objZ (PrimUnit $> [])).f.a
  
 export
 whenInStage : HasTc m => (Maybe Stage -> TcAll m) -> TcAll m
@@ -121,11 +123,14 @@ enterLoc : Loc -> Elab x -> Elab x
 enterLoc l = enter locHintL (Just l)
 
 resetIsPrimitive : Elab Bool
-resetIsPrimitive = access isPrimitiveL <* set isPrimitiveL False
+resetIsPrimitive = do
+  p <- access isPrimitiveL
+  set isPrimitiveL False
+  pure p
 
 ensureNotPrimitive : Elab ()
 ensureNotPrimitive = resetIsPrimitive >>= \case
-  True => elabError $ DirectiveNotAllowed PrimitiveDir
+  True => trace "bar" elabError $ DirectiveNotAllowed PrimitiveDir
   False => pure ()
 
 data DirectivePlacement = InTm | InBlockSt
@@ -139,7 +144,7 @@ handleDirective d p b = case (parseDirective d, p) of
   (Just PrimitiveDir, InBlockSt) => enter isPrimitiveL True b
   (Just d, InTm) => elabError $ DirectiveNotAllowed d
 
-elab (PLoc l t) = enterLoc l $ elab t
+elab (PLoc l t) = trace "elaborating \{show t}" $ enterLoc l $ elab t
 elab (PLam (MkPTel []) t) = elab t
 elab (PLam (MkPTel ((MkPParam l n ty) :: xs)) t) = do
   t' <- elab (PLam (MkPTel xs) t)
@@ -177,31 +182,37 @@ elab (PPairs (MkPSpine ((MkPArg l n t) :: ts))) = do
     Just Obj => tcPrim PrimPair [hole, hole, hole, hole, t', ts']
     _ => tcPrim PrimPAIR [hole, hole, t', ts']
 elab (PProj v n) = ?tcProj
-elab (PBlock t []) = elab PUnit
-elab (PBlock t (PLet l n ty tm :: bs)) = enterLoc l $ do
-  ensureNotPrimitive
+elab (PBlock t []) = do
+  e <- elab PUnit
+  tc (interceptContext (\ctx => trace (show ctx) (pure ())) e)
+elab (PBlock t (PLet l n ty tm :: bs)) = enterLoc l $ ensureNotPrimitive >> do
   s <- reset stageHintL
   ty' <- traverse elab ty
-  tc (tcLet n s ty' !(elab tm) !(elab (PBlock t bs)))
-elab (PBlock t (PLetRec l n ty tm :: bs)) = enterLoc l $ do
-  ensureNotPrimitive
+  tm' <- elab tm
+  bs' <- elab (PBlock t bs)
+  tc (tcLet n s ty' tm' bs')
+elab (PBlock t (PLetRec l n ty tm :: bs)) = enterLoc l $ ensureNotPrimitive >> do
   s <- reset stageHintL
-  tc $ tcLetRec n s !(elab ty) !(elab tm) !(elab (PBlock t bs))
-elab (PBlock t (PBlockTm l tm :: [])) = do
-  ensureNotPrimitive
+  ty' <- elab ty
+  tm' <- elab tm
+  bs' <- elab (PBlock t bs)
+  tc $ tcLetRec n s ty' tm' bs'
+elab (PBlock t (PBlockTm l tm :: [])) = ensureNotPrimitive >> do
   enterLoc l $ elab tm
 elab (PBlock t (PDecl l n ty :: bs)) = enterLoc l $ do
   s <- reset stageHintL
   p <- resetIsPrimitive
   if p
-    then tc $ tcPrimDecl n s !(elab ty) !(elab (PBlock t bs))
+    then do
+      ty' <- elab ty
+      bs' <- elab (PBlock t bs)
+      tc $ tcPrimDecl n s ty' bs'
     else elabError DeclNotSupported
 elab (PBlock t (PBind l n ty tm :: bs)) = do
   ensureNotPrimitive
   ?todoBind
-elab (PBlock t (PBlockTm l tm :: bs)) = do
-  ensureNotPrimitive
+elab (PBlock t (PBlockTm l tm :: bs)) = ensureNotPrimitive >> do
   elab (PBlock t (PBind l "_" Nothing tm :: bs))
-elab (PBlock t (PDirSt d b :: bs)) = handleDirective d InBlockSt (elab (PBlock t bs))
+elab (PBlock t (PDirSt d b :: bs)) = trace "there" $ handleDirective d InBlockSt (elab (PBlock t (b :: bs)))
 elab (PLit l) = ?todoLit
-elab (PDirTm d t) = handleDirective d InTm (elab t)
+elab (PDirTm d t) = trace "here" $ handleDirective d InTm (elab t)

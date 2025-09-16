@@ -303,9 +303,10 @@ sPrim {k = PrimNeu} p sp = SynApps (PrimNeutral (p $$ sp) $$ [])
 
 public export
 sApps : Tm ns -> Spine ar Tm ns -> Tm ns
+sApps q [] = q
 sApps (SynApps (h $$ sp')) sp = SynApps (h $$ sp' ++ sp)
-sApps (RigidBinding md x) sp = error "ill-typed"
-sApps (SynPrimNormal x) sp = error "ill-typed"
+sApps (RigidBinding md x) sp = error "ill-typed (trying to apply to a rigid binding)"
+sApps (SynPrimNormal (x $$ _)) sp = error "ill-typed (trying to apply to a normal primitive: \{primName x})"
 
 public export
 vVar : Lvl ns -> Val ns
