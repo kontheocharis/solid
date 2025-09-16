@@ -154,6 +154,15 @@ record PBlockStatements where
   constructor MkPBlockStatements
   inner : List PBlockStatement
 
+-- Goal is a context and an expected type
+public export
+record PGoal where
+  constructor MkPGoal
+  ctx : PBlockStatements
+  holeStage : Stage
+  holeTm : PTm
+  holeTy : PTy
+
 -- Main syntax tree, pretty self explanatory
 --
 -- All the binders have a gathered list of parameters.
@@ -310,11 +319,16 @@ Show PBlockStatement where
   show (PBind _ n (Just ty) v) = n ++ " : " ++ show ty ++ " <- " ++ show v
   show (PBind _ n Nothing v) = n ++ " <- " ++ show v
   show (PBlockTm _ t) = show t
-  show (PDirSt d s) = show d ++ "\n" ++ show s
+  show (PDirSt d s) = show d ++ " " ++ show s
 
 public export covering
 Show PBlockStatements where
   show (MkPBlockStatements xs) = map show xs |> joinBy "\n"
+
+public export covering
+Show PGoal where
+  show (MkPGoal ctx holeStage holeTm holeTy)
+    = "\{show ctx}\n------------\n\{show (fromStage holeStage).asDirective} \{show holeTm} : \{show holeTy}"
 
 public export total
 Show BinOp where

@@ -128,7 +128,7 @@ dummy {ar = []} = []
 dummy {ar = (x :: xs)} = (Val _, promote (SynPrimNormal (PrimUNIT $$ []))) :: dummy {ar = xs}
 
 export
-[contextUnelab] Unelab (Context bs) PBlockStatements where
+Unelab (Context bs) PBlockStatements where
   unelab (MkContext (Val [<]) (Val [<]) [<] [<] (MkScope SZ SZ [<]) [<] bs) = pure $ MkPBlockStatements []
   unelab (MkContext (Val (sx :< x)) (Val (bx :< x')) (tys :< ty) (sorts :< sort) (MkScope (SS sb) (SS sn) (Lift zs)) (sts :< s) bs)
     = do
@@ -144,6 +144,17 @@ export
       let st = PDirSt (fromStage s).asDirective (PLet dummyLoc (snd x) (Just ty') tm')
       pure $ MkPBlockStatements (rest ++ [st])
   unelab _ = pure $ MkPBlockStatements []
+  
+export
+[unelabGoal] Unelab (\_ => Goal) PGoal where
+  unelab (MkGoal name hole ctx) = do
+    let Val _ = ctx.idents
+    ctx' <- unelab ctx
+    ty' <- unelab hole.annot.ty
+    pure $ MkPGoal
+      ctx' hole.annot.stage
+      (maybe (PName "?_") (\n => PName "?\{n}") name)
+      ty'
 
 -- We can thus implement show for anything that can be unelaborated.
 public export

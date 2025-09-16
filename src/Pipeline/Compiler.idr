@@ -17,6 +17,7 @@ import Core.Typechecking
 import Core.Primitives.Definitions
 import Core.Primitives.Typing
 import Data.Singleton
+import Data.SnocList
 import Control.Monad.State
 import Control.Monad.Error.Either
 import Control.App
@@ -253,6 +254,13 @@ parse : String -> Comp PTm
 parse input = case parse topLevelBlock input of
   Right ptm => pure ptm
   Left err => lift $ throw err
+  
+printGoals : SnocList Goal -> Comp ()
+printGoals sx = do
+  mtas <- accessMetas
+  liftIO $ for_ sx $ \s => do
+    putStrLn $ show @{showUnelab @{mtas} {unel = unelabGoal}} s
+    putStrLn ""
 
 covering
 elaborate : PTm -> Comp (WithMetas (Atom [<]))
@@ -261,6 +269,8 @@ elaborate ptm = do
     Right ok => do
       res <- runAt Check ok emptyContext (CheckInput _ mainAnnot)
       mtas <- accessMetas
+      goals <- getGoals
+      printGoals goals
       pure $ MkWithMetas mtas res.tm
     Left err => do
       mtas <- accessMetas

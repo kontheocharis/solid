@@ -8,10 +8,8 @@ TT : UNIT
 
 #mta
 Type : Layout -> TYPE
-Type l = TYPE
+Type l = ?idk
 
-
--- -- IO
 #mta
 #primitive
 IO : [a] (A : Type a) -> Type ptr
@@ -24,15 +22,6 @@ SIGMA : (A : TYPE) -> (A -> TYPE) -> TYPE
 #mta
 #primitive
 PAIR : [A : TYPE] [B : A -> TYPE] (a : A) (b : B a) -> SIGMA A B
-
-#mta
-fst : [A] [B] (p : SIGMA A B) -> A
-fst = ?faj
-
--- #mta
--- snd : [A : TYPE] [B : A -> TYPE] (p : SIGMA A B) -> B (fst p)
--- snd = ?fajj
-
 
 -- Synonym for sized types
 -- #mta

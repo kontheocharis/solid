@@ -538,7 +538,7 @@ tcPrimDecl name stage ty rest = inferStageIfNone stage $ \stage, md, ctx, inp =>
     | Nothing => tcError ctx $ PrimitiveNotFound name
 
   -- Turn the type signature into an operation signature
-  ty' <- trace "got primitive \{primName p}" $ ty Check ctx (CheckInput stage (objZOrMtaA stage))
+  ty' <- ty Check ctx (CheckInput stage (objZOrMtaA stage))
   Gathered params ret <- reading (gatherPis ty'.p.a ar)
     | TooMany extra under p => tcError ctx $ NotAPi ty'.tm extra
 
@@ -553,7 +553,7 @@ tcPrimDecl name stage ty rest = inferStageIfNone stage $ \stage, md, ctx, inp =>
           (prim @{SZ + arC} p (heres _)
             (weakS {sz = SZ + arC + arC} {sz' = SZ + arC}
               (dropManyAr arC Id) retClosed)).tm
-  let tm' : Expr [<] = trace "got lams " $ MkExpr tmAtom (sub closing ty'.p.a)
+  let tm' : Expr [<] = MkExpr tmAtom (sub closing ty'.p.a)
                 
   -- If it is a declared primitive, save it to primitives
   case lvl of

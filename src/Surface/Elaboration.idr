@@ -131,7 +131,7 @@ resetIsPrimitive = do
 
 ensureNotPrimitive : Elab ()
 ensureNotPrimitive = resetIsPrimitive >>= \case
-  True => trace "bar" elabError $ DirectiveNotAllowed PrimitiveDir
+  True => elabError $ DirectiveNotAllowed PrimitiveDir
   False => pure ()
 
 data DirectivePlacement = InTm | InBlockSt
@@ -145,7 +145,10 @@ handleDirective d p b = case (parseDirective d, p) of
   (Just PrimitiveDir, InBlockSt) => enter isPrimitiveL True b
   (Just d, InTm) => elabError $ DirectiveNotAllowed d
 
-elab (PLoc l t) = trace "elaborating \{show t}" $ enterLoc l $ elab t
+elab (PLoc l t) =
+  -- @@Debugging
+  -- trace "elaborating \{show t}" $
+  enterLoc l $ elab t
 elab (PLam (MkPTel []) t) = elab t
 elab (PLam (MkPTel ((MkPParam l n ty) :: xs)) t) = do
   t' <- elab (PLam (MkPTel xs) t)
@@ -184,12 +187,12 @@ elab (PPairs (MkPSpine ((MkPArg l n t) :: ts))) = do
     _ => tcPrim PrimPAIR [hole, hole, t', ts']
 elab (PProj v n) = ?tcProj
 elab (PBlock t []) = do
-  e <- elab PUnit
-  -- @@Debugging
-  tc (interceptContext (\ctx => do
-    let Val _ = ctx.idents 
-    mtas <- enterMetas (getAllMetas {sm = SolvingNotAllowed} @{metas})
-    trace (show @{showUnelab {unel = contextUnelab}} ctx) (pure ())) e)
+  elab PUnit
+  -- -- @@Debugging
+  -- tc (interceptContext (\ctx => do
+  --   let Val _ = ctx.idents 
+  --   mtas <- enterMetas (getAllMetas {sm = SolvingNotAllowed} @{metas})
+  --   trace (show @{showUnelab} ctx) (pure ())) e)
 elab (PBlock t (PLet l n ty tm :: bs)) = enterLoc l $ ensureNotPrimitive >> do
   s <- reset stageHintL
   ty' <- traverse elab ty
@@ -218,6 +221,6 @@ elab (PBlock t (PBind l n ty tm :: bs)) = do
   ?todoBind
 elab (PBlock t (PBlockTm l tm :: bs)) = ensureNotPrimitive >> do
   elab (PBlock t (PBind l "_" Nothing tm :: bs))
-elab (PBlock t (PDirSt d b :: bs)) = trace "there" $ handleDirective d InBlockSt (elab (PBlock t (b :: bs)))
+elab (PBlock t (PDirSt d b :: bs)) = handleDirective d InBlockSt (elab (PBlock t (b :: bs)))
 elab (PLit l) = ?todoLit
-elab (PDirTm d t) = trace "here" $ handleDirective d InTm (elab t)
+elab (PDirTm d t) = handleDirective d InTm (elab t)
