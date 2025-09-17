@@ -146,6 +146,10 @@ HasState Loc Comp where
   put l = modify (\s => { loc := l } s)
   get' = gets (\s => s.loc)
 
+HasState Goals Comp where
+  put l = modify (\s => { goals := l } s)
+  get' = gets (\s => s.goals)
+
 HasTc Comp where
   metasM = MetaComp
 
@@ -154,10 +158,6 @@ HasTc Comp where
     (\(metaSt' ** _), c => { metaState := metaSt' } c)
 
   metas = metaCompMetas
-
-  getGoals = gets goals
-
-  addGoal g = modify (\s => { goals := s.goals :< g } s)
 
   tcError ctx err = do
     l <- gets loc
@@ -283,7 +283,7 @@ elaborate ptm = do
   tc <- elab ptm 
   res <- runAt Check tc emptyContext (CheckInput _ mainAnnot)
   mtas <- accessMetas
-  goals <- getGoals
+  goals <- get Goals
   printGoals goals
   pure $ MkWithMetas mtas res.tm
 

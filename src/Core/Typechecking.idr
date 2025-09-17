@@ -81,9 +81,13 @@ ShowSyntax => Show TcError where
   show (MkTcError con loc err) = let Val _ = con.idents in
       "Typechecking error at \{show loc}:\n\{show err}"
 
+public export
+Goals : Type
+Goals = SnocList Goal
+
 -- Typechecking has access to metas
 public export
-interface (Monad m, Dbg m, HasState Loc m) => HasTc m where
+interface (Monad m, Dbg m, HasState Loc m, HasState Goals m) => HasTc m where
   
   -- Explicit instance of metas so that the resolution doesn't die..
   0 metasM : SolvingMode -> Type -> Type
@@ -93,15 +97,17 @@ interface (Monad m, Dbg m, HasState Loc m) => HasTc m where
   -- Throw a typechecking error
   tcError : forall a . Context bs ns -> TcErrorAt ns -> m a
 
-  -- Add a user goal
-  addGoal : Goal -> m ()
-
-  -- Get all the goals that have been seen
-  getGoals : m (SnocList Goal)
-
   -- The signature of a declared primitive
   definedPrimAnnot : Primitive k r PrimDeclared ar -> m (Op ar [<])
   setDefinedPrimAnnot : Primitive k r PrimDeclared ar -> Op ar [<] -> m ()
+
+-- Add a user goal
+addGoal : HasTc m => Goal -> m ()
+addGoal g = modify (:< g)
+
+-- Get all the goals that have been seen
+getGoals : HasTc m => m (SnocList Goal)
+getGoals = get (SnocList Goal)
   
 -- What inputs a TC operation takes, depending on mode
 public export
