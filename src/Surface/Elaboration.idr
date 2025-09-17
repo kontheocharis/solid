@@ -199,7 +199,7 @@ handleDirective d p b = case (parseDirective d, p) of
 elab (PLoc l t) =
   -- @@Debugging
   -- trace "elaborating \{show t}" $
-  enterLoc l $ elab t
+    enterLoc l $ elab t
 elab (PLam (MkPTel []) t) = elab t
 elab (PLam (MkPTel ((MkPParam l n ty) :: xs)) t) = do
   t' <- elab (PLam (MkPTel xs) t)
@@ -214,6 +214,7 @@ elab (PPi (MkPTel ((MkPParam l n ty) :: xs)) t) = do
 elab (PName n) with (nameToPrim n) 
   _ | Just (MkPrimitiveAny {level = PrimNative} p) = tc (tcPrimUser p [])
   _ | _ = tc (tcVar n)
+elab (PApp (PLoc l t) sp) = enterLoc l $ elab (PApp t sp) -- hack cause we pattern match on subject
 elab (PApp subject@(PName n) sp) with (nameToPrim n)
   _ | Just (MkPrimitiveAny {level = PrimNative} p) = tc $ tcPrimUser p !(elabSpine sp)
   _ | _ = tc $ tcApps !(elab subject) !(elabSpine sp)

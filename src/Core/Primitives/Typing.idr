@@ -40,14 +40,14 @@ primAnnot PrimCode = ([
   )
 primAnnot PrimQuote = ([
       argN "l" $ mta (PrimLayout $> []),
-      argN "ty" $ objZ (PrimTypeDyn $> [(Val _, PrimSta $> [(Val _, v "l")])]),
+      argN "ty" $ objZ (PrimTypeSta $> [(Val _, v "l")]),
       arg $ obj (v "l") (v "ty")
     ],
     ret $ mta (PrimCode $> [(Val _, PrimSta $> [(Val _, v "l")]), (Val _, v "ty")])
   )
 primAnnot PrimSplice = ([
       argN "l" $ mta (PrimLayout $> []),
-      argN "ty" $ objZ (PrimTypeDyn $> [(Val _, PrimSta $> [(Val _, v "l")])]),
+      argN "ty" $ objZ (PrimTypeSta $> [(Val _, v "l")]),
       arg $ mta (PrimCode $> [(Val _, PrimSta $> [(Val _, v "l")]), (Val _, v "ty")])
     ],
     ret $ obj (v "l") (v "ty")
@@ -56,7 +56,12 @@ primAnnot PrimSta = ([arg $ mta (PrimLayout $> [])], ret $ mta (PrimLayoutDyn $>
 primAnnot PrimTypeDyn = ([
       arg $ mta (PrimLayoutDyn $> [])
     ],
-    ret $ objZ (PrimTypeDyn $> [(Val _, PrimSta $> [(Val _, PrimZeroLayout $> [])])])
+    ret $ objZ (PrimTypeSta $> [(Val _, PrimZeroLayout $> [])])
+  )
+primAnnot PrimTypeSta = ([
+      arg $ mta (PrimLayout $> [])
+    ],
+    ret $ objZ (PrimTypeSta $> [(Val _, PrimZeroLayout $> [])])
   )
 primAnnot PrimSeqLayout = ([
       arg $ mta (PrimLayout $> []),
@@ -77,7 +82,7 @@ primAnnot PrimPtrLayout = ([], ret $ mta (PrimLayout $> []))
 primAnnot PrimLayoutDyn = ([], ret $ mta (PrimTYPE $> []))
 primAnnot PrimUNIT = ([], ret $ mta (PrimTYPE $> []))
 primAnnot PrimTT = ([], ret $ mta (PrimUNIT $> []))
-primAnnot PrimUnit = ([], ret $ objZ (PrimTypeDyn $> [(Val _, PrimSta $> [(Val _, PrimZeroLayout $> [])])]))
+primAnnot PrimUnit = ([], ret $ objZ (PrimTypeSta $> [(Val _, PrimZeroLayout $> [])]))
 primAnnot PrimTt = ([], ret $ objZ (PrimUnit $> []))
 
 -- The argument types for the given primitive

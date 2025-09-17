@@ -57,6 +57,12 @@ export
   unelab [] = pure $ MkPSpine []
   unelab ((Val n, x) :: xs) = case !(unelab xs) of
     MkPSpine xs' => pure $ MkPSpine (MkPArg dummyLoc (Just n) !(unelab x) :: xs')
+  
+export
+{t : Target} -> Unelab term PTm => Unelab (Tel ar term) (PTel t) where
+  unelab [] = pure $ MkPTel []
+  unelab ((Val n, x) :: xs) = case !(unelab xs) of
+    MkPTel xs' => pure $ MkPTel (MkPParam dummyLoc n (Just !(unelab x)) :: xs')
 
 -- We could special case some primitives to make the output nicer.
 export
@@ -176,4 +182,4 @@ showUnelabVal = showUnelab
 public export
 %hint
 showSyntax : Metas => ShowSyntax
-showSyntax @{mtas} = (mtas, showUnelab, showUnelab)
+showSyntax @{mtas} = (mtas, showUnelab, showUnelab, showUnelab)

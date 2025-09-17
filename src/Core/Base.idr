@@ -196,7 +196,11 @@ namespace Tel
   (.count) : Tel ar f ns -> Count ar
   (.count) [] = CZ
   (.count) (x :: xs) = CS xs.count
-
+  
+  public export
+  mapTel : (forall us . f us -> g us) -> Tel ar f ms -> Tel ar g ms
+  mapTel f [] = []
+  mapTel f ((m, x) :: xs) = (m, f x) :: mapTel f xs
 
 namespace Spine
   public export

@@ -6,13 +6,8 @@ UNIT : TYPE
 #primitive
 TT : UNIT
 
-#mta
-Type : Layout -> TYPE
-Type l = ?idk
-
-#mta
-#primitive
-IO : [a] (A : Type a) -> Type ptr
+-- #primitive
+-- IO : [a : Layout] (A : Type a) -> Type ptr
 
 -- Sigma
 #mta
@@ -23,8 +18,11 @@ SIGMA : (A : TYPE) -> (B : A -> TYPE) -> TYPE
 #primitive
 PAIR : [A : TYPE] [B : A -> TYPE] (a : A) (b : B a) -> SIGMA A B
 
--- #primitive
--- Unit : Type? (sta zero)
+#primitive
+Unit : Type zero
+
+#primitive
+tt : Unit
 
 -- Some tests
 
@@ -47,6 +45,10 @@ rec N z s n = n z s
 #mta
 add : Nat -> Nat -> Nat
 add x y = ?asj
+
+#mta
+id : [a : Layout] -> Code ([A : Type a] -> A -> A)
+id = ?Fsdjf
 
 #debug-ctx ()
 

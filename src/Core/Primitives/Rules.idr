@@ -82,6 +82,8 @@ layoutAdd a b = SynPrimNormal (PrimSeqLayoutDyn $$ [(Val _, a), (Val _, b)])
 -- each case we must form a new glued term as a result, which lazily unfolds the
 -- argument and recurses.
 
+-- @@Perf: make this reduction return Maybe to avoid always evaluating in maybeReduce
+
 primAddBYTES : Term Value ns -> Term Value ns -> Term Value ns
 primAddBYTES (SimpPrimNormal (SimpApplied PrimZeroLayout [])) b = b
 primAddBYTES a (SimpPrimNormal (SimpApplied PrimZeroLayout [])) = a
@@ -104,6 +106,10 @@ Eval (Term Value) (PrimitiveApplied k Syntax e) (Term Value) where
   eval env (($$) {r = PrimIrreducible} {k = PrimNeu} p sp) = SimpApps (PrimNeutral (SimpApplied p (eval env sp)) $$ [])
   eval env (PrimSeqLayout $$ [(_, a), (_, b)]) = primAddBYTES (eval env a) (eval env b)
   eval env (PrimSeqLayoutDyn $$ [(_, a), (_, b)]) = primAddBytes (eval env a) (eval env b)
+  eval env (PrimTypeSta $$ [(_, l)])
+    = let l' = eval env l in
+       Glued (LazyPrimNormal (LazyApplied PrimTypeSta [(Val _, l')]
+        (SimpPrimNormal (SimpApplied PrimTypeDyn [(Val _, SimpPrimNormal (SimpApplied PrimSta [(Val _, l')]))]))))
 
 -- Context-aware domain
 -- 
@@ -120,6 +126,13 @@ data DomainIn : Domain -> Ctx -> Type where
 -- Always calls eval if the primitive is reducible, to wrap it in lazy if needed.
 public export covering
 vPrim : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility} -> Primitive k r na ar -> Spine ar Val ns -> Val ns
-vPrim {k = PrimNorm} p sp = SimpPrimNormal (SimpApplied p sp)
+vPrim {k = PrimNorm} {r = PrimIrreducible} p sp = SimpPrimNormal (SimpApplied p sp)
 vPrim {k = PrimNeu} {r = PrimIrreducible} p sp = SimpApps (PrimNeutral (SimpApplied p sp) $$ [])
-vPrim {k = PrimNeu} {r = PrimReducible} p sp = eval id $ sPrim p (quote sp)
+vPrim {r = PrimReducible} p sp = eval id $ sPrim p (quote sp)
+
+-- Potentially reduce primitives
+public export covering
+maybeReduce : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility} -> Primitive k r na ar -> Spine ar Val ns -> Maybe (Val ns)
+maybeReduce {k = PrimNorm} {r = PrimIrreducible} p sp = Nothing
+maybeReduce {k = PrimNeu} {r = PrimIrreducible} p sp = Nothing
+maybeReduce {r = PrimReducible} p sp = Just $ eval id $ sPrim p (quote sp)

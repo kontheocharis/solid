@@ -219,10 +219,18 @@ Unify SolvingNotAllowed (Variable Value) (Variable Value) where
 
 {sm : SolvingMode} -> {hk : PrimitiveClass} ->
   Unify sm (PrimitiveApplied hk Value Simplified) (PrimitiveApplied hk Value Simplified) where
-    unifyImpl ctx (SimpApplied {r = PrimIrreducible} p sp) (SimpApplied {r = PrimIrreducible} p' sp')
-      = ifAndOnlyIfHack (primEq p p') (\Refl => unify ctx sp sp')
-    unifyImpl ctx (SimpApplied p sp) (SimpApplied p' sp')
-      = noSolving (inCase (primEq p p') (\Refl => unify ctx sp sp') \/ pure DontKnow)
+    unifyImpl ctx (SimpApplied {r} p sp) (SimpApplied {r = r'} p' sp') with (maybeReduce p sp, maybeReduce p' sp')
+      -- @@Perf: this could be simplified
+      -- irreducible
+      unifyImpl ctx (SimpApplied {r = PrimIrreducible} p sp) (SimpApplied {r = PrimIrreducible} p' sp') | (Nothing, Nothing)
+        = ifAndOnlyIfHack (primEq p p') (\Refl => unify ctx sp sp')
+      -- reducible, first try reduce primitives
+      unifyImpl ctx (SimpApplied {r} p sp) (SimpApplied {r = r'} p' sp') | (Just x, Just y) = unify ctx x y
+      unifyImpl ctx (SimpApplied {r} p sp) (SimpApplied {r = r'} p' sp') | (Just x, Nothing) = unify ctx x (vPrim p' sp')
+      unifyImpl ctx (SimpApplied {r} p sp) (SimpApplied {r = r'} p' sp') | (Nothing, Just y) = unify ctx (vPrim p sp) y
+      -- if cannot reduce, just unify conservatively
+      unifyImpl ctx (SimpApplied p sp) (SimpApplied p' sp') | (Nothing, Nothing)
+        = noSolving (inCase (primEq p p') (\Refl => unify ctx sp sp') \/ pure DontKnow)
 
 {hk : PrimitiveClass} ->
   Unify SolvingNotAllowed (PrimitiveApplied hk Value Normalised) (PrimitiveApplied hk Value Normalised) where

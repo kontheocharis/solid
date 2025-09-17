@@ -48,6 +48,7 @@ data Primitive : PrimitiveClass -> PrimitiveReducibility -> PrimitiveLevel -> Ar
   PrimSplice : Primitive PrimNorm PrimIrreducible PrimNative [(Implicit, "l"), (Implicit, "ty"), (Explicit, "val")]
   PrimSta : Primitive PrimNorm PrimIrreducible PrimNative [(Explicit, "l")]
   PrimTypeDyn : Primitive PrimNorm PrimIrreducible PrimNative [(Explicit, "l")]
+  PrimTypeSta : Primitive PrimNorm PrimReducible PrimNative [(Explicit, "l")]
   PrimLayout : Primitive PrimNorm PrimIrreducible PrimNative []
   PrimLayoutDyn : Primitive PrimNorm PrimIrreducible PrimNative []
   PrimSeqLayout : Primitive PrimNorm PrimReducible PrimNative [(Explicit, "a"), (Explicit, "b")]
@@ -86,6 +87,8 @@ primEq PrimSta PrimSta = Just Refl
 primEq PrimSta _ = Nothing
 primEq PrimTypeDyn PrimTypeDyn = Just Refl
 primEq PrimTypeDyn _ = Nothing
+primEq PrimTypeSta PrimTypeSta = Just Refl
+primEq PrimTypeSta _ = Nothing
 primEq PrimLayout PrimLayout = Just Refl
 primEq PrimLayout _ = Nothing
 primEq PrimLayoutDyn PrimLayoutDyn = Just Refl
@@ -134,6 +137,7 @@ primName PrimPtrLayout = "ptr"
 primName PrimLayoutDyn = "Layout?"
 primName PrimSta = "sta"
 primName PrimTypeDyn = "Type?"
+primName PrimTypeSta = "Type"
 primName PrimSeqLayout = "seq"
 primName PrimSeqLayoutDyn = "seq-dyn"
 primName PrimUNIT = "UNIT"
@@ -204,6 +208,7 @@ nameToPrim "ptr"     = Just $ MkPrimitiveAny PrimPtrLayout
 nameToPrim "Layout?" = Just $ MkPrimitiveAny PrimLayoutDyn     
 nameToPrim "sta"     = Just $ MkPrimitiveAny PrimSta           
 nameToPrim "Type?"   = Just $ MkPrimitiveAny PrimTypeDyn       
+nameToPrim "Type"   = Just $ MkPrimitiveAny PrimTypeSta
 nameToPrim "seq"     = Just $ MkPrimitiveAny PrimSeqLayout     
 nameToPrim "seq-dyn" = Just $ MkPrimitiveAny PrimSeqLayoutDyn  
 nameToPrim "UNIT"    = Just $ MkPrimitiveAny PrimUNIT          
@@ -226,6 +231,7 @@ nameToPrimId {p = PrimQuote}        = Refl
 nameToPrimId {p = PrimSplice}       = Refl
 nameToPrimId {p = PrimSta}          = Refl
 nameToPrimId {p = PrimTypeDyn}      = Refl
+nameToPrimId {p = PrimTypeSta}      = Refl
 nameToPrimId {p = PrimLayout}       = Refl
 nameToPrimId {p = PrimLayoutDyn}    = Refl
 nameToPrimId {p = PrimSeqLayout}    = Refl
