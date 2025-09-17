@@ -26,7 +26,7 @@ import Control.Monad.Error.Either
 import Debug.Trace
 import Surface.Unelaboration
 
-export
+public export
 record ElabState where
   constructor MkElabState
   stageHint : Maybe Stage
@@ -41,6 +41,10 @@ locHintL = MkLens locHint (\sh, s => { locHint := sh } s)
   
 isPrimitiveL : Lens ElabState Bool
 isPrimitiveL = MkLens isPrimitive (\sh, s => { isPrimitive := sh } s)
+
+export
+initialElabState : ElabState
+initialElabState = MkElabState Nothing Nothing False
   
 export
 data ElabErrorKind : Type where
@@ -54,7 +58,7 @@ Show ElabErrorKind where
   show (DirectiveNotAllowed d) = "Directive `#\{d.asDirective.name}` is not allowed here"
   show DeclNotSupported = "Non-primitive declarations without definitions are not supported yet"
   
-export
+public export
 record ElabError where
   constructor MkElabError
   kind : ElabErrorKind
@@ -63,28 +67,14 @@ record ElabError where
 export
 Show ElabError where
   show (MkElabError k l) = "Elaboration error at \{show l}:\n\{show k}"
-
-export
-0 Elab : Type -> Type
-Elab a = EitherT ElabError (State ElabState) a
-
-export
-initialElabState : ElabState
-initialElabState = MkElabState Nothing Nothing False
-
-export
-runElab : Elab x -> Either ElabError x
-runElab = evalState initialElabState . runEitherT 
-
-export
-elabError : ElabErrorKind -> Elab x
-elabError k = do
-  l <- gets locHint
-  throwE (MkElabError k (fromMaybe dummyLoc l))
+  
+public export
+interface (Monad e, HasState ElabState e) => HasElab (0 e : Type -> Type) where
+  elabError : ElabErrorKind -> e x
 
 -- Elaborate a presyntax term into a typechecking operation.
 export covering
-elab : (HasTc m) => PTm -> Elab (TcAll m)
+elab : (HasElab e, HasTc m) => PTm -> e (TcAll m)
 
 -- The annotation of the entry point of the program
 export covering
@@ -103,14 +93,14 @@ whenInStage f Check = \ctx, (CheckInput stage annot) =>
   f (Just stage) Check ctx (CheckInput stage annot)
 
 covering
-elabSpine : (HasTc m) => PSpine k -> Elab (List (Ident, TcAll m))
+elabSpine : (HasElab e, HasTc m) => PSpine k -> e (List (Ident, TcAll m))
 elabSpine (MkPSpine []) = pure $ []
 elabSpine (MkPSpine (MkPArg l n v :: xs)) = pure $ (
     fromMaybe (Explicit, "_") n,
     interceptAll (enterLoc l) $ !(elab v)
   ) :: !(elabSpine (MkPSpine xs))
   
-tc : HasTc m => TcAll m -> Elab (TcAll m)
+tc : (HasElab e, HasTc m) => TcAll m -> e (TcAll m)
 tc f = do
   l <- access locHintL
   case l of
@@ -118,19 +108,19 @@ tc f = do
     Nothing => pure f
   
 covering
-hole : HasTc m => TcAll m
+hole : (HasTc m) => TcAll m
 hole = tcHole Nothing
 
-enterLoc : Loc -> Elab x -> Elab x
+enterLoc : HasElab e => Loc -> e x -> e x
 enterLoc l = enter locHintL (Just l)
 
-resetIsPrimitive : Elab Bool
+resetIsPrimitive : HasElab e => e Bool
 resetIsPrimitive = do
   p <- access isPrimitiveL
   set isPrimitiveL False
   pure p
 
-ensureNotPrimitive : Elab ()
+ensureNotPrimitive : HasElab e => e ()
 ensureNotPrimitive = resetIsPrimitive >>= \case
   True => elabError $ DirectiveNotAllowed PrimitiveDir
   False => pure ()
@@ -138,7 +128,7 @@ ensureNotPrimitive = resetIsPrimitive >>= \case
 data DirectivePlacement = InTm | InBlockSt
 
 covering
-printCtxAnd : HasTc x => Elab (TcAll x) -> Elab (TcAll x)
+printCtxAnd : (HasTc x, HasElab e) => e (TcAll x) -> e (TcAll x)
 printCtxAnd b = do
   b' <- b
   tc $ interceptContext (\ctx => do
@@ -151,7 +141,7 @@ printCtxAnd b = do
     ) b'
 
 covering
-printTermAnd : HasTc x => (expand : Bool) -> Elab (TcAll x) -> Elab (TcAll x)
+printTermAnd : (HasTc x, HasElab e) => (expand : Bool) -> e (TcAll x) -> e (TcAll x)
 printTermAnd expand b = do
   b' <- b
   tc $ interceptTerm (\ctx, tm => do
@@ -167,7 +157,7 @@ printTermAnd expand b = do
     ) b'
 
 covering
-printTypeAnd : HasTc x => (expand : Bool) -> Elab (TcAll x) -> Elab (TcAll x)
+printTypeAnd : (HasTc x, HasElab e) => (expand : Bool) -> e (TcAll x) -> e (TcAll x)
 printTypeAnd expand b = do
   b' <- b
   tc $ interceptTerm (\ctx, tm => do
@@ -183,17 +173,17 @@ printTypeAnd expand b = do
     ) b'
 
 covering
-handleDirective : HasTc x => Directive -> DirectivePlacement -> Elab (TcAll x) -> Elab (TcAll x)
+handleDirective : (HasTc x, HasElab e) => Directive -> DirectivePlacement -> e (TcAll x) -> e (TcAll x)
 handleDirective d p b = case (parseDirective d, p) of
   (Nothing, _) => elabError (UnknownDirective d)
   (Just MtaDir, InBlockSt) => enter stageHintL (Just Mta) b
   (Just ObjDir, InBlockSt) => enter stageHintL (Just Obj) b
   (Just PrimitiveDir, InBlockSt) => enter isPrimitiveL True b
-  (Just DebugCtx, _) => printCtxAnd b
-  (Just DebugTerm, _) => printTermAnd False b
-  (Just DebugTermExp, _) => printTermAnd True b
-  (Just DebugType, _) => printTypeAnd False b
-  (Just DebugTypeExp, _) => printTypeAnd True b
+  (Just DebugCtx, _) => printCtxAnd {x = x} b
+  (Just DebugTerm, _) => printTermAnd {x = x} False b
+  (Just DebugTermExp, _) => printTermAnd {x = x} True b
+  (Just DebugType, _) => printTypeAnd {x = x} False b
+  (Just DebugTypeExp, _) => printTypeAnd {x = x} True b
   (Just d, InTm) => elabError $ DirectiveNotAllowed d
 
 elab (PLoc l t) =
@@ -275,6 +265,6 @@ elab (PBlock t (PBind l n ty tm :: bs)) = do
   ?todoBind
 elab (PBlock t (PBlockTm l tm :: bs)) = ensureNotPrimitive >> do
   elab (PBlock t (PBind l "_" Nothing tm :: bs))
-elab (PBlock t (PDirSt d b :: bs)) = handleDirective d InBlockSt (elab (PBlock t (b :: bs)))
+elab (PBlock t (PDirSt d b :: bs)) = handleDirective {x = m} d InBlockSt (elab (PBlock t (b :: bs)))
 elab (PLit l) = ?todoLit
-elab (PDirTm d t) = handleDirective d InTm (elab t)
+elab (PDirTm d t) = handleDirective {x = m} d InTm (elab t)

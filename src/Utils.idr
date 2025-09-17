@@ -99,6 +99,40 @@ dispToSnocList {xs = _ :< x} (ls :< l) = dispToSnocList ls :< (x, l)
 
 -- Some state utilities
 
+-- Composable MonadState
+
+public export
+interface Monad m => HasState s m where
+  get' : m s
+  put : s -> m ()
+
+  state : (s -> (s, a)) -> m a
+  state f = do
+    u <- get' {s = s}
+    let (u', a) = f u
+    put u'
+    pure a
+    
+public export
+get : (0 s : Type) -> HasState s m => m s
+get s = get' {s = s}
+
+-- Apply a function to modify the context of this computation
+public export
+modify : HasState s m => (s -> s) -> m ()
+modify f = do
+  s <- get s
+  put (f s)
+
+-- Evaluate a function in the context held by this computation
+public export
+gets : HasState s m => (s -> a) -> m a
+gets f = do
+  s <- get s
+  pure (f s)
+  
+-- Lenses
+
 public export
 record Lens (s : Type) (s' : Type) where
   constructor MkLens
@@ -106,11 +140,11 @@ record Lens (s : Type) (s' : Type) where
   set : s' -> s -> s
   
 export
-access : MonadState s m => Lens s s' -> m s'
+access : HasState s m => Lens s s' -> m s'
 access (MkLens gt _) = gets gt
   
 export
-set : MonadState s m => Lens s s' -> s' -> m ()
+set : HasState s m => Lens s s' -> s' -> m ()
 set (MkLens gt st) v = modify (st v)
 
 export
@@ -118,18 +152,18 @@ map : Lens s s' -> (s' -> s') -> s -> s
 map (MkLens gt st) f x = st (f (gt x)) x
   
 export
-reset : MonadState s m => Lens s (Maybe s') -> m (Maybe s')
+reset : HasState s m => Lens s (Maybe s') -> m (Maybe s')
 reset (MkLens gt st) = do
-  s <- get
+  s <- get s
   put (st Nothing s)
   pure $ gt s
 
 export
-enter : MonadState s m => Lens s s' -> s' -> m a -> m a
+enter : HasState s m => Lens s s' -> s' -> m a -> m a
 enter (MkLens _ st) val f = do
-  s1 <- get
+  s1 <- get s
   put (st val s1)
   x <- f
-  s2 <- get
+  s2 <- get s
   put (st val s2)
   pure x

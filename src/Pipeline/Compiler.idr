@@ -27,6 +27,7 @@ import System
 import System.File
 import Lib.HashMap
 import Data.DPair
+import Data.Maybe
 import Debug.Trace
 
 %default covering
@@ -51,10 +52,11 @@ record CompilerState where
   metaState : MetaState
   loc : Loc
   goals : SnocList Goal
+  elabState : ElabState
   definedPrimitives : HashDMap PrimitiveAnyIrr (\p => Op p.arity [<])
 
 emptyCompilerState : CompilerState
-emptyCompilerState = MkCompilerState emptyMetaState dummyLoc [<] empty
+emptyCompilerState = MkCompilerState emptyMetaState dummyLoc [<] initialElabState empty
 
 -- Errors in the compiler:
   
@@ -144,7 +146,7 @@ HasTc Comp where
   metasM = MetaComp
 
   enterMetas = mapLens
-    (\(MkCompilerState m l g h) => withMetaSolvingMode sm m)
+    (\(MkCompilerState m l g e h) => withMetaSolvingMode sm m)
     (\(metaSt' ** _), c => { metaState := metaSt' } c)
 
   metas = metaCompMetas
@@ -182,6 +184,16 @@ HasTc Comp where
     pure ()
 
 accessMetas = enterMetas {sm = SolvingNotAllowed} (getAllMetas @{metaCompMetas})
+
+HasState ElabState Comp where
+  put el = modify (\s => { elabState := el } s)
+  get' = gets (\s => s.elabState)
+
+HasElab Comp where
+  elabError err = do
+    l <- Control.Monad.State.gets (\s => s.elabState.locHint)
+    mtas <- accessMetas
+    lift $ throw (MkWithMetas mtas (MkElabError err (fromMaybe dummyLoc l)))
     
 -- Inputs and outputs of the compiler
   
@@ -273,16 +285,12 @@ printGoals sx = do
 covering
 elaborate : PTm -> Comp (WithMetas (Atom [<]))
 elaborate ptm = do
-  case runElab (elab ptm) of
-    Right ok => do
-      res <- runAt Check ok emptyContext (CheckInput _ mainAnnot)
-      mtas <- accessMetas
-      goals <- getGoals
-      printGoals goals
-      pure $ MkWithMetas mtas res.tm
-    Left err => do
-      mtas <- accessMetas
-      lift $ throw (MkWithMetas mtas err)
+  tc <- elab ptm 
+  res <- runAt Check tc emptyContext (CheckInput _ mainAnnot)
+  mtas <- accessMetas
+  goals <- getGoals
+  printGoals goals
+  pure $ MkWithMetas mtas res.tm
 
 covering
 stage : WithMetas (Atom [<]) -> Comp (WithMetas (Val [<]))
