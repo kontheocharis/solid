@@ -31,20 +31,28 @@ Nat : TYPE
 Nat = (P : TYPE) -> P -> (P -> P) -> P
 
 #mta
-zero : Nat
-zero N z s = z
+zeroN : Nat
+zeroN N z s = z
 
 #mta
-succ : Nat -> Nat
-succ n N z s = s (n N z s)
+succN : Nat -> Nat
+succN n N z s = s (n N z s)
 
 #mta
 rec : (N : TYPE) -> N -> (N -> N) -> Nat -> N
 rec N z s n = n N z s
 
 #mta
-add : Nat -> Nat -> Nat
-add x y = rec Nat x succ y
+addN : Nat -> Nat -> Nat
+addN x y = rec Nat x succN y
+
+#mta
+add-zero-is-zero : Nat -> Nat
+add-zero-is-zero x = #debug-term-exp (addN x zeroN)
+
+#mta
+add-succ-is-succ : Nat -> Nat -> Nat
+add-succ-is-succ x y = #debug-term-exp (addN x (succN y))
 
 -- Some object-level stuff
 
