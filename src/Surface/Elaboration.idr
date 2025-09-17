@@ -46,13 +46,15 @@ export
 data ElabErrorKind : Type where
   UnknownDirective : Directive -> ElabErrorKind
   DirectiveNotAllowed : KnownDirective -> ElabErrorKind
+  ImportMustBeLiteral : PTm -> ElabErrorKind
   DeclNotSupported : ElabErrorKind
   
-export
+export covering
 Show ElabErrorKind where
   show (UnknownDirective (MkDirective d)) = "Unknown directive `#\{d}`"
   show (DirectiveNotAllowed d) = "Directive `#\{d.asDirective.name}` is not allowed here"
   show DeclNotSupported = "Non-primitive declarations without definitions are not supported yet"
+  show (ImportMustBeLiteral s) = "Imports must be on literal strings, but got term \{show s}"
   
 public export
 record ElabError where
@@ -60,13 +62,14 @@ record ElabError where
   kind : ElabErrorKind
   loc : Loc
   
-export
+export covering
 Show ElabError where
   show (MkElabError k l) = "Elaboration error at \{show l}:\n\{show k}"
   
 public export
 interface (Monad e, HasState Loc e, HasState ElabState e) => HasElab (0 e : Type -> Type) where
   elabError : ElabErrorKind -> e x
+  parseImport : (filename : String) -> e PTm
 
 -- Elaborate a presyntax term into a typechecking operation.
 export covering
@@ -74,15 +77,6 @@ elab : (HasElab e, HasTc m) => PTm -> e (TcAll m)
 
 enterLoc : HasElab e => Loc -> e x -> e x
 enterLoc l = enter idL l
-
--- The annotation of the entry point of the program
-export covering
-mainAnnot : AnnotAt Obj [<]
--- mainAnnot = (objZ (PrimIO $> [
---     (Val _, PrimZeroLayout $> []),
---     (Val _, PrimUnit $> [])])
---   ).f.a
-mainAnnot = (objZ (PrimUnit $> [])).f.a
  
 export
 whenInStage : HasTc m => (Maybe Stage -> TcAll m) -> TcAll m
@@ -119,7 +113,7 @@ ensureNotPrimitive = resetIsPrimitive >>= \case
   True => elabError $ DirectiveNotAllowed PrimitiveDir
   False => pure ()
 
-data DirectivePlacement = InTm | InBlockSt
+data DirectivePlacement = InTm PTm | InBlockSt (List PBlockStatement)
 
 covering
 printCtxAnd : (HasTc x, HasElab e) => e (TcAll x) -> e (TcAll x)
@@ -165,21 +159,32 @@ printTypeAnd expand b = do
       dbg (show @{showUnelab} type)
       dbg "--- </Type> ---\n"
     ) b'
+    
+covering
+handleImport : (HasTc x, HasElab e) => PTm -> e (TcAll x)
+handleImport (PApp t (MkPSpine [])) = handleImport {x = x} t
+handleImport (PLoc l t) = handleImport {x = x} t
+handleImport t@(PLit (Str path)) = do
+  tm <-  parseImport path
+  elab tm
+handleImport t = elabError $ ImportMustBeLiteral t
 
 covering
-handleDirective : (HasTc x, HasElab e) => Directive -> DirectivePlacement -> e (TcAll x) -> e (TcAll x)
+handleDirective : (HasTc x, HasElab e) => Directive -> DirectivePlacement -> Lazy (e (TcAll x)) -> e (TcAll x)
 handleDirective d p b = case (parseDirective d, p) of
   (Nothing, _) => elabError (UnknownDirective d)
-  (Just MtaDir, InBlockSt) => enter stageHintL (Just Mta) b
-  (Just ObjDir, InBlockSt) => enter stageHintL (Just Obj) b
-  (Just PrimitiveDir, InBlockSt) => enter isPrimitiveL True b
+  (Just MtaDir, InBlockSt _) => enter stageHintL (Just Mta) b
+  (Just ObjDir, InBlockSt _) => enter stageHintL (Just Obj) b
+  (Just PrimitiveDir, InBlockSt _) => enter isPrimitiveL True b
   (Just DebugCtx, _) => printCtxAnd {x = x} b
   (Just DebugTerm, _) => printTermAnd {x = x} False b
   (Just DebugTermExp, _) => printTermAnd {x = x} True b
   (Just DebugType, _) => printTypeAnd {x = x} False b
   (Just DebugTypeExp, _) => printTypeAnd {x = x} True b
-  (Just d, InTm) => elabError $ DirectiveNotAllowed d
-
+  (Just Import, InTm t) => handleImport {x = x} t
+  (Just d@Import, InBlockSt t) => elabError $ DirectiveNotAllowed d
+  (Just d, InTm _) => elabError $ DirectiveNotAllowed d
+  
 elab (PLoc l t) =
   -- @@Debugging
   -- trace "elaborating \{show t}" $
@@ -259,6 +264,6 @@ elab (PBlock t (PBind l n ty tm :: bs)) = do
   ?todoBind
 elab (PBlock t (PBlockTm l tm :: bs)) = ensureNotPrimitive >> do
   elab (PBlock t (PBind l "_" Nothing tm :: bs))
-elab (PBlock t (PDirSt d b :: bs)) = handleDirective {x = m} d InBlockSt (elab (PBlock t (b :: bs)))
+elab (PBlock t (PDirSt d b :: bs)) = handleDirective {x = m} d (InBlockSt bs) (elab (PBlock t (b :: bs)))
 elab (PLit l) = ?todoLit
-elab (PDirTm d t) = handleDirective {x = m} d InTm (elab t)
+elab (PDirTm d t) = handleDirective {x = m} d (InTm t) (elab t)

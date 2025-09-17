@@ -96,6 +96,7 @@ data KnownDirective : Type where
   DebugTermExp : KnownDirective
   DebugType : KnownDirective
   DebugTypeExp : KnownDirective
+  Import : KnownDirective
   
 export
 fromStage : Stage -> KnownDirective
@@ -112,6 +113,7 @@ export covering
 (.asDirective) DebugTermExp = MkDirective "debug-term-exp"
 (.asDirective) DebugType = MkDirective "debug-type"
 (.asDirective) DebugTypeExp = MkDirective "debug-type-exp"
+(.asDirective) Import = MkDirective "import"
   
 export covering
 parseDirective : Directive -> Maybe KnownDirective
@@ -123,6 +125,7 @@ parseDirective (MkDirective "debug-term") = Just DebugTerm
 parseDirective (MkDirective "debug-term-exp") = Just DebugTermExp
 parseDirective (MkDirective "debug-type") = Just DebugType
 parseDirective (MkDirective "debug-type-exp") = Just DebugTypeExp
+parseDirective (MkDirective "import") = Just Import
 parseDirective _ = Nothing
 
 export covering
@@ -135,6 +138,7 @@ directiveCoh {k = DebugTerm} = Refl
 directiveCoh {k = DebugTermExp} = Refl
 directiveCoh {k = DebugType} = Refl
 directiveCoh {k = DebugTypeExp} = Refl
+directiveCoh {k = Import} = Refl
 
 -- A block is a sequence of assignment-like things. It is written like
 -- { x1 := a1; ... ; xn := an; y }, similar to Rust.
@@ -357,4 +361,4 @@ Show PTm where
   show (PProj t n) = showAtomic t ++ "." ++ n
   show (PLoc _ t) = show t
   show (PLit l) = show l
-  show (PDirTm d t) = show d ++ show t
+  show (PDirTm d t) = show d ++ " " ++ show t

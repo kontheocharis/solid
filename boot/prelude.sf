@@ -1,8 +1,6 @@
-#mta
 #primitive
 UNIT : TYPE
 
-#mta
 #primitive
 TT : UNIT
 
@@ -10,82 +8,77 @@ TT : UNIT
 -- IO : [a : Layout] (A : Type a) -> Type ptr
 
 -- Sigma
-#mta
 #primitive
 SIGMA : (A : TYPE) -> (B : A -> TYPE) -> TYPE
 
-#mta
 #primitive
 PAIR : [A : TYPE] [B : A -> TYPE] (a : A) (b : B a) -> SIGMA A B
 
+#obj
 #primitive
 Unit : Type zero
 
+#obj
 #primitive
 tt : Unit
 
 -- Some tests
 
-#mta
 Nat : TYPE
 Nat = (P : TYPE) -> P -> (P -> P) -> P
 
-#mta
 zeroN : Nat
 zeroN N z s = z
 
-#mta
 succN : Nat -> Nat
 succN n N z s = s (n N z s)
 
-#mta
 rec : (N : TYPE) -> N -> (N -> N) -> Nat -> N
 rec N z s n = n N z s
 
-#mta
 addN : Nat -> Nat -> Nat
 addN x y = rec Nat x succN y
 
-#mta
 add-zero-is-zero : Nat -> Nat
 add-zero-is-zero x = addN x zeroN
 
-#mta
 add-succ-is-succ : Nat -> Nat -> Nat
 add-succ-is-succ x y = addN x (succN y)
 
 -- Some object-level stuff
 
+#obj
 Nt : Type ptr
 Nt = (P : Type ptr) -> P -> (P -> P) -> P
 
+#obj
 ze : Nt
 ze P z s = z
 
+#obj
 su : Nt -> Nt
 su n P z s = s (n P z s)
 
+#obj
 rc : (N : Type ptr) -> N -> (N -> N) -> Nt -> N
 rc P z s n = n P z s
 
+#obj
 ad : Nt -> Nt -> Nt
 ad x y = rc Nt x su y
 
-#mta
 Vect : TYPE -> Nat -> TYPE
 Vect T n = rec TYPE UNIT (\R => (head : T, tail : R)) n
 
-#mta
 List : TYPE -> TYPE
 List T = (length : Nat, contents : Vect T length)
 
-#mta
 id : [a : Layout] -> Code ([A : Type a] -> A -> A)
 id [a] = quote [?] [[A : Type a] (x : A) -> A] (\[A] x => x)
   -- @@Todo: need pruning for this to Not require the implicit arg!
   -- @@Todo: proper lambda, code, quote, splice insertion!
 
-#debug-ctx ()
+(List, Vect)
 
 -- Synonym for sized types
 -- #mta

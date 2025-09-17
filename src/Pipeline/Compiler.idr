@@ -184,11 +184,16 @@ HasState ElabState Comp where
   put el = modify (\s => { elabState := el } s)
   get' = gets (\s => s.elabState)
 
+covering
+parseFromImport : String -> Comp PTm
+
 HasElab Comp where
   elabError err = do
     l <- get Loc
     mtas <- accessMetas
     lift $ throw (MkWithMetas mtas (MkElabError err l))
+
+  parseImport = parseFromImport
     
 -- Inputs and outputs of the compiler
   
@@ -269,6 +274,11 @@ parse : String -> Comp PTm
 parse input = case parse topLevelBlock input of
   Right ptm => pure ptm
   Left err => lift $ throw err
+
+-- @@Todo: cache these
+parseFromImport s = do
+  c <- read (FileInput s)
+  parse c
   
 printGoals : SnocList Goal -> Comp ()
 printGoals sx = do
@@ -281,7 +291,7 @@ covering
 elaborate : PTm -> Comp (WithMetas (Atom [<]))
 elaborate ptm = do
   tc <- elab ptm 
-  res <- runAt Check tc emptyContext (CheckInput _ mainAnnot)
+  res <- runAt Infer tc emptyContext (InferInput (Just Mta))
   mtas <- accessMetas
   goals <- get Goals
   printGoals goals
