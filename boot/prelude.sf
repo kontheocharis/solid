@@ -28,27 +28,46 @@ tt : Unit
 
 #mta
 Nat : TYPE
-Nat = [P : TYPE] -> P -> (P -> P) -> P
+Nat = (P : TYPE) -> P -> (P -> P) -> P
 
 #mta
 zero : Nat
-zero z s = z
+zero N z s = z
 
 #mta
 succ : Nat -> Nat
-succ n z s = s (n z s)
+succ n N z s = s (n N z s)
 
 #mta
 rec : (N : TYPE) -> N -> (N -> N) -> Nat -> N
-rec N z s n = n z s
+rec N z s n = n N z s
 
 #mta
 add : Nat -> Nat -> Nat
-add x y = ?asj
+add x y = rec Nat x succ y
+
+-- Some object-level stuff
+
+Nt : Type ptr
+Nt = (P : Type ptr) -> P -> (P -> P) -> P
+
+ze : Nt
+ze P z s = z
+
+su : Nt -> Nt
+su n P z s = s (n P z s)
+
+rc : (N : Type ptr) -> N -> (N -> N) -> Nt -> N
+rc P z s n = n P z s
+
+ad : Nt -> Nt -> Nt
+ad x y = #debug-term-exp (rc Nt x su y)
 
 #mta
 id : [a : Layout] -> Code ([A : Type a] -> A -> A)
-id = ?Fsdjf
+id [a] = quote [?] [[A : Type a] (x : A) -> A] (\[A] x => x)
+  -- @@Todo: need pruning for this to Not require the implicit arg!
+  -- @@Todo: proper lambda, code, quote, splice insertion!
 
 #debug-ctx ()
 

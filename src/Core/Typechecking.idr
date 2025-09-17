@@ -565,7 +565,8 @@ tcLet name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => d
   let Val ns = ctx.idents
   tm' : ExprAt stage ns <- case ty of
     Just ty => do
-      ty' <- ty Check ctx (CheckInput stage (objZOrMtaA stage))
+      tySort <- solving (freshSortData ctx stage Sized <&> .a)
+      ty' <- ty Check ctx (CheckInput stage tySort)
       tm Check ctx (CheckInput stage ty'.a)
     Nothing => tm Infer ctx (InferInput (Just stage))
   rest' <- rest md (define (Explicit, name) tm' ctx) (wkS inp)
@@ -591,7 +592,8 @@ tcPrimDecl name stage ty rest = inferStageIfNone stage $ \stage, md, ctx, inp =>
     | Nothing => tcError ctx $ PrimitiveNotFound name
 
   -- Turn the type signature into an operation signature
-  ty' <- ty Check ctx (CheckInput stage (objZOrMtaA stage))
+  tySort <- solving (freshSortData ctx stage Sized <&> .a)
+  ty' <- ty Check ctx (CheckInput stage tySort)
   Gathered ar' _ params ret <- reading (gatherPis ctx.scope ty'.p.a ar)
     | TooMany extra under p => tcError ctx $ NotAPi ty'.tm extra
   let Yes Refl = decEq ar' ar
@@ -633,7 +635,9 @@ tcLetRec : HasTc m
   -> TcAll m
 tcLetRec name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => do
   let Val ns = ctx.idents
-  ty' <- ty Check ctx (CheckInput stage (objZOrMtaA stage))
+  -- @@Refactor: factor out this sort stuff
+  tySort <- solving (freshSortData ctx stage Sized <&> .a)
+  ty' <- ty Check ctx (CheckInput stage tySort)
   tm' : ExprAt stage ns <- tm Check ctx (CheckInput stage ty'.a)
   rest' <- rest md (define (Explicit, name) tm' ctx) (wkS inp)
   let result = sub @{evalExprAtMaybe} {sns = ctxSize ctx} {sms = SS $ ctxSize ctx} (idS :< tm'.tm) rest'
