@@ -223,10 +223,12 @@ elab (PHole n) = tc $ tcHole n
 elab PUnit = tc $ whenInStage $ \case
   Just Obj => tcPrim PrimTt []
   _ => tcPrim PrimTT []
-elab (PSigmas (MkPTel [])) = elab PUnit
+elab (PSigmas (MkPTel [])) = tc . whenInStage $ \case
+  Just Obj => tcPrim PrimUnit []
+  _ => tcPrim PrimUNIT []
 elab (PSigmas (MkPTel ((MkPParam l n ty) :: ts))) = do
   ty' <- enterLoc l $ elab (fromMaybe (PHole Nothing) ty)
-  ts' <- elab (PSigmas (MkPTel ts))
+  ts' <- elab (PLam (MkPTel [MkPParam l n Nothing]) (PSigmas (MkPTel ts)))
   tc . whenInStage $ \case
     Just Obj => tcPrim PrimSigma [hole, hole, ty', ts']
     _ => tcPrim PrimSIGMA [ty', ts']

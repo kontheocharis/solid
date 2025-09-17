@@ -334,10 +334,16 @@ namespace Thin
   [<] . e = [<]
   (xs :< x) . e = xs . e :< thin e x
 
--- Weakening
+-- Weakening: optimised out
+--
+-- @@WARNING: only implement this for things whose
+-- runtime representation doesn't change upon weakening!
 public export
 interface Weak (0 tm : Ctx -> Type) where
   weak : Wk ns ms -> tm ms -> tm ns
+  
+-- @@Debugging: First thing to comment out when there's a crazy bug
+%transform "weak" weak w x = believe_me x
 
 -- Weakening when knowing the size of the source context.
 public export
@@ -488,7 +494,7 @@ namespace LazySub
   expandDefs : Vars f => Thin f => Size ns => Size bs => EvalSized f f f => LazySub bs f ns -> f ns -> f ns
   expandDefs defs at = thin defs.inv (sub defs.asSub at)
 
--- Relabeling should always be the identity
+-- Relabeling
 
 public export
 data Relab : Ctx -> Ctx -> Type where
@@ -496,9 +502,15 @@ data Relab : Ctx -> Ctx -> Type where
   Keep : Relab ns ms -> Relab (ns :< n) (ms :< n)
   Change : (0 n : Ident) -> Relab ns ms -> Relab (ns :< n) (ms :< n')
   
+-- Relabeling should always be the identity
+--
+-- @@WARNING: only implement this for things whose
+-- runtime representation doesn't change upon relabeling!
 public export
 interface Relabel (0 tm : Ctx -> Type) where
   relabel : Relab ns ms -> tm ms -> tm ns
+
+%transform "relabel" relabel r x = believe_me x
   
 namespace Relabel
   public export  
@@ -570,7 +582,6 @@ Relabel Lvl where
 
 public export
 Weak Lvl where
-  -- @@Todo: use %transform, do not rely on identity optimisation
   weak Id l = l
   weak (Drop x) LZ = LZ
   weak (Drop x) (LS l) = LS (weak x (wkLvl l))
@@ -585,19 +596,10 @@ Thin Idx where
 public export
 Thin Lvl where
   thin r l = idxToLvl sns (thin r (lvlToIdx sms l))
-  
-public export
-Weak Idx where
-  weak Id x = x
-  weak (Drop x) u = IS (weak x u)
 
 public export
 Vars Lvl where
   here {sz = s} = lastLvl s
-  
-public export
-Vars Idx where
-  here {sz = s} = IZ
 
 public export
 Quote Lvl Idx where

@@ -147,4 +147,4 @@ EvalPrims => WeakSized (Term Syntax) where
 
 public export
 EvalPrims => Vars (Term Syntax) where
-  here = SynApps ((SynVar (Index here)) $$ [])
+  here = SynApps ((SynVar (Index IZ)) $$ [])

@@ -48,11 +48,11 @@ addN x y = rec Nat x succN y
 
 #mta
 add-zero-is-zero : Nat -> Nat
-add-zero-is-zero x = #debug-term-exp (addN x zeroN)
+add-zero-is-zero x = addN x zeroN
 
 #mta
 add-succ-is-succ : Nat -> Nat -> Nat
-add-succ-is-succ x y = #debug-term-exp (addN x (succN y))
+add-succ-is-succ x y = addN x (succN y)
 
 -- Some object-level stuff
 
@@ -69,7 +69,15 @@ rc : (N : Type ptr) -> N -> (N -> N) -> Nt -> N
 rc P z s n = n P z s
 
 ad : Nt -> Nt -> Nt
-ad x y = #debug-term-exp (rc Nt x su y)
+ad x y = rc Nt x su y
+
+#mta
+Vect : TYPE -> Nat -> TYPE
+Vect T n = rec TYPE UNIT (\R => (head : T, tail : R)) n
+
+#mta
+List : TYPE -> TYPE
+List T = (length : Nat, contents : Vect T length)
 
 #mta
 id : [a : Layout] -> Code ([A : Type a] -> A -> A)
