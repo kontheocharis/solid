@@ -142,6 +142,10 @@ Dbg Comp where
     let syn = showSyntax @{mtas}
     liftIO $ putStrLn (s @{syn})
 
+HasState Loc Comp where
+  put l = modify (\s => { loc := l } s)
+  get' = gets (\s => s.loc)
+
 HasTc Comp where
   metasM = MetaComp
 
@@ -154,15 +158,6 @@ HasTc Comp where
   getGoals = gets goals
 
   addGoal g = modify (\s => { goals := s.goals :< g } s)
-
-  enterLoc l act = do
-    old <- gets loc
-    modify (\s => { loc := l } s)
-    res <- act
-    modify (\s => { loc := old } s)
-    pure res
-    
-  getLoc = gets loc
 
   tcError ctx err = do
     l <- gets loc
@@ -191,9 +186,9 @@ HasState ElabState Comp where
 
 HasElab Comp where
   elabError err = do
-    l <- Control.Monad.State.gets (\s => s.elabState.locHint)
+    l <- get Loc
     mtas <- accessMetas
-    lift $ throw (MkWithMetas mtas (MkElabError err (fromMaybe dummyLoc l)))
+    lift $ throw (MkWithMetas mtas (MkElabError err l))
     
 -- Inputs and outputs of the compiler
   

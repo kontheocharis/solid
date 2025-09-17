@@ -30,21 +30,17 @@ public export
 record ElabState where
   constructor MkElabState
   stageHint : Maybe Stage
-  locHint : Maybe Loc
   isPrimitive : Bool
   
 stageHintL : Lens ElabState (Maybe Stage)
 stageHintL = MkLens stageHint (\sh, s => { stageHint := sh } s)
-  
-locHintL : Lens ElabState (Maybe Loc)
-locHintL = MkLens locHint (\sh, s => { locHint := sh } s)
   
 isPrimitiveL : Lens ElabState Bool
 isPrimitiveL = MkLens isPrimitive (\sh, s => { isPrimitive := sh } s)
 
 export
 initialElabState : ElabState
-initialElabState = MkElabState Nothing Nothing False
+initialElabState = MkElabState Nothing False
   
 export
 data ElabErrorKind : Type where
@@ -69,12 +65,15 @@ Show ElabError where
   show (MkElabError k l) = "Elaboration error at \{show l}:\n\{show k}"
   
 public export
-interface (Monad e, HasState ElabState e) => HasElab (0 e : Type -> Type) where
+interface (Monad e, HasState Loc e, HasState ElabState e) => HasElab (0 e : Type -> Type) where
   elabError : ElabErrorKind -> e x
 
 -- Elaborate a presyntax term into a typechecking operation.
 export covering
 elab : (HasElab e, HasTc m) => PTm -> e (TcAll m)
+
+enterLoc : HasElab e => Loc -> e x -> e x
+enterLoc l = enter idL l
 
 -- The annotation of the entry point of the program
 export covering
@@ -97,22 +96,17 @@ elabSpine : (HasElab e, HasTc m) => PSpine k -> e (List (Ident, TcAll m))
 elabSpine (MkPSpine []) = pure $ []
 elabSpine (MkPSpine (MkPArg l n v :: xs)) = pure $ (
     fromMaybe (Explicit, "_") n,
-    interceptAll (enterLoc l) $ !(elab v)
+    interceptAll (enter idL l) $ !(elab v)
   ) :: !(elabSpine (MkPSpine xs))
   
 tc : (HasElab e, HasTc m) => TcAll m -> e (TcAll m)
 tc f = do
-  l <- access locHintL
-  case l of
-    Just l' => pure $ interceptAll (enterLoc l') f
-    Nothing => pure f
+  l <- get Loc
+  pure $ interceptAll (enter idL l) f
   
 covering
 hole : (HasTc m) => TcAll m
 hole = tcHole Nothing
-
-enterLoc : HasElab e => Loc -> e x -> e x
-enterLoc l = enter locHintL (Just l)
 
 resetIsPrimitive : HasElab e => e Bool
 resetIsPrimitive = do
@@ -134,7 +128,7 @@ printCtxAnd b = do
   tc $ interceptContext (\ctx => do
       let Val _ = ctx.idents 
       mtas <- enterMetas (getAllMetas {sm = SolvingNotAllowed} @{metas})
-      loc <- getLoc
+      loc <- get Loc
       dbg "--- <Context at \{show loc}> ---"
       dbg (show @{showUnelab {unel = unelabContext {onlyBinds = False}}} ctx)
       dbg "--- </Context> ---\n"
@@ -147,7 +141,7 @@ printTermAnd expand b = do
   tc $ interceptTerm (\ctx, tm => do
       let Val _ = ctx.idents 
       mtas <- enterMetas (getAllMetas {sm = SolvingNotAllowed} @{metas})
-      loc <- getLoc
+      loc <- get Loc
       let term : Atom _ = if expand
                     then expandDefs ctx.scope.defs tm.mp.tm
                     else tm.mp.tm
@@ -163,7 +157,7 @@ printTypeAnd expand b = do
   tc $ interceptTerm (\ctx, tm => do
       let Val _ = ctx.idents 
       mtas <- enterMetas (getAllMetas {sm = SolvingNotAllowed} @{metas})
-      loc <- getLoc
+      loc <- get Loc
       let type : Atom _ = if expand
                     then expandDefs ctx.scope.defs tm.mp.annot.ty
                     else tm.mp.annot.ty

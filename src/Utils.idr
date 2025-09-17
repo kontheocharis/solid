@@ -140,6 +140,10 @@ record Lens (s : Type) (s' : Type) where
   set : s' -> s -> s
   
 export
+idL : Lens s s
+idL = MkLens id (\a, b => a)
+  
+export
 access : HasState s m => Lens s s' -> m s'
 access (MkLens gt _) = gets gt
   
