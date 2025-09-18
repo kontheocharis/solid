@@ -166,40 +166,34 @@ public export
 TcAll m = (md : TcMode) -> Tc md m
 
 public export
-runAt : HasTc m => (md : TcMode) -> TcAll m -> Tc md m
-runAt md f = f md
+atMode : HasTc m => (md : TcMode) -> TcAll m -> Tc md m
+atMode md f = f md
 
--- Map a parametric monadic operation over Tc.
+-- Wrap a parametric monadic operation over TcAll.
 public export
-intercept : HasTc m => (forall a . m a -> m a) -> {md : TcMode} -> Tc md m -> Tc md m
-intercept f {md = Check} x = \ctx, as => f (x ctx as)
-intercept f {md = Infer} x = \ctx, s => f (x ctx s)
+wrap : HasTc m => (forall a . m a -> m a) -> TcAll m -> TcAll m
+wrap f x Check = \ctx, as => f (x Check ctx as)
+wrap f x Infer = \ctx, s => f (x Infer ctx s)
 
--- Map a parametric monadic operation over TcAll.
+-- Run some operation after the given typechecking operation.
 public export
-interceptAll : HasTc m => (forall a . m a -> m a) -> TcAll m -> TcAll m
-interceptAll f x Check = \ctx, as => f (x Check ctx as)
-interceptAll f x Infer = \ctx, s => f (x Infer ctx s)
-
--- View the current term
-public export
-interceptTerm : HasTc m => (forall bs, ns . {s : _} -> Context bs ns -> ExprAtMaybe s ns -> m ()) -> TcAll m -> TcAll m
-interceptTerm f x Check = \ctx, as => do
+runAfter : HasTc m => (forall bs, ns . {s : _} -> Context bs ns -> ExprAtMaybe s ns -> m ()) -> TcAll m -> TcAll m
+runAfter f x Check = \ctx, as => do
   y <- x Check ctx as
   f ctx y
   pure y
-interceptTerm f x Infer = \ctx, s => do
+runAfter f x Infer = \ctx, s => do
   y <- x Infer ctx s
   f ctx y
   pure y
   
--- View the current context
+-- Run some operation before the given typechecking operation.
 public export
-interceptContext : HasTc m => (forall bs, ns . Context bs ns -> m ()) -> TcAll m -> TcAll m
-interceptContext f x Check = \ctx, as => do
+runBefore : HasTc m => (forall bs, ns . Context bs ns -> m ()) -> TcAll m -> TcAll m
+runBefore f x Check = \ctx, as => do
   f ctx
   x Check ctx as
-interceptContext f x Infer = \ctx, as => do
+runBefore f x Infer = \ctx, as => do
   f ctx
   x Infer ctx as
 

@@ -291,7 +291,7 @@ covering
 elaborate : PTm -> Comp (WithMetas (Atom [<]))
 elaborate ptm = do
   tc <- elab ptm 
-  res <- runAt Infer tc emptyContext (InferInput (Just Mta))
+  res <- atMode Infer tc emptyContext (InferInput (Just Mta))
   mtas <- accessMetas
   goals <- get Goals
   printGoals goals

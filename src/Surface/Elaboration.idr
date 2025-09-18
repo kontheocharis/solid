@@ -90,13 +90,13 @@ elabSpine : (HasElab e, HasTc m) => PSpine k -> e (List (Ident, TcAll m))
 elabSpine (MkPSpine []) = pure $ []
 elabSpine (MkPSpine (MkPArg l n v :: xs)) = pure $ (
     fromMaybe (Explicit, "_") n,
-    interceptAll (enter idL l) $ !(elab v)
+    wrap (enter idL l) $ !(elab v)
   ) :: !(elabSpine (MkPSpine xs))
   
 tc : (HasElab e, HasTc m) => TcAll m -> e (TcAll m)
 tc f = do
   l <- get Loc
-  pure $ interceptAll (enter idL l) f
+  pure $ wrap (enter idL l) f
   
 covering
 hole : (HasTc m) => TcAll m
@@ -119,7 +119,7 @@ covering
 printCtxAnd : (HasTc x, HasElab e) => e (TcAll x) -> e (TcAll x)
 printCtxAnd b = do
   b' <- b
-  tc $ interceptContext (\ctx => do
+  tc $ runBefore (\ctx => do
       let Val _ = ctx.idents 
       mtas <- enterMetas (getAllMetas {sm = SolvingNotAllowed} @{metas})
       loc <- get Loc
@@ -132,7 +132,7 @@ covering
 printTermAnd : (HasTc x, HasElab e) => (expand : Bool) -> e (TcAll x) -> e (TcAll x)
 printTermAnd expand b = do
   b' <- b
-  tc $ interceptTerm (\ctx, tm => do
+  tc $ runAfter (\ctx, tm => do
       let Val _ = ctx.idents 
       mtas <- enterMetas (getAllMetas {sm = SolvingNotAllowed} @{metas})
       loc <- get Loc
@@ -148,7 +148,7 @@ covering
 printTypeAnd : (HasTc x, HasElab e) => (expand : Bool) -> e (TcAll x) -> e (TcAll x)
 printTypeAnd expand b = do
   b' <- b
-  tc $ interceptTerm (\ctx, tm => do
+  tc $ runAfter (\ctx, tm => do
       let Val _ = ctx.idents 
       mtas <- enterMetas (getAllMetas {sm = SolvingNotAllowed} @{metas})
       loc <- get Loc
@@ -232,7 +232,7 @@ elab (PProj v n) = ?tcProj
 elab (PBlock t []) = do
   elab PUnit
   -- -- @@Debugging
-  -- tc (interceptContext (\ctx => do
+  -- tc (runBefore (\ctx => do
   --   let Val _ = ctx.idents 
   --   mtas <- enterMetas (getAllMetas {sm = SolvingNotAllowed} @{metas})
   --   trace (show @{showUnelab} ctx) (pure ())) e)

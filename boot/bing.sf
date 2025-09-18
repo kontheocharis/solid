@@ -1,4 +1,6 @@
 
-prel := #import "boot/prelude.sf"
+prel := #import "prelude.sf"
+
+
 
 #debug-ctx ()
