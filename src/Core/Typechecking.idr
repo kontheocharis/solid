@@ -147,37 +147,38 @@ public export
 0 TcOp : (md : TcMode) -> (0 m : Type -> Type) -> Ctx -> Type
 TcOp md m ms = (i : TcInput md ms) -> m (TcOutput md ms i)
 
--- Typechecking in a specific context
-public export
-0 TcAt : (md : TcMode) -> (0 m : Type -> Type) -> Ctx -> Ctx -> Type
-TcAt md m bs ns = Context bs ns -> TcOp md m ns
-
 -- Typechecking in any context
 --
 -- This is what is mostly used to work with, since a lot of the time we don't know which
 -- context we will switch in ahead of time (due to things like inserted lambdas).
 public export
-0 Tc : (md : TcMode) -> (0 m : Type -> Type) -> Type
-Tc md m = forall bs, ns . TcAt md m bs ns
+0 TcAt : (md : TcMode) -> (0 m : Type -> Type) -> Type
+TcAt md m = forall bs, ns . Context bs ns -> TcOp md m ns
 
 -- Typechecking at any mode and context.
 public export
-0 TcAll : (m : Type -> Type) -> Type
-TcAll m = (md : TcMode) -> Tc md m
+0 Tc : (m : Type -> Type) -> Type
+Tc m = (md : TcMode) -> TcAt md m
 
 public export
-atMode : HasTc m => (md : TcMode) -> TcAll m -> Tc md m
+atMode : HasTc m => (md : TcMode) -> Tc m -> TcAt md m
 atMode md f = f md
 
--- Wrap a parametric monadic operation over TcAll.
+-- Wrap a parametric monadic operation over Tc.
 public export
-wrap : HasTc m => (forall a . m a -> m a) -> TcAll m -> TcAll m
+wrap : HasTc m => (forall a . m a -> m a) -> Tc m -> Tc m
 wrap f x Check = \ctx, as => f (x Check ctx as)
 wrap f x Infer = \ctx, s => f (x Infer ctx s)
 
 -- Run some operation after the given typechecking operation.
 public export
-runAfter : HasTc m => (forall bs, ns . {s : _} -> Context bs ns -> ExprAtMaybe s ns -> m ()) -> TcAll m -> TcAll m
+modifyInputs : HasTc m => (forall bs, ns . Context bs ns -> Context bs ns) -> Tc m -> Tc m
+modifyInputs f x Check = \ctx, as => x Check (f ctx) as
+modifyInputs f x Infer = \ctx, s => x Infer (f ctx) s
+
+-- Run some operation after the given typechecking operation.
+public export
+runAfter : HasTc m => (forall bs, ns . {s : _} -> Context bs ns -> ExprAtMaybe s ns -> m ()) -> Tc m -> Tc m
 runAfter f x Check = \ctx, as => do
   y <- x Check ctx as
   f ctx y
@@ -189,7 +190,7 @@ runAfter f x Infer = \ctx, s => do
   
 -- Run some operation before the given typechecking operation.
 public export
-runBefore : HasTc m => (forall bs, ns . Context bs ns -> m ()) -> TcAll m -> TcAll m
+runBefore : HasTc m => (forall bs, ns . Context bs ns -> m ()) -> Tc m -> Tc m
 runBefore f x Check = \ctx, as => do
   f ctx
   x Check ctx as
@@ -305,12 +306,16 @@ insert ctx mExpr = do
 -- Force a typechecking operation to be in checking mode. This might involve unifying with an
 -- inferred type.
 public export
-switch : HasTc m => Tc Infer m -> TcAll m
+switch : HasTc m => TcAt Infer m -> Tc m
 switch f Infer = f
 switch f Check = \ctx, (CheckInput stage annot) => do
   result <- insert ctx $ f ctx (InferInput (Just stage))
   unify ctx annot.ty result.annot.ty
   pure result
+
+public export
+return : HasTc m => (forall ns . Size ns => Expr ns) -> Tc m
+return expr = switch $ \ctx, (InferInput inp) => adjustStageIfNeeded ctx expr inp
 
 -- Insert (some kind of an implicit) lambda from the given information.
 --
@@ -321,7 +326,7 @@ insertLam : HasTc m => Context bs ns
   -> (piIdent : Ident)
   -> (bindAnnot : AnnotFor piStage Sized AtomTy ns)
   -> (bodyAnnot : AnnotFor piStage Sized (AtomBody piIdent) ns)
-  -> (subject : Tc Check m)
+  -> (subject : TcAt Check m)
   -> m (ExprAt piStage ns)
 insertLam ctx piStage piIdent bindAnnot bodyAnnot subject = do
   s <- subject
@@ -333,7 +338,7 @@ insertLam ctx piStage piIdent bindAnnot bodyAnnot subject = do
 inferAnnot : HasTc m
   => Context bs ns
   -> (k : forall s . SortKind s)
-  -> Tc Infer m
+  -> TcAt Infer m
   -> m (s ** AnnotFor s k Atom ns)
 inferAnnot ctx kind ty = do
   MkExpr t (MkAnnot univ _ stage) <- ty ctx (InferInput Nothing)
@@ -347,7 +352,7 @@ inferAnnot ctx kind ty = do
 -- Returns the checked spine.
 tcSpineExact : HasTc m
   => Context bs ns
-  -> List (Ident, TcAll m)
+  -> List (Ident, Tc m)
   -> Tel ar Annot ns
   -> m (Spine ar Expr ns)
 tcSpineExact ctx [] [] = pure []
@@ -374,7 +379,7 @@ tcSpineExact ctx (((md, name), tm) :: tms) ((Val (piMd, piName), annot) :: annot
 -- Returns the checked spine and the result type.
 tcSpine : HasTc m
   => Context bs ns
-  -> List (Ident, TcAll m)
+  -> List (Ident, Tc m)
   -> Annot ns
   -> m (ar ** (Annot ns, Spine ar Expr ns))
 tcSpine ctx [] ann = pure ([] ** (ann, []))
@@ -402,7 +407,7 @@ tcSpine ctx allTms@(((md, name), tm) :: tms) ann = reading (forcePi ctx.scope an
 
 -- Introduce a metavariable
 public export
-tcMeta : HasTc m => {default Nothing name : Maybe Name} -> TcAll m
+tcMeta : HasTc m => {default Nothing name : Maybe Name} -> Tc m
 tcMeta {name = name} Check = \ctx, (CheckInput _ annot) => do
   mta <- reading (freshMeta ctx name annot)
   whenJust name $ \n => addGoal (MkGoal (Just n) mta.p ctx)
@@ -417,9 +422,9 @@ tcMeta {name = name} Infer = ensureKnownStage $ \ctx, stage => do
 public export
 tcPi : HasTc m
   => Ident
-  -> TcAll m
-  -> TcAll m
-  -> TcAll m
+  -> Tc m
+  -> Tc m
+  -> Tc m
 tcPi x a b = switch $ ensureKnownStage $ \ctx, stage => case stage of
   -- @@Reconsider: Kovacs infers the stage from the domain if it is not given..
   -- This is more annoying here because of byte metas, but also I am not
@@ -441,9 +446,9 @@ tcPi x a b = switch $ ensureKnownStage $ \ctx, stage => case stage of
 public export
 tcLam : HasTc m
   => (n : Ident)
-  -> (bindTy : Maybe (TcAll m))
-  -> (body : TcAll m)
-  -> TcAll m
+  -> (bindTy : Maybe (Tc m))
+  -> (body : Tc m)
+  -> Tc m
 tcLam lamIdent bindTy body Check = \ctx, (CheckInput stage annot@(MkAnnotAt ty sort)) => do
   reading (forcePiAt ctx.scope stage lamIdent ty) >>= \case
     MatchingPiAt (MkPiData resolvedPi piIdent a b) => do
@@ -475,7 +480,7 @@ tcLam lamIdent bindTy body Infer = ensureKnownStage $ \ctx, stage => do
 
 -- Check a variable, by looking up in the context
 public export
-tcVar : HasTc m => Name -> TcAll m
+tcVar : HasTc m => Name -> Tc m
 tcVar n = switch $ \ctx, (InferInput stage') => case lookup ctx n of
     Nothing => tcError ctx $ UnknownName n
     Just idx => do
@@ -489,15 +494,15 @@ tcVar n = switch $ \ctx, (InferInput stage') => case lookup ctx n of
 -- We should at least know the stage of the hole. User holes are added to the
 -- list of goals, which can be displayed after typechecking.
 public export
-tcHole : HasTc m => Maybe Name -> TcAll m
+tcHole : HasTc m => Maybe Name -> Tc m
 tcHole n = tcMeta {name = n}
 
 -- Check an application
 public export
 tcApps : HasTc m
-  => TcAll m
-  -> List (Ident, TcAll m)
-  -> TcAll m
+  => Tc m
+  -> List (Ident, Tc m)
+  -> Tc m
 tcApps subject args = switch $ \ctx, (InferInput reqStage) => do
   subject'@(MkExpr _ fnAnnot) <- (.mp) <$> subject Infer ctx (InferInput reqStage)
   (ar' ** (ret, args')) <- tcSpine ctx args fnAnnot
@@ -512,8 +517,8 @@ tcPrimUser : HasTc m
   -> {k : PrimitiveClass}
   -> {l : PrimitiveLevel}
   -> Primitive k r l ar
-  -> List (Ident, TcAll m)
-  -> TcAll m
+  -> List (Ident, Tc m)
+  -> Tc m
 tcPrimUser p args = switch $ \ctx, (InferInput stage) => do
   (pParams, pRet) : Op _ _ <- case l of
     PrimNative => pure $ primAnnot p
@@ -534,11 +539,11 @@ tcPrim : HasTc m
   -> {k : PrimitiveClass}
   -> {l : PrimitiveLevel}
   -> Primitive k r l ar
-  -> DispList ar (TcAll m)
-  -> TcAll m
+  -> DispList ar (Tc m)
+  -> Tc m
 tcPrim p args = tcPrimUser p (dispToList args)
   
-inferStageIfNone : HasTc m => Maybe Stage -> (Stage -> TcAll m) -> TcAll m
+inferStageIfNone : HasTc m => Maybe Stage -> (Stage -> Tc m) -> Tc m
 inferStageIfNone (Just s) m = m s
 inferStageIfNone Nothing m = \md, ctx, inp => case inp of
   CheckInput s _ => m s md ctx inp
@@ -550,10 +555,10 @@ public export
 tcLet : HasTc m
   => (name : Name)
   -> (stage : Maybe Stage)
-  -> (ty : (Maybe (TcAll m)))
-  -> (tm : TcAll m)
-  -> (rest : TcAll m)
-  -> TcAll m
+  -> (ty : (Maybe (Tc m)))
+  -> (tm : Tc m)
+  -> (rest : Tc m)
+  -> Tc m
 tcLet name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => do
   let Val ns = ctx.idents
   tm' : ExprAt stage ns <- case ty of
@@ -571,9 +576,9 @@ public export
 tcPrimDecl : HasTc m
   => (name : Name)
   -> (stage : Maybe Stage)
-  -> (ty : TcAll m)
-  -> (rest : TcAll m)
-  -> TcAll m
+  -> (ty : Tc m)
+  -> (rest : Tc m)
+  -> Tc m
 tcPrimDecl name stage ty rest = inferStageIfNone stage $ \stage, md, ctx, inp => do
   -- Ensure we are in root scope, otherwise there might be bindings!
   let SZ = ctx.scope.sizeBinds
@@ -622,10 +627,10 @@ public export
 tcLetRec : HasTc m
   => (name : Name)
   -> (stage : Maybe Stage)
-  -> (ty : (TcAll m))
-  -> (tm : TcAll m)
-  -> (rest : TcAll m)
-  -> TcAll m
+  -> (ty : (Tc m))
+  -> (tm : Tc m)
+  -> (rest : Tc m)
+  -> Tc m
 tcLetRec name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => do
   let Val ns = ctx.idents
   -- @@Refactor: factor out this sort stuff

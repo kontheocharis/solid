@@ -25,22 +25,57 @@ import Control.Monad.State
 import Control.Monad.Error.Either
 import Debug.Trace
 import Surface.Unelaboration
+import Data.HashMap
+import System.Path
+
+public export
+record Module where
+  constructor MkModule
+  name : Input
+  presyn : PTm
+  syn : Expr [<]
+
+public export
+record ProjectAtElab where
+  constructor MkProject
+  startingPath : Maybe String
+  otherModules : HashMap Input Module
+  main : Maybe Module
+  
+export
+startingPathL : Lens ProjectAtElab (Maybe String)
+startingPathL = MkLens startingPath (\sh, s => { startingPath := sh } s)
+  
+export
+otherModulesL : Lens ProjectAtElab (HashMap Input Module)
+otherModulesL = MkLens otherModules (\sh, s => { otherModules := sh } s)
+  
+export
+mainL : Lens ProjectAtElab (Maybe Module)
+mainL = MkLens main (\sh, s => { main := sh } s)
 
 public export
 record ElabState where
   constructor MkElabState
+  project : ProjectAtElab
   stageHint : Maybe Stage
   isPrimitive : Bool
   
+export
+projectL : Lens ElabState ProjectAtElab
+projectL = MkLens project (\sh, s => { project := sh } s)
+  
+export
 stageHintL : Lens ElabState (Maybe Stage)
 stageHintL = MkLens stageHint (\sh, s => { stageHint := sh } s)
   
+export
 isPrimitiveL : Lens ElabState Bool
 isPrimitiveL = MkLens isPrimitive (\sh, s => { isPrimitive := sh } s)
 
 export
 initialElabState : ElabState
-initialElabState = MkElabState Nothing False
+initialElabState = MkElabState (MkProject Nothing empty Nothing) Nothing False
   
 export
 data ElabErrorKind : Type where
@@ -67,41 +102,38 @@ Show ElabError where
   show (MkElabError k l) = "Elaboration error at \{show l}:\n\{show k}"
   
 public export
-interface (Monad e, HasState Loc e, HasState ElabState e) => HasElab (0 e : Type -> Type) where
+interface (Monad e, HasTc e, HasState ElabState e) => HasElab (0 e : Type -> Type) where
   elabError : ElabErrorKind -> e x
-  parseImport : (filename : String) -> e PTm
+  parseImport : (filename : Input) -> e PTm
+  runTcRoot : Tc e -> e (Expr [<])
 
 -- Elaborate a presyntax term into a typechecking operation.
 export covering
-elab : (HasElab e, HasTc m) => PTm -> e (TcAll m)
+elab : HasElab e => PTm -> e (Tc e)
 
 enterLoc : HasElab e => Loc -> e x -> e x
 enterLoc l = enter idL l
  
 export
-whenInStage : HasTc m => (Maybe Stage -> TcAll m) -> TcAll m
+whenInStage : HasElab e => (Maybe Stage -> Tc e) -> Tc e
 whenInStage f Infer = \ctx, (InferInput maybeStage) =>
   f maybeStage Infer ctx (InferInput maybeStage)
 whenInStage f Check = \ctx, (CheckInput stage annot) =>
   f (Just stage) Check ctx (CheckInput stage annot)
 
 covering
-elabSpine : (HasElab e, HasTc m) => PSpine k -> e (List (Ident, TcAll m))
+elabSpine : HasElab e => PSpine k -> e (List (Ident, Tc e))
 elabSpine (MkPSpine []) = pure $ []
 elabSpine (MkPSpine (MkPArg l n v :: xs)) = pure $ (
     fromMaybe (Explicit, "_") n,
     wrap (enter idL l) $ !(elab v)
   ) :: !(elabSpine (MkPSpine xs))
   
-tc : (HasElab e, HasTc m) => TcAll m -> e (TcAll m)
+tc : HasElab e => Tc e -> e (Tc e)
 tc f = do
   l <- get Loc
   pure $ wrap (enter idL l) f
   
-covering
-hole : (HasTc m) => TcAll m
-hole = tcHole Nothing
-
 resetIsPrimitive : HasElab e => e Bool
 resetIsPrimitive = do
   p <- access isPrimitiveL
@@ -116,7 +148,7 @@ ensureNotPrimitive = resetIsPrimitive >>= \case
 data DirectivePlacement = InTm PTm | InBlockSt (List PBlockStatement)
 
 covering
-printCtxAnd : (HasTc x, HasElab e) => e (TcAll x) -> e (TcAll x)
+printCtxAnd : HasElab e => e (Tc e) -> e (Tc e)
 printCtxAnd b = do
   b' <- b
   tc $ runBefore (\ctx => do
@@ -129,7 +161,7 @@ printCtxAnd b = do
     ) b'
 
 covering
-printTermAnd : (HasTc x, HasElab e) => (expand : Bool) -> e (TcAll x) -> e (TcAll x)
+printTermAnd : HasElab e => (expand : Bool) -> e (Tc e) -> e (Tc e)
 printTermAnd expand b = do
   b' <- b
   tc $ runAfter (\ctx, tm => do
@@ -145,7 +177,7 @@ printTermAnd expand b = do
     ) b'
 
 covering
-printTypeAnd : (HasTc x, HasElab e) => (expand : Bool) -> e (TcAll x) -> e (TcAll x)
+printTypeAnd : HasElab e => (expand : Bool) -> e (Tc e) -> e (Tc e)
 printTypeAnd expand b = do
   b' <- b
   tc $ runAfter (\ctx, tm => do
@@ -161,30 +193,43 @@ printTypeAnd expand b = do
     ) b'
     
 covering
-handleImport : (HasTc x, HasElab e) => PTm -> e (TcAll x)
-handleImport (PApp t (MkPSpine [])) = handleImport {x = x} t
-handleImport (PLoc l t) = handleImport {x = x} t
+handleImport : HasElab e => PTm -> e (Tc e)
+handleImport (PApp t (MkPSpine [])) = handleImport t
+handleImport (PLoc l t) = handleImport t
 handleImport t@(PLit (Str path)) = do
-  tm <-  parseImport path
-  elab tm
+  start <- fromMaybe "" <$> access (projectL . startingPathL)
+  let completePath = joinPath [start, path]
+  let p = FileInput (fromMaybe "." $ parent completePath)
+  tm : Expr _ <- lookup p <$> access (projectL . otherModulesL) >>= \case
+    Just (MkModule _ _ tm) => pure tm
+    Nothing => do
+      ptm <- parseImport (FileInput completePath)
+      tm <- elab ptm >>= runTcRoot
+      update (projectL . otherModulesL) $ insert p (MkModule p ptm tm)
+      pure tm
+  pure $ return (weakS Terminal tm)
 handleImport t = elabError $ ImportMustBeLiteral t
 
 covering
-handleDirective : (HasTc x, HasElab e) => Directive -> DirectivePlacement -> Lazy (e (TcAll x)) -> e (TcAll x)
+handleDirective : HasElab e => Directive -> DirectivePlacement -> Lazy (e (Tc e)) -> e (Tc e)
 handleDirective d p b = case (parseDirective d, p) of
   (Nothing, _) => elabError (UnknownDirective d)
   (Just MtaDir, InBlockSt _) => enter stageHintL (Just Mta) b
   (Just ObjDir, InBlockSt _) => enter stageHintL (Just Obj) b
   (Just PrimitiveDir, InBlockSt _) => enter isPrimitiveL True b
-  (Just DebugCtx, _) => printCtxAnd {x = x} b
-  (Just DebugTerm, _) => printTermAnd {x = x} False b
-  (Just DebugTermExp, _) => printTermAnd {x = x} True b
-  (Just DebugType, _) => printTypeAnd {x = x} False b
-  (Just DebugTypeExp, _) => printTypeAnd {x = x} True b
-  (Just Import, InTm t) => handleImport {x = x} t
+  (Just DebugCtx, _) => printCtxAnd b
+  (Just DebugTerm, _) => printTermAnd False b
+  (Just DebugTermExp, _) => printTermAnd True b
+  (Just DebugType, _) => printTypeAnd False b
+  (Just DebugTypeExp, _) => printTypeAnd True b
+  (Just Import, InTm t) => handleImport t
   (Just d@Import, InBlockSt t) => elabError $ DirectiveNotAllowed d
   (Just d, InTm _) => elabError $ DirectiveNotAllowed d
   
+covering
+hole : (HasTc e) => Tc e
+hole = tcHole Nothing
+
 elab (PLoc l t) =
   -- @@Debugging
   -- trace "elaborating \{show t}" $
@@ -236,19 +281,19 @@ elab (PBlock t []) = do
   --   let Val _ = ctx.idents 
   --   mtas <- enterMetas (getAllMetas {sm = SolvingNotAllowed} @{metas})
   --   trace (show @{showUnelab} ctx) (pure ())) e)
-elab (PBlock t (PLet l n ty tm :: bs)) = enterLoc l $ ensureNotPrimitive >> do
+elab (PBlock t (PLet l n ty tm :: bs)) = enterLoc l $ do
   s <- reset stageHintL
   ty' <- traverse elab ty
   tm' <- elab tm
   bs' <- elab (PBlock t bs)
   tc (tcLet n s ty' tm' bs')
-elab (PBlock t (PLetRec l n ty tm :: bs)) = enterLoc l $ ensureNotPrimitive >> do
+elab (PBlock t (PLetRec l n ty tm :: bs)) = enterLoc l $ do
   s <- reset stageHintL
   ty' <- elab ty
   tm' <- elab tm
   bs' <- elab (PBlock t bs)
   tc $ tcLetRec n s ty' tm' bs'
-elab (PBlock t (PBlockTm l tm :: [])) = ensureNotPrimitive >> do
+elab (PBlock t (PBlockTm l tm :: [])) = do
   enterLoc l $ elab tm
 elab (PBlock t (PDecl l n ty :: bs)) = enterLoc l $ do
   s <- reset stageHintL
@@ -260,10 +305,9 @@ elab (PBlock t (PDecl l n ty :: bs)) = enterLoc l $ do
       tc $ tcPrimDecl n s ty' bs'
     else elabError DeclNotSupported
 elab (PBlock t (PBind l n ty tm :: bs)) = do
-  ensureNotPrimitive
   ?todoBind
-elab (PBlock t (PBlockTm l tm :: bs)) = ensureNotPrimitive >> do
+elab (PBlock t (PBlockTm l tm :: bs)) = do
   elab (PBlock t (PBind l "_" Nothing tm :: bs))
-elab (PBlock t (PDirSt d b :: bs)) = handleDirective {x = m} d (InBlockSt bs) (elab (PBlock t (b :: bs)))
+elab (PBlock t (PDirSt d b :: bs)) = handleDirective d (InBlockSt bs) (elab (PBlock t (b :: bs)))
 elab (PLit l) = ?todoLit
-elab (PDirTm d t) = handleDirective {x = m} d (InTm t) (elab t)
+elab (PDirTm d t) = handleDirective d (InTm t) (elab t)

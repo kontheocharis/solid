@@ -25,6 +25,7 @@ import Control.App.Console
 import Data.HashMap
 import System
 import System.File
+import System.Path
 import Lib.HashMap
 import Data.DPair
 import Data.Maybe
@@ -184,32 +185,16 @@ HasState ElabState Comp where
   put el = modify (\s => { elabState := el } s)
   get' = gets (\s => s.elabState)
 
-covering
-parseFromImport : String -> Comp PTm
-
-HasElab Comp where
-  elabError err = do
-    l <- get Loc
-    mtas <- accessMetas
-    lift $ throw (MkWithMetas mtas (MkElabError err l))
-
-  parseImport = parseFromImport
+HasElab Comp
     
 -- Inputs and outputs of the compiler
-  
-public export
-data Input : Type where
-  FileInput : (filename : String) -> Input
-  
-Show Input where
-  show (FileInput filename) = "File input: " ++ filename
 
 -- Outputs vary depending on how far we go!
 public export
 data CompilerOutput : (a : Type) -> Type where
   Start : CompilerOutput Input
-  Contents : CompilerOutput String
-  Parsed : CompilerOutput PTm
+  Contents : CompilerOutput (Input, String)
+  Parsed : CompilerOutput (Input, PTm)
   Elaborated : CompilerOutput (WithMetas (Atom [<]))
   Staged : CompilerOutput (WithMetas (Val [<]))
   Code : CompilerOutput String
@@ -261,25 +246,22 @@ fromString _ = Nothing
 -- Compiler stages:
 
 covering
-read : Input -> Comp String
-read (FileInput filename) = liftIO $ do
+read : Input -> Comp (Input, String)
+read i@(FileInput filename) = liftIO $ do
   Right content <- readFile filename
     | Left err => do
         putStrLn $ "Error reading file: " ++ show err
         exitWith (ExitFailure 1)
-  pure content
+  pure (i, content)
 
 covering
-parse : String -> Comp PTm
-parse input = case parse topLevelBlock input of
-  Right ptm => pure ptm
+parse : (Input, String) -> Comp (Input, PTm)
+parse (p, input) = case parse topLevelBlock input of
+  Right ptm => pure (p, ptm)
   Left err => lift $ throw err
 
 -- @@Todo: cache these
-parseFromImport s = do
-  c <- read (FileInput s)
-  parse c
-  
+
 printGoals : SnocList Goal -> Comp ()
 printGoals sx = do
   mtas <- accessMetas
@@ -288,14 +270,16 @@ printGoals sx = do
     putStrLn ""
 
 covering
-elaborate : PTm -> Comp (WithMetas (Atom [<]))
-elaborate ptm = do
-  tc <- elab ptm 
-  res <- atMode Infer tc emptyContext (InferInput (Just Mta))
+elaborate : (Input, PTm) -> Comp (WithMetas (Atom [<]))
+elaborate (FileInput p, ptm) = do
+  let sp = fromMaybe "." $ parent p
+  set (projectL . startingPathL) (Just sp)
+  tm <- elab ptm >>= runTcRoot
+  set (projectL . mainL) (Just (MkModule (FileInput p) ptm tm))
   mtas <- accessMetas
   goals <- get Goals
   printGoals goals
-  pure $ MkWithMetas mtas res.tm
+  pure $ MkWithMetas mtas tm.tm
 
 covering
 stage : WithMetas (Atom [<]) -> Comp (WithMetas (Val [<]))
@@ -304,6 +288,20 @@ stage atom = ?stageImpl
 covering
 codegen : WithMetas (Val [<]) -> Comp String
 codegen val = ?codegenImpl
+
+HasElab Comp where
+  elabError err = do
+    l <- get Loc
+    mtas <- accessMetas
+    lift $ throw (MkWithMetas mtas (MkElabError err l))
+
+  parseImport s = do
+    r <- read s 
+    (_, tm) <- parse r
+    pure tm
+  
+  runTcRoot tc = do
+    atMode Infer tc emptyContext (InferInput (Just Mta)) <&> (.p)
 
 -- All the stages together in a pipeline
 public export covering

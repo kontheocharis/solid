@@ -4,6 +4,7 @@ import Data.Singleton
 import Data.Fin
 import Data.String
 import Control.Monad.State
+import Data.HashMap
 
 %default total
 
@@ -47,6 +48,23 @@ indented : String -> String
 indented s = (lines ("\n" ++ s) |> map (\l => "  " ++ l) |> joinBy "\n") ++ "\n"
 
 -- Source location
+  
+public export
+data Input : Type where
+  FileInput : (filename : String) -> Input
+  
+public export
+Show Input where
+  show (FileInput filename) = "File input: " ++ filename
+  
+export
+Hashable Input where
+  hashWithSalt s (FileInput f) = hashWithSalt s f
+
+export
+Eq Input where
+  (FileInput n) == (FileInput n') = n == n'
+  _ == _ = False
 
 public export
 record Loc where
@@ -156,6 +174,10 @@ map : Lens s s' -> (s' -> s') -> s -> s
 map (MkLens gt st) f x = st (f (gt x)) x
   
 export
+update : HasState s m => Lens s s' -> (s' -> s') -> m ()
+update l v = modify (map l v)
+  
+export
 reset : HasState s m => Lens s (Maybe s') -> m (Maybe s')
 reset (MkLens gt st) = do
   s <- get s
@@ -171,3 +193,12 @@ enter (MkLens _ st) val f = do
   s2 <- get s
   put (st val s2)
   pure x
+  
+export
+(.) : Lens s s' -> Lens s' s'' -> Lens s s''
+(MkLens gt' st') . (MkLens gt st) = MkLens (gt . gt') (\a, b => st' (st a (gt' b)) b)
+  
+-- Other stuff
+export
+nothingIsNotJust : Nothing = Just x -> Void
+nothingIsNotJust Refl impossible
