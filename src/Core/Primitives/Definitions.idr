@@ -60,8 +60,8 @@ data Primitive : PrimitiveClass -> PrimitiveReducibility -> PrimitiveLevel -> Ar
   PrimTT : Primitive PrimNorm PrimIrreducible PrimNative []
   PrimUnit : Primitive PrimNorm PrimIrreducible PrimNative []
   PrimTt : Primitive PrimNorm PrimIrreducible PrimNative []
-  PrimFix : Primitive PrimNorm PrimIrreducible PrimNative [(Implicit, "l"), (Implicit, "A"), (Explicit, "a")]
-  PrimFIX : Primitive PrimNorm PrimIrreducible PrimNative [(Implicit, "A"), (Explicit, "a")]
+  PrimFix : Primitive PrimNeu PrimReducible PrimNative [(Implicit, "l"), (Implicit, "A"), (Explicit, "a")]
+  PrimFIX : Primitive PrimNeu PrimReducible PrimNative [(Implicit, "A"), (Explicit, "a")]
 
   PrimSIGMA : Primitive PrimNorm PrimIrreducible PrimDeclared [(Explicit, "A"), (Explicit, "B")]
   PrimPAIR : Primitive PrimNorm PrimIrreducible PrimDeclared

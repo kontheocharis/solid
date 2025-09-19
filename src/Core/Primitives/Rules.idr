@@ -7,6 +7,7 @@ import Core.Base
 import Core.Primitives.Definitions
 import Core.Syntax
 import Core.Evaluation
+import Debug.Trace
 
 %default covering
 
@@ -110,6 +111,16 @@ Eval (Term Value) (PrimitiveApplied k Syntax e) (Term Value) where
     = let l' = eval env l in
        Glued (LazyPrimNormal (LazyApplied PrimTypeSta [(Val _, l')]
         (SimpPrimNormal (SimpApplied PrimTypeDyn [(Val _, SimpPrimNormal (SimpApplied PrimSta [(Val _, l')]))]))))
+  eval env self@(PrimFIX $$ sp@[_, (_, x)])
+    = let sp' = eval env sp in
+      let simplified : Lazy (Val ns)
+          simplified = delay $ apps (eval env x) [(Val (Explicit, "x"), Glued (LazyApps (PrimNeutral (LazyApplied PrimFIX sp' simplified) $$ []) simplified))] in
+      Glued (LazyApps (PrimNeutral (LazyApplied PrimFIX sp' simplified) $$ []) simplified)
+  eval env self@(PrimFix $$ sp@[_, _, (_, x)])
+    = let sp' = eval env sp in
+      let simplified : Lazy (Val ns)
+          simplified = delay $ apps (eval env x) [(Val (Explicit, "x"), Glued (LazyApps (PrimNeutral (LazyApplied PrimFix sp' simplified) $$ []) simplified))] in
+      Glued (LazyApps (PrimNeutral (LazyApplied PrimFix sp' simplified) $$ []) simplified)
 
 -- Context-aware domain
 -- 

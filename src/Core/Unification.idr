@@ -147,11 +147,11 @@ solve sc m sp t = canSolve >>= \case
 
 -- Resolve variables from a scope
 export
-resolveVars : forall bs . Scope bs Atom ns -> Val ns -> Val ns
-resolveVars sc v@(SimpApps (ValVar (Level x) $$ sp)) = case getDef sc x of
-  Just tm => resolveVars sc (apps tm.val sp)
-  Nothing => v
-resolveVars _ v = v
+tryResolveVars : forall bs . Scope bs Atom ns -> Val ns -> Maybe (Val ns)
+tryResolveVars sc v@(SimpApps (ValVar (Level x) $$ sp)) = case getDef sc x of
+  Just tm => let res = apps tm.val sp in (tryResolveVars sc res) <|> Just res
+  Nothing => Nothing
+tryResolveVars _ v = Nothing
 
 -- Resolve variables from a scope (keep the glued representation)
 export

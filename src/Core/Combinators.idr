@@ -20,7 +20,11 @@ import Core.Context
 public export covering
 resolve : HasMetas m => Size ns => Scope bs Atom ns -> Atom ns -> m sm (Atom ns)
 resolve sc x = do
-  t <- resolveGlueAndMetas {sm = sm} x.val (pure . resolveVars sc)
+  -- @@Todo: cleanup
+  t <- resolveGlueAndMetas {sm = sm} x.val (\x => case tryResolveVars sc x of
+      Nothing => pure x
+      Just y => (\x => force x.val) <$> resolve {sm = sm} sc (promote y)
+    )
   pure $ promote t
 
 public export covering
@@ -353,11 +357,23 @@ public export covering
 apps : Size ns => Expr ns -> Spine ar Expr ns -> AnnotAt s ns -> ExprAt s ns
 apps f xs a = MkExpr (promote $ sApps f.tm.syn (map (.tm.syn) xs)) a
 
+public export covering
+internalLam : Size ns => (0 n : Ident) -> Atom (ns :< n) -> Atom ns
+internalLam n body = promote (internalLam n body.syn)
+
 -- @@Todo: Make these non-internal!
 public export covering
 internalLams : Size ns => (ar : Arity) -> Atom (ns ::< ar) -> Atom ns
 internalLams [] body = body
 internalLams (n :: xs) body = let body' = internalLams xs body in promote $ internalLam n body'.syn
+
+-- @@Todo: Make these non-internal!
+public export covering
+fix : Size ns => (stage : Stage) -> Atom (ns :< n) -> AnnotFor stage Sized Atom ns -> Atom ns
+fix Mta atom ann@(MkAnnotFor MtaSort ty) =
+  (PrimFIX $> [(Val _, ty), (Val _, internalLam _ atom)])
+fix Obj atom ann@(MkAnnotFor (ObjSort Sized l) ty) =
+  (PrimFix $> [(Val _, l), (Val _, ty), (Val _, internalLam _ atom)])
 
 -- Find a variable by its name in the context.
 public export covering

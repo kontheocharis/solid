@@ -622,7 +622,6 @@ tcPrimDecl name stage ty rest = inferStageIfNone stage $ \stage, md, ctx, inp =>
   pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result
   
 -- Check a let-rec statement.
--- @@Todo: make this recursive
 public export
 tcLetRec : HasTc m
   => (name : Name)
@@ -634,14 +633,14 @@ tcLetRec : HasTc m
 tcLetRec name stage ty tm rest = inferStageIfNone stage $ \stage, md, ctx, inp => do
   let Val ns = ctx.idents
   let Val bs = ctx.bindIdents
-  -- @@Refactor: factor out this sort stuff
-  tySort <- solving (freshSortData ctx stage Sized <&> .a)
+  tySortData <- solving (freshSortData ctx stage Sized)
+  let tySort = tySortData.a
   ty' <- ty Check ctx (CheckInput stage tySort)
   let n = (Explicit, name)
   let ctx' : Context (bs :< n) (ns :< n)
       ctx' = bind n ty'.a ctx
   tm' : ExprAt stage (ns :< n) <- tm Check ctx' (CheckInput stage (wkS ty'.a))
-  let fixTm : Atom ns = ?fsadfsdf tm'.tm
-  rest' <- rest md ctx' (wkS inp)
+  let fixTm : Atom ns = fix stage tm'.tm (MkAnnotFor tySortData ty'.tm)
+  rest' <- rest md (define n (MkExpr fixTm ty'.a) ctx) (wkS inp)
   let result = sub @{evalExprAtMaybe} {sns = ctxSize ctx} {sms = SS $ ctxSize ctx} (idS :< fixTm) rest'
   pure $ replace {p = \s => ExprAtMaybe s ns} weakPreservesStage result
