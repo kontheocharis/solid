@@ -215,6 +215,14 @@ data PTm : Type where
 public export
 Show PTm
 
+export
+pGatherLams : PTm -> (PTel Functions, PTm)
+pGatherLams (PLam (MkPTel xs) y)
+  = let (MkPTel xs', z) = pGatherLams y in (MkPTel (xs ++ xs'), z)
+pGatherLams (PLoc x y) = pGatherLams y
+pGatherLams (PApp x (MkPSpine [])) = pGatherLams x
+pGatherLams x = (MkPTel [], x)
+
 -- Smart constructors for binders and spined terms
 export
 pLam : PParam Functions -> PTm -> PTm
@@ -282,6 +290,7 @@ Show (PParam Pairs) where
 
 public export covering
 Show (PArg Functions) where
+  show (MkPArg l (Just (Explicit, "_")) t) = showAtomic t
   show (MkPArg l (Just (Explicit, n)) t) = "(" ++ n ++ " = " ++ show t ++ ")"
   show (MkPArg l (Just (Implicit, n)) t) = "[" ++ n ++ " = " ++ show t ++ "]"
   show (MkPArg l Nothing t) = showAtomic t
@@ -346,8 +355,11 @@ Show BinOp where
 
 public export covering
 Show PTm where
+  show (PApp x (MkPSpine [])) = show x
   show (PName n) = n
-  show (PLam args ret) = "\\" ++ show args ++ " => " ++ show ret
+  show l@(PLam _ _) =
+    let (args, ret) = pGatherLams l in
+     "\\" ++ show args ++ " => " ++ show ret
   show (PApp s (MkPSpine [])) = show s
   show (PApp s sp) = showAtomic s ++ " " ++ show sp
   show (PPi p b) = show p ++ " -> " ++ show b

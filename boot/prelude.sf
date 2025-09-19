@@ -78,7 +78,23 @@ id [a] = quote [?] [[A : Type a] (x : A) -> A] (\[A] x => x)
   -- @@Todo: need pruning for this to Not require the implicit arg!
   -- @@Todo: proper lambda, code, quote, splice insertion!
 
-(List, Vect)
+#obj
+id2 : [A : Type ptr] -> A -> A
+id2 x = x
+  
+foo : TYPE -> TYPE
+foo T = {
+  bar : TYPE;
+  bar = T;
+
+  #debug-ctx bar
+} 
+
+#debug-ctx ()
+-- the : (A : TYPE) -> A -> A
+-- the A x = x
+
+-- the (TYPE -> TYPE, TYPE -> Nat -> TYPE) (List = List, Vect = Vect) 
 
 -- Synonym for sized types
 -- #mta
