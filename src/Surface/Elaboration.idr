@@ -292,7 +292,8 @@ elab (PBlock t (PLetRec l n ty tm :: bs)) = enterLoc l $ do
   ty' <- elab ty
   tm' <- elab tm
   bs' <- elab (PBlock t bs)
-  tc $ tcLetRec n s ty' tm' bs'
+  -- tc $ tcLetRec n s ty' tm' bs' --@@Todo
+  tc $ tcLet n s (Just ty') tm' bs'
 elab (PBlock t (PBlockTm l tm :: [])) = do
   enterLoc l $ elab tm
 elab (PBlock t (PDecl l n ty :: bs)) = enterLoc l $ do

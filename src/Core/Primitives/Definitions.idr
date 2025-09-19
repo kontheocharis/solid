@@ -60,6 +60,8 @@ data Primitive : PrimitiveClass -> PrimitiveReducibility -> PrimitiveLevel -> Ar
   PrimTT : Primitive PrimNorm PrimIrreducible PrimNative []
   PrimUnit : Primitive PrimNorm PrimIrreducible PrimNative []
   PrimTt : Primitive PrimNorm PrimIrreducible PrimNative []
+  PrimFix : Primitive PrimNorm PrimIrreducible PrimNative [(Implicit, "l"), (Implicit, "A"), (Explicit, "a")]
+  PrimFIX : Primitive PrimNorm PrimIrreducible PrimNative [(Implicit, "A"), (Explicit, "a")]
 
   PrimSIGMA : Primitive PrimNorm PrimIrreducible PrimDeclared [(Explicit, "A"), (Explicit, "B")]
   PrimPAIR : Primitive PrimNorm PrimIrreducible PrimDeclared
@@ -123,6 +125,10 @@ primEq PrimPair PrimPair = Just Refl
 primEq PrimPair _ = Nothing
 primEq PrimIOPure PrimIOPure = Just Refl
 primEq PrimIOPure _ = Nothing
+primEq PrimFix PrimFix = Just Refl
+primEq PrimFix _ = Nothing
+primEq PrimFIX PrimFIX = Just Refl
+primEq PrimFIX _ = Nothing
 
 public export
 primName : Primitive k r na ar -> String
@@ -150,6 +156,8 @@ primName PrimIO = "IO"
 primName PrimPAIR = "PAIR"
 primName PrimPair = "pair"
 primName PrimIOPure = "io-pure"
+primName PrimFix = "fix"
+primName PrimFIX = "FIX"
 
 public export
 Eq (Primitive k r na ar) where
@@ -221,6 +229,8 @@ nameToPrim "IO"      = Just $ MkPrimitiveAny PrimIO
 nameToPrim "PAIR"    = Just $ MkPrimitiveAny PrimPAIR          
 nameToPrim "pair"    = Just $ MkPrimitiveAny PrimPair          
 nameToPrim "io-pure"    = Just $ MkPrimitiveAny PrimIOPure          
+nameToPrim "FIX"    = Just $ MkPrimitiveAny PrimFIX          
+nameToPrim "fix"    = Just $ MkPrimitiveAny PrimFix          
 nameToPrim _   = Nothing
 
 public export
@@ -248,4 +258,6 @@ nameToPrimId {p = PrimPAIR}         = Refl
 nameToPrimId {p = PrimSigma}        = Refl
 nameToPrimId {p = PrimPair}         = Refl
 nameToPrimId {p = PrimIO}           = Refl
-nameToPrimId {p = PrimIOPure}           = Refl
+nameToPrimId {p = PrimIOPure}       = Refl  
+nameToPrimId {p = PrimFix}        = Refl
+nameToPrimId {p = PrimFIX}        = Refl

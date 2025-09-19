@@ -84,6 +84,25 @@ primAnnot PrimUNIT = ([], ret $ mta (PrimTYPE $> []))
 primAnnot PrimTT = ([], ret $ mta (PrimUNIT $> []))
 primAnnot PrimUnit = ([], ret $ objZ (PrimTypeSta $> [(Val _, PrimZeroLayout $> [])]))
 primAnnot PrimTt = ([], ret $ objZ (PrimUnit $> []))
+primAnnot PrimFix = ([
+      argN "l" $ mta (PrimLayout $> []),
+      argN "A" $ objZ (PrimTypeSta $> [(Val _, v "l")]),
+      argN "a" $
+        (pi Obj (Explicit, "x")
+          (MkAnnotFor (ObjSort Sized (v "l")) (v "A"))
+          (MkAnnotFor (ObjSort Sized (v "l")) (close idS $ v "A"))).p
+    ],
+    ret $ obj (v "l") (v "A")
+  )
+primAnnot PrimFIX = ([
+      argN "A" $ objZ (PrimTYPE $> []),
+      argN "a" $
+        (pi Mta (Explicit, "x")
+          (MkAnnotFor MtaSort (v "A"))
+          (MkAnnotFor MtaSort (close idS $ v "A"))).p
+    ],
+    ret $ mta (v "A")
+  )
 
 -- The argument types for the given primitive
 public export covering
