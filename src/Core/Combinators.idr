@@ -13,19 +13,16 @@ import Core.Unification
 import Core.Primitives.Rules
 import Core.Atoms
 import Core.Context
+import Utils
 
 -- Annotation versions of syntax
 -- All these should only be called on *well-typed terms!*
 
 public export covering
-resolve : HasMetas m => Size ns => Scope bs Atom ns -> Atom ns -> m sm (Atom ns)
-resolve sc x = do
-  -- @@Todo: cleanup
-  t <- resolveGlueAndMetas {sm = sm} x.val (\x => case tryResolveVars sc x of
-      Nothing => pure x
-      Just y => (\x => force x.val) <$> resolve {sm = sm} sc (promote y)
-    )
-  pure $ promote t
+matchOnNf : HasMetas m => Size ns => Scope bs Atom ns -> Atom ns -> m sm (Atom ns)
+matchOnNf sc x = do
+  x' <- resolve (glueAndMetaResolver <+> varResolver sc) x.val
+  pure $ promote x'
 
 public export covering
 ($>) : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility}
@@ -297,7 +294,7 @@ data ForcePiAt : Stage -> Ctx -> Type where
 public export covering
 forcePi : HasMetas m => Size ns => Scope bs Atom ns -> (potentialPi : AtomTy ns) -> m sm (ForcePi ns)
 forcePi sc potentialPi
-  = resolve sc potentialPi >>= \a => case a.val of
+  = matchOnNf sc potentialPi >>= \a => case a.val of
     resolvedPi@(RigidBinding piStage@Obj (Bound _ (BindObjPi (piMode, piName) ba bb a) b)) => 
       let
         ba' = promote ba
@@ -337,7 +334,7 @@ data ForceLam : Ctx -> Type where
 -- Given a `potentialLam`, try to force it to be a lambda
 public export covering
 forceLam : HasMetas m => Size ns => Scope bs Atom ns -> (potentialLam : Atom ns) -> m sm (ForceLam ns)
-forceLam sc potentialLam = resolve sc potentialLam >>= \a => case a.val of
+forceLam sc potentialLam = matchOnNf sc potentialLam >>= \a => case a.val of
   MtaCallable (Bound Mta binder body) => pure $ MatchingLam Mta (promoteBinder binder) (promoteBody body)
   SimpObjCallable (Bound Obj binder body) => pure $ MatchingLam Obj (promoteBinder binder) (promoteBody body)
   -- @@Consider: Do we need to handle the glued stuff?

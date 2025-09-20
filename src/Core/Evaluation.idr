@@ -148,3 +148,10 @@ EvalPrims => WeakSized (Term Syntax) where
 public export
 EvalPrims => Vars (Term Syntax) where
   here = SynApps ((SynVar (Index IZ)) $$ [])
+  
+-- Resolve glue in a value
+export
+glueResolver : Monad m => Resolver m (Val ns)
+glueResolver = repeatedly $ \case
+  Glued u => pure $ Just (simplified u)
+  _ => pure Nothing

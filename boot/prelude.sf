@@ -27,14 +27,17 @@ tt : Unit
 Nat : TYPE
 Nat = (P : TYPE) -> P -> (P -> P) -> P
 
-zeroN : Nat
-zeroN N z s = z
+-- zeroN : #debug-term-exp Nat
+-- zeroN N z s = z
 
 foo : ((P : TYPE) -> P -> (P -> P) -> P) -> (P : TYPE) -> P -> (P -> P) -> P
 foo = ?fdsjfsd
 
 succN : Nat -> Nat
-succN n = {m := n ?fdsjfds ; ?fdsfd }
+succN n = {
+  m := n ?fdsjfds;
+  ?fdsfd
+}
 
 -- rec : (N : TYPE) -> N -> (N -> N) -> Nat -> N
 -- rec N z s n = n N z s

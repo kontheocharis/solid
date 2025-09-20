@@ -8,6 +8,7 @@ import Core.Primitives.Definitions
 import Core.Syntax
 import Core.Evaluation
 import Debug.Trace
+import Utils
 
 %default covering
 
@@ -142,7 +143,7 @@ vPrim {k = PrimNeu} {r = PrimIrreducible} p sp = SimpApps (PrimNeutral (SimpAppl
 vPrim {r = PrimReducible} p sp = eval id $ sPrim p (quote sp)
 
 -- Potentially reduce primitives
-public export covering
+export covering
 maybeReduce : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility} -> Primitive k r na ar -> Spine ar Val ns -> Maybe (Val ns)
 maybeReduce {k = PrimNorm} {r = PrimIrreducible} p sp = Nothing
 maybeReduce {k = PrimNeu} {r = PrimIrreducible} p sp = Nothing

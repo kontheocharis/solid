@@ -360,7 +360,6 @@ Show PTm where
   show l@(PLam _ _) =
     let (args, ret) = pGatherLams l in
      "\\" ++ show args ++ " => " ++ show ret
-  show (PApp s (MkPSpine [])) = show s
   show (PApp s sp) = showAtomic s ++ " " ++ show sp
   show (PPi p b) = show p ++ " -> " ++ show b
   show (PSigmas t) = show t

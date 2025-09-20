@@ -197,6 +197,59 @@ enter (MkLens _ st) val f = do
 export
 (.) : Lens s s' -> Lens s' s'' -> Lens s s''
 (MkLens gt' st') . (MkLens gt st) = MkLens (gt . gt') (\a, b => st' (st a (gt' b)) b)
+
+-- Resolvers
+--
+-- A resolver tries to resolve something, and if it can't it returns Nothing. We
+-- can combine resolvers by trying one after the other until one succeeds. When
+-- combining, if one resolver makes a change, we restart the whole process.
+--
+-- Resolvers should have the property that if they succeed, they will return 
+-- `Nothing` when applied to their own output.
+
+public export
+record Resolver m a where
+  constructor MkResolver
+  tryResolve : a -> m (Maybe a)
+  
+export covering
+Monad m => Semigroup (Resolver m a) where
+  (MkResolver r1) <+> (MkResolver r2) = MkResolver go
+    where
+      go : a -> m (Maybe a)
+      go x = do
+        mx' <- r1 x
+        case mx' of
+          Just x' => do
+            mx'' <- r2 x'
+            case mx'' of
+              Just x'' => go x''
+              Nothing => pure (Just x')
+          Nothing => do
+            mx'' <- r2 x
+            case mx'' of
+              Just x'' => go x''
+              Nothing => pure Nothing
+  
+export
+Monad m => Monoid (Resolver m a) where
+  neutral = MkResolver (\x => pure Nothing)
+  
+export covering
+repeatedly : Monad m => (a -> m (Maybe a)) -> Resolver m a
+repeatedly f = MkResolver go
+  where
+    go : a -> m (Maybe a)
+    go x = do
+      mx' <- f x
+      case mx' of
+        Just x' => go x'
+        Nothing => pure Nothing
+
+%inline
+export covering
+resolve : Monad m => Resolver m a -> a -> m a
+resolve r x = fromMaybe x <$> r.tryResolve x
   
 -- Other stuff
 export
