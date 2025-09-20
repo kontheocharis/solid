@@ -84,44 +84,63 @@ layoutAdd a b = SynPrimNormal (PrimSeqLayoutDyn $$ [(Val _, a), (Val _, b)])
 -- each case we must form a new glued term as a result, which lazily unfolds the
 -- argument and recurses.
 
--- @@Perf: make this reduction return Maybe to avoid always evaluating in maybeReduce
+primSeqLayout' : Term Value ns -> Term Value ns -> Term Value ns
 
-primAddBYTES : Term Value ns -> Term Value ns -> Term Value ns
-primAddBYTES (SimpPrimNormal (SimpApplied PrimZeroLayout [])) b = b
-primAddBYTES a (SimpPrimNormal (SimpApplied PrimZeroLayout [])) = a
-primAddBYTES a@(Glued a') b = Glued (LazyPrimNormal (LazyApplied PrimSeqLayout [(Val _, a), (Val _, b)] (primAddBYTES (simplified a') b)))
-primAddBYTES a b@(Glued b') = Glued (LazyPrimNormal (LazyApplied PrimSeqLayout [(Val _, a), (Val _, b)] (primAddBYTES a (simplified b'))))
-primAddBYTES a b = SimpPrimNormal (SimpApplied PrimSeqLayout [(Val _, a), (Val _, b)])
+primSeqLayout : Term Value ns -> Term Value ns -> Maybe (Term Value ns)
+primSeqLayout (SimpPrimNormal (SimpApplied PrimZeroLayout [])) b = Just b
+primSeqLayout a (SimpPrimNormal (SimpApplied PrimZeroLayout [])) = Just a
+primSeqLayout a@(Glued a') b = Just $ Glued (LazyPrimNormal (LazyApplied PrimSeqLayout [(Val _, a), (Val _, b)] (primSeqLayout' (simplified a') b)))
+primSeqLayout a b@(Glued b') = Just $ Glued (LazyPrimNormal (LazyApplied PrimSeqLayout [(Val _, a), (Val _, b)] (primSeqLayout' a (simplified b'))))
+primSeqLayout _ _ = Nothing
 
-primAddBytes : Term Value ns -> Term Value ns -> Term Value ns
-primAddBytes (SimpPrimNormal (SimpApplied PrimSta [(_, a)])) (SimpPrimNormal (SimpApplied PrimSta [(_, b)]))
-  = SimpPrimNormal (SimpApplied PrimSta [(Val _, primAddBYTES a b)])
-primAddBytes (SimpPrimNormal (SimpApplied PrimSta [(_, SimpPrimNormal (SimpApplied PrimZeroLayout []))])) b = b
-primAddBytes a (SimpPrimNormal (SimpApplied PrimSta [(_, SimpPrimNormal (SimpApplied PrimZeroLayout []))])) = a
-primAddBytes a@(Glued a') b = Glued (LazyPrimNormal (LazyApplied PrimSeqLayoutDyn [(Val _, a), (Val _, b)] (primAddBytes (simplified a') b)))
-primAddBytes a b@(Glued b') = Glued (LazyPrimNormal (LazyApplied PrimSeqLayoutDyn [(Val _, a), (Val _, b)] (primAddBytes a (simplified b'))))
-primAddBytes a b = SimpPrimNormal (SimpApplied PrimSeqLayoutDyn [(Val _, a), (Val _, b)])
+primSeqLayout' a b = case primSeqLayout a b of
+  Just r => r
+  Nothing => SimpPrimNormal (SimpApplied PrimSeqLayout [(Val _, a), (Val _, b)])
+
+primSeqLayoutDyn' : Term Value ns -> Term Value ns -> Term Value ns
+
+primSeqLayoutDyn : Term Value ns -> Term Value ns -> Maybe (Term Value ns)
+primSeqLayoutDyn (SimpPrimNormal (SimpApplied PrimSta [(_, a)])) (SimpPrimNormal (SimpApplied PrimSta [(_, b)]))
+  = Just $ SimpPrimNormal (SimpApplied PrimSta [(Val _, primSeqLayout' a b)])
+primSeqLayoutDyn (SimpPrimNormal (SimpApplied PrimSta [(_, SimpPrimNormal (SimpApplied PrimZeroLayout []))])) b = Just b
+primSeqLayoutDyn a (SimpPrimNormal (SimpApplied PrimSta [(_, SimpPrimNormal (SimpApplied PrimZeroLayout []))])) = Just a
+primSeqLayoutDyn a@(Glued a') b = Just $ Glued (LazyPrimNormal (LazyApplied PrimSeqLayoutDyn [(Val _, a), (Val _, b)] (primSeqLayoutDyn' (simplified a') b)))
+primSeqLayoutDyn a b@(Glued b') = Just $ Glued (LazyPrimNormal (LazyApplied PrimSeqLayoutDyn [(Val _, a), (Val _, b)] (primSeqLayoutDyn' a (simplified b'))))
+primSeqLayoutDyn a b = Nothing
+
+primSeqLayoutDyn' a b = case primSeqLayoutDyn a b of
+  Just r => r
+  Nothing => SimpPrimNormal (SimpApplied PrimSeqLayout [(Val _, a), (Val _, b)])
+  
+primApps : Primitive k PrimReducible na ar -> Spine ar (Term Value) ns -> Maybe (Term Value ns)
+primApps' : {k : _} -> Primitive k PrimReducible na ar -> Spine ar (Term Value) ns -> Term Value ns
 
 public export
 Eval (Term Value) (PrimitiveApplied k Syntax e) (Term Value) where
   eval env (($$) {r = PrimIrreducible} {k = PrimNorm} p sp) = SimpPrimNormal (SimpApplied p (eval env sp))
   eval env (($$) {r = PrimIrreducible} {k = PrimNeu} p sp) = SimpApps (PrimNeutral (SimpApplied p (eval env sp)) $$ [])
-  eval env (PrimSeqLayout $$ [(_, a), (_, b)]) = primAddBYTES (eval env a) (eval env b)
-  eval env (PrimSeqLayoutDyn $$ [(_, a), (_, b)]) = primAddBytes (eval env a) (eval env b)
-  eval env (PrimTypeSta $$ [(_, l)])
-    = let l' = eval env l in
-       Glued (LazyPrimNormal (LazyApplied PrimTypeSta [(Val _, l')]
-        (SimpPrimNormal (SimpApplied PrimTypeDyn [(Val _, SimpPrimNormal (SimpApplied PrimSta [(Val _, l')]))]))))
-  eval env self@(PrimFIX $$ sp@[_, (_, x)])
-    = let sp' = eval env sp in
-      let simplified : Lazy (Val ns)
-          simplified = delay $ apps (eval env x) [(Val (Explicit, "x"), Glued (LazyApps (PrimNeutral (LazyApplied PrimFIX sp' simplified) $$ []) simplified))] in
-      Glued (LazyApps (PrimNeutral (LazyApplied PrimFIX sp' simplified) $$ []) simplified)
-  eval env self@(PrimFix $$ sp@[_, _, (_, x)])
-    = let sp' = eval env sp in
-      let simplified : Lazy (Val ns)
-          simplified = delay $ apps (eval env x) [(Val (Explicit, "x"), Glued (LazyApps (PrimNeutral (LazyApplied PrimFix sp' simplified) $$ []) simplified))] in
-      Glued (LazyApps (PrimNeutral (LazyApplied PrimFix sp' simplified) $$ []) simplified)
+  eval env (($$) {r = PrimReducible} x sp) = primApps' x (eval env sp)
+
+primApps PrimTypeSta [(_, l)] = Just $ Glued (LazyPrimNormal (LazyApplied PrimTypeSta [(Val _, l)]
+  (SimpPrimNormal (SimpApplied PrimTypeDyn [(Val _, SimpPrimNormal (SimpApplied PrimSta [(Val _, l)]))]))))
+primApps PrimSeqLayout [(_, a), (_, b)] = primSeqLayout a b
+primApps PrimSeqLayoutDyn [(_, a), (_, b)] = primSeqLayoutDyn a b
+primApps PrimFix sp@[_, _, (_, x)] =
+  let wrap = \s : Lazy (Val ns) => Glued (LazyApps (PrimNeutral (LazyApplied PrimFix sp s) $$ []) s) in
+  let simplified : Lazy (Val ns)
+      simplified = delay $ apps x [(Val (Explicit, "x"), wrap simplified)]
+  in Just (wrap simplified)
+primApps PrimFIX sp@[_, (_, x)] =
+  let wrap = \s : Lazy (Val ns) => Glued (LazyApps (PrimNeutral (LazyApplied PrimFIX sp s) $$ []) s) in
+  let simplified : Lazy (Val ns)
+      simplified = delay $ apps x [(Val (Explicit, "x"), wrap simplified)]
+  in Just (wrap simplified)
+
+primApps' p sp = case primApps p sp of
+  Just r => r
+  Nothing => case k of
+    PrimNorm => SimpPrimNormal (SimpApplied p sp)
+    PrimNeu => SimpApps (PrimNeutral (SimpApplied p sp) $$ [])
 
 -- Context-aware domain
 -- 
@@ -142,9 +161,9 @@ vPrim {k = PrimNorm} {r = PrimIrreducible} p sp = SimpPrimNormal (SimpApplied p 
 vPrim {k = PrimNeu} {r = PrimIrreducible} p sp = SimpApps (PrimNeutral (SimpApplied p sp) $$ [])
 vPrim {r = PrimReducible} p sp = eval id $ sPrim p (quote sp)
 
--- Potentially reduce primitives
-export covering
-maybeReduce : Size ns => {k : PrimitiveClass} -> {r : PrimitiveReducibility} -> Primitive k r na ar -> Spine ar Val ns -> Maybe (Val ns)
-maybeReduce {k = PrimNorm} {r = PrimIrreducible} p sp = Nothing
-maybeReduce {k = PrimNeu} {r = PrimIrreducible} p sp = Nothing
-maybeReduce {r = PrimReducible} p sp = Just $ eval id $ sPrim p (quote sp)
+export
+primResolver : Monad m => Resolver m (Val ns)
+primResolver = repeatedly $ \case
+  (SimpApps ((PrimNeutral (SimpApplied {r = PrimReducible} p sp)) $$ sp')) => pure $ apps <$> primApps p sp <*> pure sp'
+  (SimpPrimNormal (SimpApplied {r = PrimReducible} p sp)) => pure $ primApps p sp
+  _ => pure Nothing

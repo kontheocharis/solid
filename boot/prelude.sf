@@ -7,7 +7,6 @@ TT : UNIT
 -- #primitive
 -- IO : [a : Layout] (A : Type a) -> Type ptr
 
--- Sigma
 #primitive
 SIGMA : (A : TYPE) -> (B : A -> TYPE) -> TYPE
 
@@ -27,76 +26,70 @@ tt : Unit
 Nat : TYPE
 Nat = (P : TYPE) -> P -> (P -> P) -> P
 
--- zeroN : #debug-term-exp Nat
--- zeroN N z s = z
-
-foo : ((P : TYPE) -> P -> (P -> P) -> P) -> (P : TYPE) -> P -> (P -> P) -> P
-foo = ?fdsjfsd
+zeroN : Nat
+zeroN N z s = z
 
 succN : Nat -> Nat
-succN n = {
-  m := n ?fdsjfds;
-  ?fdsfd
-}
+succN n N z s = s (n N z s)
 
--- rec : (N : TYPE) -> N -> (N -> N) -> Nat -> N
--- rec N z s n = n N z s
+rec : (N : TYPE) -> N -> (N -> N) -> Nat -> N
+rec N z s n = n N z s
 
--- addN : Nat -> Nat -> Nat
--- addN x y = rec Nat x succN y
+addN : Nat -> Nat -> Nat
+addN x y = rec Nat x succN y
 
--- add-zero-is-zero : Nat -> Nat
--- add-zero-is-zero x = addN x zeroN
+add-zero-is-zero : Nat -> Nat
+add-zero-is-zero x = addN x zeroN
 
--- add-succ-is-succ : Nat -> Nat -> Nat
--- add-succ-is-succ x y = addN x (succN y)
+add-succ-is-succ : Nat -> Nat -> Nat
+add-succ-is-succ x y = addN x (succN y)
 
 -- -- Some object-level stuff
 
--- #obj
--- Nt : Type ptr
--- Nt = (P : Type ptr) -> P -> (P -> P) -> P
+#obj
+Nt : Type ptr
+Nt = (P : Type ptr) -> P -> (P -> P) -> P
 
--- #obj
--- ze : Nt
--- ze P z s = z
+#obj
+ze : Nt
+ze P z s = z
 
--- #obj
--- su : Nt -> Nt
--- su n P z s = s (n P z s)
+#obj
+su : Nt -> Nt
+su n P z s = s (n P z s)
 
--- #obj
--- rc : (N : Type ptr) -> N -> (N -> N) -> Nt -> N
--- rc P z s n = n P z s
+#obj
+rc : (N : Type ptr) -> N -> (N -> N) -> Nt -> N
+rc P z s n = n P z s
 
--- #obj
--- ad : Nt -> Nt -> Nt
--- ad x y = rc Nt x su y
+#obj
+ad : Nt -> Nt -> Nt
+ad x y = rc Nt x su y
 
--- Vect : TYPE -> Nat -> TYPE
--- Vect T n = rec TYPE UNIT (\R => (head : T, tail : R)) n
+Vect : TYPE -> Nat -> TYPE
+Vect T n = rec TYPE UNIT (\R => (head : T, tail : R)) n
 
--- List : TYPE -> TYPE
--- List T = (length : Nat, contents : Vect T length)
+List : TYPE -> TYPE
+List T = (length : Nat, contents : Vect T length)
 
--- id : [a : Layout] -> Code ([A : Type a] -> A -> A)
--- id [a] = quote [?] [[A : Type a] (x : A) -> A] (\[A] x => x)
---   -- @@Todo: need pruning for this to Not require the implicit arg!
---   -- @@Todo: proper lambda, code, quote, splice insertion!
+id : [a : Layout] -> Code ([A : Type a] -> A -> A)
+id [a] = quote [?] [[A : Type a] (x : A) -> A] (\[A] x => x)
+  -- @@Todo: need pruning for this to Not require the implicit arg!
+  -- @@Todo: proper lambda, code, quote, splice insertion!
 
--- #obj
--- id2 : [A : Type ptr] -> A -> A
--- id2 x = x
+#obj
+id2 : [A : Type ptr] -> A -> A
+id2 x = x
   
--- foo : TYPE -> TYPE
--- foo T = {
---   bar : TYPE;
---   bar = T;
+foo : TYPE -> TYPE
+foo T = {
+  bar : TYPE;
+  bar = T;
 
---   #debug-ctx bar
--- } 
+  bar
+} 
 
-#debug-ctx ()
+()
 -- the : (A : TYPE) -> A -> A
 -- the A x = x
 

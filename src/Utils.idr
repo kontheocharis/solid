@@ -223,12 +223,16 @@ Monad m => Semigroup (Resolver m a) where
           Just x' => do
             mx'' <- r2 x'
             case mx'' of
-              Just x'' => go x''
+              Just x'' => go x'' >>= \case
+                Just x''' => pure (Just x''')
+                Nothing => pure (Just x')
               Nothing => pure (Just x')
           Nothing => do
             mx'' <- r2 x
             case mx'' of
-              Just x'' => go x''
+              Just x'' => go x'' >>= \case
+                Just x''' => pure (Just x''')
+                Nothing => pure (Just x'')
               Nothing => pure Nothing
   
 export
@@ -243,7 +247,9 @@ repeatedly f = MkResolver go
     go x = do
       mx' <- f x
       case mx' of
-        Just x' => go x'
+        Just x' => go x' >>= \case
+          Just x'' => pure (Just x'')
+          Nothing => pure (Just x')
         Nothing => pure Nothing
 
 %inline

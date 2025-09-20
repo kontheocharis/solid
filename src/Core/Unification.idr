@@ -19,15 +19,13 @@ import Core.Context
 -- Unification
 
 -- Unification outcome
---
--- Observationally means under all substitutions from the empty context.
 public export
 data Unification : Ctx -> Type where
-  -- Are observationally the same
+  -- Are the same
   AreSame : Unification ns
-  -- Are observationally different
+  -- Are different
   AreDifferent : Unification ns
-  -- Can't really tell; could become the same (or different) under
+  -- Could become the same (or different) under
   -- appropriate substitutions
   DontKnow : Unification ns
   -- An error occurred while solving a metavariable
@@ -220,18 +218,10 @@ Unify SolvingNotAllowed (Variable Value) (Variable Value) where
 
 {sm : SolvingMode} -> {hk : PrimitiveClass} ->
   Unify sm (PrimitiveApplied hk Value Simplified) (PrimitiveApplied hk Value Simplified) where
-    unifyImpl ctx (SimpApplied {r} p sp) (SimpApplied {r = r'} p' sp') with (maybeReduce p sp, maybeReduce p' sp')
-      -- @@Perf: this could be simplified
-      -- irreducible
-      unifyImpl ctx (SimpApplied {r = PrimIrreducible} p sp) (SimpApplied {r = PrimIrreducible} p' sp') | (Nothing, Nothing)
-        = ifAndOnlyIfHack (primEq p p') (\Refl => unify ctx sp sp')
-      -- reducible, first try reduce primitives
-      unifyImpl ctx (SimpApplied {r} p sp) (SimpApplied {r = r'} p' sp') | (Just x, Just y) = unify ctx x y
-      unifyImpl ctx (SimpApplied {r} p sp) (SimpApplied {r = r'} p' sp') | (Just x, Nothing) = unify ctx x (vPrim p' sp')
-      unifyImpl ctx (SimpApplied {r} p sp) (SimpApplied {r = r'} p' sp') | (Nothing, Just y) = unify ctx (vPrim p sp) y
-      -- if cannot reduce, just unify conservatively
-      unifyImpl ctx (SimpApplied p sp) (SimpApplied p' sp') | (Nothing, Nothing)
-        = noSolving (inCase (primEq p p') (\Refl => unify ctx sp sp') \/ pure DontKnow)
+    unifyImpl ctx (SimpApplied {r = PrimIrreducible} p sp) (SimpApplied {r = PrimIrreducible} p' sp')
+      = ifAndOnlyIfHack (primEq p p') (\Refl => unify ctx sp sp')
+    unifyImpl ctx (SimpApplied p sp) (SimpApplied p' sp')
+      = noSolving (inCase (primEq p p') (\Refl => unify ctx sp sp') \/ pure DontKnow)
 
 {hk : PrimitiveClass} ->
   Unify SolvingNotAllowed (PrimitiveApplied hk Value Normalised) (PrimitiveApplied hk Value Normalised) where
@@ -272,8 +262,8 @@ Unify SolvingNotAllowed LazyValue LazyValue where
 export
 [unifyValues] {sm : SolvingMode} -> Unify sm (Term Value) (Term Value) where
   -- @@Todo: short-circuit some glued stuff (metas + vars) here
-  resolveLhs ctx x = resolve (metaResolver <+> gluedVarResolver ctx) x
-  resolveRhs ctx x = resolve (metaResolver <+> gluedVarResolver ctx) x
+  resolveLhs ctx x = resolve (metaResolver <+> gluedVarResolver ctx <+> primResolver) x
+  resolveRhs ctx x = resolve (metaResolver <+> gluedVarResolver ctx <+> primResolver) x
 
   unifyImpl ctx (MtaCallable m) (MtaCallable m') = unify ctx m m'
   unifyImpl ctx (SimpPrimNormal p) (SimpPrimNormal p') = unify ctx p p'
