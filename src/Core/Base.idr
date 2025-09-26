@@ -134,8 +134,13 @@ nextIdx (IS i) = IS (nextIdx i)
 -- Get the corresponding index for a level in the context.
 public export
 lvlToIdx : Size ns -> Lvl ns -> Idx ns
-lvlToIdx (SS n) LZ = firstIdx n
-lvlToIdx (SS n) (LS l) = nextIdx (lvlToIdx n l)
+-- lvlToIdx (SS n) LZ = firstIdx n
+-- lvlToIdx (SS n) (LS l) = nextIdx (lvlToIdx n l)
+lvlToIdx s l = believe_me (minus (minus (believe_me s) (believe_me l)) 1)
+-- (SS n) LZ = firstIdx n
+-- lvlToIdx (SS n) (LS l) = nextIdx (lvlToIdx n l)
+
+-- %transform "lvlToIdx" lvlToIdx s l = believe_me (minus (minus (believe_me s) (believe_me l)) 1)
 
 -- Weaken the level, points to the same element in an extended context
 public export
